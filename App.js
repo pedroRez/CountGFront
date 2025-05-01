@@ -1,79 +1,100 @@
-// App.js
 import React, { useState } from 'react';
-import { View, Text, Button, Image, ActivityIndicator, Alert } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { View, Text, Button, Alert, ActivityIndicator } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import axios from 'axios';
 
-export default function App() {
-  const [image, setImage] = useState(null);
-  const [count, setCount] = useState(null);
-  const [loading, setLoading] = useState(false);
+const API_BASE_URL = 'https://c55a-148-222-216-253.ngrok-free.app';
 
-  const pickImageFromGallery = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 1,
+export default function App() {
+  const [video, setVideo] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [countResult, setCountResult] = useState(null);
+
+  const handleVideoPick = async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: 'video/*',
     });
 
-    if (!result.canceled) {
-      setImage(result.assets[0].uri);
-      setCount(null);
+    if (result.canceled) {
+      setVideo(null);
+      Alert.alert('Seleção cancelada');
+    } else {
+      const file = result.assets[0];
+      setVideo(file);
+      setCountResult(null);
     }
   };
 
-  const takePhotoWithCamera = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permissão negada', 'Permita acesso à câmera para tirar fotos.');
+  const handleUpload = async () => {
+    if (!video) {
+      Alert.alert('Nenhum vídeo selecionado!');
       return;
     }
 
-    let result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 1,
-    });
-
-    if (!result.canceled) {
-      setImage(result.assets[0].uri);
-      setCount(null);
-    }
-  };
-
-  const uploadImage = async () => {
-    if (!image) return;
-    setLoading(true);
-
-    const formData = new FormData();
-    formData.append('file', {
-      uri: image,
-      name: 'photo.jpg',
-      type: 'image/jpeg',
-    });
-
     try {
-      const response = await axios.post('http://<SEU_BACKEND_LOCAL>:8000/upload/', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      setLoading(true);
+      const formData = new FormData();
+      formData.append('file', {
+        uri: video.uri,
+        name: video.name,
+        type: 'video/mp4',
       });
-      setCount(response.data.count);
-    } catch (error) {
-      console.error(error);
-      alert('Erro ao enviar imagem.');
-    }
 
-    setLoading(false);
+      const response = await axios.post(`${API_BASE_URL}/predict-video/`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      setCountResult(response.data);
+    } catch (error) {
+      console.error('Erro ao enviar vídeo:', error.message);
+      Alert.alert('Erro', 'Não foi possível enviar o vídeo.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-      <Button title="Escolher da Galeria" onPress={pickImageFromGallery} />
-      <View style={{ height: 10 }} />
-      <Button title="Tirar Foto com Câmera" onPress={takePhotoWithCamera} />
-      {image && (
-        <Image source={{ uri: image }} style={{ width: 300, height: 300, marginVertical: 20 }} />
+    <View style={{ padding: 20 }}>
+      <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 10 }}>
+        Contagem de Gado
+      </Text>
+      <Button title="Selecionar Vídeo" onPress={handleVideoPick} />
+
+      {video && (
+        <Text style={{ marginTop: 10 }}>Vídeo selecionado: {video.name}</Text>
       )}
-      {image && <Button title="Enviar para Contagem" onPress={uploadImage} />}
-      {loading && <ActivityIndicator size="large" style={{ marginTop: 20 }} />}
-      {count !== null && <Text style={{ marginTop: 20, fontSize: 18 }}>Animais detectados: {count}</Text>}
+
+      <View style={{ marginTop: 20 }}>
+        <Button
+          title="Enviar para Contagem"
+          onPress={handleUpload}
+          disabled={!video || loading}
+        />
+      </View>
+
+      {loading && (
+        <ActivityIndicator size="large" color="#0000ff" style={{ marginTop: 20 }} />
+      )}
+
+      {countResult && (
+        <View style={{ marginTop: 30 }}>
+          <Text style={{ fontSize: 18 }}>Resultado da Contagem:</Text>
+          <Text style={{ fontSize: 16 }}>Vídeo: {countResult.video}</Text>
+          <Text style={{ fontSize: 16 }}>Duração (frames): {countResult.total_frames}</Text>
+          <Text style={{ fontSize: 22, fontWeight: 'bold', marginTop: 10 }}>
+            {countResult.total_count} bois contados
+          </Text>
+
+          {countResult.por_classe &&
+            Object.entries(countResult.por_classe).map(([classe, quantidade]) => (
+              <Text key={classe} style={{ fontSize: 16 }}>
+                {classe}: {quantidade}
+              </Text>
+            ))}
+        </View>
+      )}
     </View>
   );
 }
