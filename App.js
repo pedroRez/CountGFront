@@ -3,7 +3,7 @@ import { View, Text, Button, Alert, ActivityIndicator } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import axios from 'axios';
 
-const API_BASE_URL = 'https://c55a-148-222-216-253.ngrok-free.app';
+const API_BASE_URL = 'https://1240-149-19-164-150.ngrok-free.app';
 
 export default function App() {
   const [video, setVideo] = useState(null);
