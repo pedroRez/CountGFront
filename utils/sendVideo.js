@@ -18,7 +18,7 @@ export async function pickAndUploadVideo() {
       type: 'video/mp4',
     });
 
-    const response = await axios.post('http://SEU_IP_LOCAL:8000/upload-video', formData, {
+    const response = await axios.post('https://e36f-149-19-164-150.ngrok-free.app/upload-video', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
 
