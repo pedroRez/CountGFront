@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { View, Text, Button, Alert } from 'react-native';
 import axios from 'axios';
 
-const API_BASE_URL = 'https://e36f-149-19-164-150.ngrok-free.app';
+const API_BASE_URL = 'http://192.168.0.48:8000';
 
 export default function VideoProcessor({
   video,
