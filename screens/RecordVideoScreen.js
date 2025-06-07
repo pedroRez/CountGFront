@@ -12,6 +12,7 @@ import * as ExpoCameraModule from 'expo-camera';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
+// Função para formatar segundos para MM:SS
 const formatSecondsToMMSS = (totalSeconds) => {
   if (isNaN(totalSeconds) || totalSeconds < 0) totalSeconds = 0;
   const minutes = Math.floor(totalSeconds / 60);
@@ -20,28 +21,41 @@ const formatSecondsToMMSS = (totalSeconds) => {
   return `${pad(minutes)}:${pad(seconds)}`;
 };
 
+// Duração mínima em milissegundos que a gravação deve ter antes de permitir a parada manual
+const MIN_RECORDING_DURATION_BEFORE_STOP_MS = 2500; // 2.5 segundos
+
 export default function RecordVideoScreen({ navigation }) {
   const [hasCameraPermission, setHasCameraPermission] = useState(null);
-  const [hasAudioPermission, setHasAudioPermission] = useState(null); // Mantido para o fluxo de permissão
+  // Permissão de áudio solicitada para compatibilidade, vídeo será mudo.
+  const [hasAudioPermission, setHasAudioPermission] = useState(null); 
   const [cameraType, setCameraType] = useState('back');
   const cameraRef = useRef(null);
   
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const recordingTimerRef = useRef(null);
+  // Estado para controlar se o usuário já pode efetivamente parar a gravação
+  const [canStopRecording, setCanStopRecording] = useState(false); 
+  const allowStopTimeoutRef = useRef(null); // Para limpar o timeout se necessário
 
   useEffect(() => {
     (async () => {
+      console.log("RecordVideoScreen: Solicitando permissões...");
       const cameraStatus = await ExpoCameraModule.Camera.requestCameraPermissionsAsync();
       setHasCameraPermission(cameraStatus.status === 'granted');
       
       const audioStatus = await ExpoCameraModule.Camera.requestMicrophonePermissionsAsync();
       setHasAudioPermission(audioStatus.status === 'granted');
+      console.log(`RecordVideoScreen: Permissão Câmera: ${cameraStatus.status}, Permissão Áudio: ${audioStatus.status}`);
     })();
 
+    // Função de limpeza para os timers
     return () => {
       if (recordingTimerRef.current) {
         clearInterval(recordingTimerRef.current);
+      }
+      if (allowStopTimeoutRef.current) {
+        clearTimeout(allowStopTimeoutRef.current);
       }
     };
   }, []);
@@ -58,7 +72,6 @@ export default function RecordVideoScreen({ navigation }) {
       clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
-    // Não resetar elapsedTime aqui para que o usuário veja o tempo final brevemente
   };
 
   const toggleCameraType = () => {
@@ -68,61 +81,95 @@ export default function RecordVideoScreen({ navigation }) {
   };
 
   const handleStartRecording = async () => {
-    if (cameraRef.current && !isRecording) {
-      if (!hasCameraPermission) {
-        Alert.alert("Permissão Necessária", "Acesso à câmera é necessário para gravar.");
+    if (!cameraRef.current) {
+        Alert.alert("Erro de Câmera", "A referência da câmera não está disponível. Tente novamente.");
         return;
-      }
-      // Se hasAudioPermission for false, mute:true cuidará disso.
+    }
+    if (isRecording) {
+        console.log("handleStartRecording: Tentativa de iniciar gravação, mas já está gravando.");
+        return;
+    }
+    if (!hasCameraPermission) {
+      Alert.alert("Permissão Necessária", "Acesso à câmera é necessário para iniciar a gravação.");
+      return;
+    }
+    if (!hasAudioPermission && Platform.OS === 'android') {
+        // Este alerta é mais informativo, pois mute:true será usado.
+        Alert.alert("Aviso de Permissão", "A permissão de áudio não foi concedida. O vídeo será gravado sem som.");
+    }
 
-      setIsRecording(true); // <<< Define como gravando ANTES de chamar recordAsync
-      startRecordingTimer();
-      console.log('Iniciando gravação...');
-      try {
-        const recordOptions = {
-          quality: '720p', 
-          mute: true,
-        };
-        
-        const data = await cameraRef.current.recordAsync(recordOptions);
-        
-        // Este bloco é alcançado quando recordAsync resolve (após stopRecording ser chamado e ter sucesso)
-        stopRecordingTimer(); // Para o timer aqui, após a gravação ser confirmada
-        setIsRecording(false); // Define que parou de gravar aqui
-        console.log('Gravação finalizada com sucesso, URI:', data.uri);
-        
-        const recordedVideoAsset = {
-          uri: data.uri,
-          fileName: data.uri.split('/').pop(),
-          mimeType: Platform.OS === 'ios' ? 'video/quicktime' : 'video/mp4',
-          duration: elapsedTime * 1000, 
-        };
-        
-        navigation.replace('Home', { newlyRecordedVideo: recordedVideoAsset });
+    setIsRecording(true);
+    setCanStopRecording(false); 
+    startRecordingTimer();
+    console.log('RecordVideoScreen: Iniciando gravação (chamada recordAsync)...');
+    
+    if (allowStopTimeoutRef.current) {
+        clearTimeout(allowStopTimeoutRef.current);
+    }
+    allowStopTimeoutRef.current = setTimeout(() => {
+        console.log("RecordVideoScreen: Tempo mínimo de gravação atingido. Habilitando 'canStopRecording'.");
+        setCanStopRecording(true);
+    }, MIN_RECORDING_DURATION_BEFORE_STOP_MS);
 
-      } catch (error) {
-        // Este catch lida com erros da promessa de recordAsync
-        console.error("Erro detalhado durante recordAsync:", error);
-        Alert.alert("Erro de Gravação", `Falha na gravação: ${error.message}`);
-        stopRecordingTimer();  // Para o timer em caso de erro
-        setIsRecording(false); // Garante que o estado de gravação seja resetado
+    try {
+      const recordOptions = {
+        quality: '720p', 
+        mute: true,      // Vídeo gravado sem áudio
+      };
+      
+      const data = await cameraRef.current.recordAsync(recordOptions);
+      
+      // Se chegou aqui, a gravação foi concluída com sucesso
+      // (stopRecording foi chamado E dados foram produzidos, ou maxDuration/maxFileSize atingido)
+      console.log('RecordVideoScreen: Gravação finalizada com sucesso (promise resolvida), URI:', data.uri);
+      
+      const recordedVideoAsset = {
+        uri: data.uri,
+        fileName: data.uri.split('/').pop(),
+        mimeType: Platform.OS === 'ios' ? 'video/quicktime' : 'video/mp4',
+        duration: elapsedTime * 1000, // Usa o tempo medido pelo nosso timer
+      };
+      
+      // Limpa estados e navega ANTES de qualquer coisa que possa desmontar o componente
+      // (embora o finally também faça isso, aqui é mais explícito para o caso de sucesso)
+      stopRecordingTimer(); 
+      setIsRecording(false);
+      setCanStopRecording(false); // Reseta
+      if (allowStopTimeoutRef.current) clearTimeout(allowStopTimeoutRef.current);
+
+      navigation.replace('Home', { newlyRecordedVideo: recordedVideoAsset });
+
+    } catch (error) {
+      console.error("RecordVideoScreen: Erro detalhado durante recordAsync:", error);
+      Alert.alert("Erro de Gravação", `Não foi possível gravar o vídeo. ${error.message}`);
+      // Garante que o estado seja resetado em caso de erro
+      // O bloco finally abaixo também cuidará disso.
+    } finally {
+      // Este bloco finally é executado SEMPRE, seja sucesso ou erro.
+      // Garante que, se a gravação foi iniciada, os estados de controle sejam resetados.
+      console.log("RecordVideoScreen: Bloco finally de handleStartRecording executado.");
+      stopRecordingTimer();
+      setIsRecording(false);
+      setCanStopRecording(false);
+      if (allowStopTimeoutRef.current) {
+        clearTimeout(allowStopTimeoutRef.current);
       }
     }
   };
 
   const handleStopRecording = () => {
-    if (cameraRef.current && isRecording) { // Verifica se realmente está gravando
-      console.log('Chamando cameraRef.current.stopRecording()...');
-      cameraRef.current.stopRecording();
-      // AVISO: Não mude isRecording para false aqui diretamente.
-      // A mudança de estado para isRecording = false e a parada do timer
-      // devem acontecer quando a promessa de recordAsync (em handleStartRecording)
-      // for resolvida ou rejeitada, indicando que a câmera realmente parou
-      // e finalizou o arquivo ou falhou.
-      // Para feedback visual IMEDIATO do botão, você poderia ter um estado separado
-      // como `isStopping`, mas vamos manter simples por enquanto.
+    if (cameraRef.current && isRecording) { // Verifica se está no estado de gravação
+      if (canStopRecording) {
+        console.log('RecordVideoScreen: Botão Parar - Chamando cameraRef.current.stopRecording()...');
+        cameraRef.current.stopRecording();
+        // A promise de recordAsync em handleStartRecording vai resolver (ou rejeitar).
+        // A atualização de estado (isRecording, timer) acontece no try/catch/finally de lá.
+      } else {
+        console.log("RecordVideoScreen: Tentativa de parar gravação antes do tempo mínimo permitido.");
+        Alert.alert("Aguarde", `Por favor, grave por pelo menos ${MIN_RECORDING_DURATION_BEFORE_STOP_MS / 1000} segundos para garantir a gravação.`);
+      }
     } else {
-      console.log('Tentativa de parar gravação, mas não estava gravando ou cameraRef é nulo.');
+      console.log("RecordVideoScreen: Botão Parar - Não está gravando ou cameraRef é nulo.");
     }
   };
 
@@ -130,10 +177,12 @@ export default function RecordVideoScreen({ navigation }) {
     if (isRecording) {
       handleStopRecording();
     } else {
+      setElapsedTime(0); // Reseta timer para nova gravação
       handleStartRecording();
     }
   };
 
+  // Condições de retorno para permissões (JSX completo)
   if (hasCameraPermission === null || hasAudioPermission === null) {
     return (
       <View style={styles.centered}>
@@ -146,7 +195,7 @@ export default function RecordVideoScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.permissionDeniedContainer}>
         <Text style={styles.permissionText}>Acesso à câmera negado.</Text>
-        <Text style={styles.permissionText}>Por favor, habilite a permissão nas configurações do seu celular.</Text>
+        <Text style={styles.permissionText}>Por favor, habilite a permissão nas configurações do seu celular para usar esta funcionalidade.</Text>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Text style={styles.backButtonText}>Voltar</Text>
         </TouchableOpacity>
@@ -154,6 +203,7 @@ export default function RecordVideoScreen({ navigation }) {
     );
   }
 
+  // JSX Principal da tela da câmera
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.cameraContainer}>
@@ -188,12 +238,13 @@ export default function RecordVideoScreen({ navigation }) {
         <TouchableOpacity
           style={styles.recordButtonCore}
           onPress={handleRecordButtonPress}
-          // Não precisa mais de disabled aqui se a lógica interna for robusta
+          // O botão de parar só é efetivamente "clicável" (chama stopRecording) se canStopRecording for true.
+          // A aparência (cor) muda com base em isRecording e canStopRecording.
         >
           <MaterialCommunityIcons 
             name={isRecording ? "stop-circle" : "record-circle-outline"} 
             size={70} 
-            color={isRecording ? "red" : "white"} 
+            color={(isRecording && !canStopRecording) ? "grey" : (isRecording ? "red" : "white")} 
           />
         </TouchableOpacity>
 
@@ -210,7 +261,7 @@ export default function RecordVideoScreen({ navigation }) {
   );
 }
 
-// Cole os estilos completos do RecordVideoScreen.js da minha resposta anterior aqui
+// Estilos completos (copie da sua versão anterior ou da que enviei em "2025-06-04, 04:17 PM")
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'black' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'black' },

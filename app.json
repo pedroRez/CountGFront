@@ -1,29 +1,21 @@
 {
   "expo": {
-    "name": "CounGFront",
-    "slug": "CounGFront",
+    "name": "KYO DAY GadoCount",
+    "slug": "kyoday-gadocount",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "plugins": [
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Permitir que $(PRODUCT_NAME) acesse sua câmera.",
-          "microphonePermission": "Permitir que $(PRODUCT_NAME) acesse seu microfone.",
-          "recordAudioAndroid": true
-        }
-      ]
-    ],
+    "sdkVersion": "52.0.0",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kyoday.gadocount"
     },
     "android": {
       "adaptiveIcon": {
@@ -32,18 +24,58 @@
       },
       "permissions": [
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "WRITE_EXTERNAL_STORAGE"
       ],
-      "package": "com.rezendepedro.CounGFront"
+      "package": "com.kyoday.gadocount"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
-    }
+      "favicon": "./assets/favicon.png",
+      "name": "KYO DAY GadoCount - Contagem de Gado IA",
+      "shortName": "KYO DAY Gado",
+      "startUrl": "/",
+      "display": "standalone",
+      "backgroundColor": "#ffffff",
+      "themeColor": "#007AFF",
+      "description": "Aplicativo KYO DAY para contagem de gado por Inteligência Artificial.",
+      "lang": "pt-BR",
+      "icons": [
+        {
+          "src": "./assets/adaptive-icon.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        },
+        {
+          "src": "./assets/icon.png",
+          "sizes": "512x512",
+          "type": "image/png",
+          "purpose": "any maskable"
+        }
+      ],
+      "preferRelatedApplications": false,
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Permitir que KYO DAY GadoCount acesse sua câmera para gravar vídeos.",
+          "microphonePermission": "Permitir que KYO DAY GadoCount acesse seu microfone para gravar áudio (opcional).",
+          "recordAudioAndroid": true
+        }
+      ]
+
+    ],
+    "assetBundlePatterns": [
+      "assets/images/*",
+      "assets/fonts/*" 
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "a46adc85-0390-4ed7-a306-abd542a28655"
+      }
+    },
+     "updates": {
+       "url": "https://u.expo.dev/pedrorezp3/a46adc85-0390-4ed7-a306-abd542a28655"
+     }
   }
 }

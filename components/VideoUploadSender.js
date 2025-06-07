@@ -1,13 +1,11 @@
-// components/VideoUploadSender.js
 import React, { useState } from 'react';
-import { View, Text, Alert, StyleSheet } from 'react-native';
+import { View, Text, Alert, StyleSheet, ActivityIndicator } from 'react-native';
 import axios from 'axios';
 import BigButton from './BigButton';
 
-// CONFIRME ESTE IP E PORTA! Deve ser o mesmo usado na HomeScreen para as outras chamadas.
+// CONFIRME SEU IP E PORTA
 const API_BASE_URL = 'http://192.168.0.48:8000';
 
-// Barra de progresso interna para o upload do arquivo
 const InternalProgressBar = ({ progress }) => (
   <View style={styles.progressBarContainer}>
     <View style={[styles.progressBarFill, { width: `${Math.min(progress * 100, 100)}%` }]} />
@@ -15,9 +13,12 @@ const InternalProgressBar = ({ progress }) => (
 );
 
 export default function VideoUploadSender({
-  videoAsset, // O objeto 'asset' completo
-  onFileUploadComplete, // Callback: (fileInfo) => void - fileInfo = { nome_arquivo: "..." }
-  onFileUploadError,    // Callback: (error) => void
+  videoAsset,
+  email, 
+  consent, 
+  orientation, 
+  onFileUploadComplete,
+  onFileUploadError,
 }) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -25,6 +26,13 @@ export default function VideoUploadSender({
   const handleFileUpload = async () => {
     if (!videoAsset || !videoAsset.uri) {
       Alert.alert('Nenhum vídeo', 'Nenhum vídeo válido para enviar.');
+      return;
+    }
+    if (!orientation) {
+      Alert.alert('Orientação Necessária', 'Por favor, selecione a orientação do movimento do gado.');
+      if (onFileUploadError) {
+          onFileUploadError(new Error("Orientação não definida pelo usuário."));
+      }
       return;
     }
 
@@ -38,6 +46,10 @@ export default function VideoUploadSender({
       type: mimeType,
     });
 
+    if (email && email.trim() !== '') formData.append('email', email.trim());
+    if (consent !== null && consent !== undefined) formData.append('consent', String(consent));
+    if (orientation) formData.append('orientation', orientation);
+
     setIsUploading(true);
     setUploadProgress(0);
 
@@ -45,24 +57,23 @@ export default function VideoUploadSender({
       const response = await axios.post(`${API_BASE_URL}/upload-video/`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
+          let percent = uploadProgress;
           if (progressEvent.total) {
-            const percent = progressEvent.loaded / progressEvent.total;
-            setUploadProgress(percent);
+            percent = progressEvent.loaded / progressEvent.total;
           }
+          setUploadProgress(percent);
         },
+        timeout: 600000, // Timeout de 10 minutos para uploads grandes
       });
 
-      setUploadProgress(1); // Upload do arquivo concluído
+      setUploadProgress(1);
       if (onFileUploadComplete) {
-        // response.data deve ser { message: "...", nome_arquivo: "..." }
         onFileUploadComplete(response.data); 
       }
     } catch (error) {
-      console.error('Erro no upload do arquivo:', error.response ? JSON.stringify(error.response.data) : error.message);
-      Alert.alert(
-        'Erro no Upload do Arquivo',
-        error.response?.data?.detail || 'Não foi possível enviar o arquivo.'
-      );
+      console.error('AXIOS UPLOAD ERROR:', error);
+      let errorMessage = error.response?.data?.detail || error.message || 'Não foi possível enviar o arquivo.';
+      Alert.alert('Erro no Upload', errorMessage);
       setUploadProgress(0);
       if (onFileUploadError) {
         onFileUploadError(error);
@@ -75,54 +86,34 @@ export default function VideoUploadSender({
   return (
     <View style={styles.container}>
       <BigButton
-        title={isUploading ? `Enviando Arquivo... ${Math.round(uploadProgress * 100)}%` : "Enviar Vídeo para Servidor"}
+        title={isUploading ? "Enviando Arquivo..." : "Enviar para Análise"}
         onPress={handleFileUpload}
-        disabled={isUploading}
-        buttonStyle={[styles.actionButton, isUploading && styles.actionButtonDisabled]}
+        disabled={isUploading || !orientation}
+        buttonStyle={[
+            styles.actionButton, 
+            (isUploading || !orientation) && styles.actionButtonDisabled,
+        ]}
       />
-      {isUploading && uploadProgress < 1 && ( // Mostra apenas durante o upload ativo do arquivo
+      {isUploading && uploadProgress < 1 && (
         <View style={styles.progressWrapper}>
           <InternalProgressBar progress={uploadProgress} />
           <Text style={styles.progressText}>{Math.round(uploadProgress * 100)}% enviado</Text>
         </View>
+      )}
+      {!isUploading && !orientation && videoAsset && (
+        <Text style={styles.warningText}>Por favor, selecione a orientação do movimento.</Text>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    marginTop: 15,
-    width: '100%',
-    alignItems: 'center',
-  },
-  actionButton: {
-    backgroundColor: '#007AFF', // Azul para enviar arquivo
-    width: '90%',
-  },
-  actionButtonDisabled: {
-    backgroundColor: '#79baff',
-  },
-  progressWrapper: {
-    width: '90%',
-    marginTop: 10,
-    alignItems: 'center',
-  },
-  progressBarContainer: {
-    height: 10,
-    width: '100%',
-    backgroundColor: '#e0e0e0',
-    borderRadius: 5,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#007AFF', 
-    borderRadius: 5,
-  },
-  progressText: {
-    marginTop: 5,
-    fontSize: 12,
-    color: '#333',
-  },
+  container: { marginTop: 15, width: '100%', alignItems: 'center' },
+  actionButton: { backgroundColor: '#28a745', width: '90%' },
+  actionButtonDisabled: { backgroundColor: '#a5d6a7' },
+  progressWrapper: { width: '90%', marginTop: 10, alignItems: 'center' },
+  progressBarContainer: { height: 10, width: '100%', backgroundColor: '#e0e0e0', borderRadius: 5, overflow: 'hidden' },
+  progressBarFill: { height: '100%', backgroundColor: '#007AFF', borderRadius: 5 },
+  progressText: { marginTop: 5, fontSize: 12, color: '#333' },
+  warningText: { marginTop: 8, fontSize: 14, color: '#e67e22', fontWeight: '500', textAlign: 'center' },
 });
