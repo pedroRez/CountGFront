@@ -10,11 +10,16 @@ yolo detect train data=data.yaml model=yolov8n.pt epochs=20
 cd CountG
 
 # 2. Criar ambiente virtual
-//python 3.10
+#python 3.10
+python3.10 -m venv venv310
+ou
 python -m venv venv
 
 # 3. Ativar ambiente virtual
 # - No Windows:
+#para ambiente 3.10 especifico quando tem mais de um python instalado
+venv310\Scripts\activate
+ou
 venv\Scripts\activate
 
 # 4. Instalar dependências
@@ -22,6 +27,9 @@ pip install -r requirements.txt
 
 # 5. Rodar o backend
 uvicorn main:app --host localhost --port 8000
+
+#aumenta tempo de requisicao
+uvicorn main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 120
 
 
 =========================

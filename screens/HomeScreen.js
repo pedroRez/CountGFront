@@ -302,14 +302,7 @@ const HomeScreen = ({ navigation, route }) => {
                   buttonStyle={styles.tutorialButton}
                />
             )}
-
-            <View style={{ marginTop: 20, borderColor: 'green', borderWidth: 2, padding: 10 }}>
-            <BigButton 
-              title="Ir para Tela de Teste de Câmera" 
-              onPress={() => navigation.navigate('CameraTest')}
-              buttonStyle={{ backgroundColor: '#2ecc71' }}
-            />
-          </View>
+            
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

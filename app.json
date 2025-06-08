@@ -62,20 +62,20 @@
           "microphonePermission": "Permitir que KYO DAY GadoCount acesse seu microfone para gravar áudio (opcional).",
           "recordAudioAndroid": true
         }
-      ]
-
+      ],
+      "expo-font"
     ],
     "assetBundlePatterns": [
       "assets/images/*",
-      "assets/fonts/*" 
+      "assets/fonts/*"
     ],
     "extra": {
       "eas": {
         "projectId": "a46adc85-0390-4ed7-a306-abd542a28655"
       }
     },
-     "updates": {
-       "url": "https://u.expo.dev/pedrorezp3/a46adc85-0390-4ed7-a306-abd542a28655"
-     }
+    "updates": {
+      "url": "https://u.expo.dev/pedrorezp3/a46adc85-0390-4ed7-a306-abd542a28655"
+    }
   }
 }
