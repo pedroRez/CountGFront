@@ -1,3 +1,4 @@
+// screens/HomeScreen.js
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, Text, StyleSheet, Alert, ActivityIndicator, ScrollView, 
@@ -93,15 +94,30 @@ const HomeScreen = ({ navigation, route }) => {
   };
 
   const handlePickFromGallery = async () => {
-    resetAllStates(); setAppStatus('picking'); setIsPickerLoading(true);
+    resetAllStates(); 
+    setAppStatus('picking'); 
+    setIsPickerLoading(true);
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) { Alert.alert('Permissão Necessária', 'Acesso à galeria é necessário.'); resetAllStates(); return; }
-      let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: "Videos", quality: 0.8 });
+      if (!permission.granted) { 
+        Alert.alert('Permissão Necessária', 'Acesso à galeria é necessário.'); 
+        resetAllStates(); 
+        return; 
+      }
+      let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: 'Videos', // <<< CORREÇÃO APLICADA AQUI
+        quality: 0.8,
+      });
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setSelectedVideoAsset(result.assets[0]); setAppStatus('selected');
-      } else { resetAllStates(); }
-    } catch (error) { Alert.alert('Erro', 'Falha ao carregar vídeo da galeria.'); resetAllStates(); }
+        setSelectedVideoAsset(result.assets[0]); 
+        setAppStatus('selected');
+      } else { 
+        resetAllStates(); 
+      }
+    } catch (error) { 
+      Alert.alert('Erro', 'Falha ao carregar vídeo da galeria.'); 
+      resetAllStates(); 
+    }
     setIsPickerLoading(false);
   };
 
@@ -286,6 +302,14 @@ const HomeScreen = ({ navigation, route }) => {
                   buttonStyle={styles.tutorialButton}
                />
             )}
+
+            <View style={{ marginTop: 20, borderColor: 'green', borderWidth: 2, padding: 10 }}>
+            <BigButton 
+              title="Ir para Tela de Teste de Câmera" 
+              onPress={() => navigation.navigate('CameraTest')}
+              buttonStyle={{ backgroundColor: '#2ecc71' }}
+            />
+          </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

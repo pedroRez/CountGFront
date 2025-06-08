@@ -24,7 +24,8 @@
     "expo-camera": "~16.0.18",
     "@expo/vector-icons": "^14.0.2",
     "expo-media-library": "~17.0.6",
-    "@expo/metro-runtime": "~4.0.1"
+    "@expo/metro-runtime": "~4.0.1",
+    "expo-dev-client": "~5.0.20"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0"
