@@ -1,41 +1,34 @@
-// navigation/AppNavigator.js
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-// --- MUDANÇA IMPORTANTE AQUI ---
-// Importamos createNativeStackNavigator em vez de createStackNavigator
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-// Importe todas as suas telas
 import OnboardingScreen from '../screens/OnboardingScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ResultsScreen from '../screens/ResultsScreen';
 import RecordVideoScreen from '../screens/RecordVideoScreen';
 import CameraTestScreen from '../screens/CameraTestScreen';
 
-// --- MUDANÇA IMPORTANTE AQUI ---
-// Criamos o Stack usando o createNativeStackNavigator
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
   return (
     <NavigationContainer>
-      <Stack.Navigator>
+      {/* A MUDANÇA ESTÁ AQUI: Adicionamos opções padrão ao Navigator.
+        'animation: "none"' desabilita as animações de transição entre telas.
+        Se o ActivityIndicator problemático é parte da animação, isso pode resolver.
+      */}
+      <Stack.Navigator 
+        screenOptions={{
+          animation: 'none' 
+        }}
+      >
         {isFirstLaunch ? (
-          // Se for o primeiro lançamento
-          <Stack.Screen
-            name="OnboardingInitial"
-            options={{ headerShown: false }}
-          >
+          <Stack.Screen name="OnboardingInitial" options={{ headerShown: false }}>
             {props => (
-              <OnboardingScreen
-                {...props}
-                onComplete={onOnboardingComplete}
-                isInitial={true}
-              />
+              <OnboardingScreen {...props} onComplete={onOnboardingComplete} isInitial={true} />
             )}
           </Stack.Screen>
         ) : (
-          // Telas principais do aplicativo
           <React.Fragment>
             <Stack.Screen
               name="Home"
@@ -45,7 +38,7 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
              <Stack.Screen
               name="RecordVideo"
               component={RecordVideoScreen}
-              options={{ headerShown: false }} // Tela cheia para a câmera
+              options={{ headerShown: false }}
             />
             <Stack.Screen
               name="ResultsScreen"

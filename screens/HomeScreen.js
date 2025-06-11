@@ -13,7 +13,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 
-const API_BASE_URL = 'http://192.168.0.28:8000'; // CONFIRME SEU IP E PORTA
+const API_BASE_URL = 'http://192.168.0.48:8000'; // CONFIRME SEU IP E PORTA
 
 const BackendProgressBar = ({ progress, text }) => (
   <View style={styles.backendProgressContainer}>

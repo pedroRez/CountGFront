@@ -3,7 +3,7 @@
 # dependencies
 node_modules/
 android/
-
+package-lock.json
 # Expo
 .expo/
 dist/
