@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { View, ActivityIndicator, StyleSheet, Alert } from 'react-native';
+import { View, StyleSheet, Alert } from 'react-native';
 import AppNavigator from './navigation/AppNavigator'; // Seu arquivo de navegação principal
+import CustomActivityIndicator from '../components/CustomActivityIndicator';
 
 // Chave para o AsyncStorage
 const APP_LAUNCHED_KEY = 'appAlreadyLaunched';
@@ -55,7 +56,7 @@ export default function App() {
     // Enquanto verifica o AsyncStorage, mostra um indicador de carregamento
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <CustomActivityIndicator size="large" color="#007AFF" />
       </View>
     );
   }

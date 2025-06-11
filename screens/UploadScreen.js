@@ -6,10 +6,11 @@
 // Se a HomeScreen já faz o suficiente, esta tela pode não ser necessária.
 
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // import { Video } from 'expo-av';
 // import BigButton from '../components/BigButton';
+import CustomActivityIndicator from '../components/CustomActivityIndicator';
 
 const UploadScreen = ({ route, navigation }) => {
   // const { videoUri } = route.params;
@@ -45,7 +46,7 @@ const UploadScreen = ({ route, navigation }) => {
             style={styles.videoPreview}
           />
         )} */}
-        <ActivityIndicator size="large" color="#007AFF" />
+        <CustomActivityIndicator size="large" color="#007AFF" />
         <Text style={styles.statusText}>Enviando e analisando seu vídeo...</Text>
         {/* <Text>Progresso: {uploadProgress}%</Text> */}
         {/* <BigButton title="Cancelar" onPress={() => navigation.goBack()} /> */}

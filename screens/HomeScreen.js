@@ -1,7 +1,7 @@
 // screens/HomeScreen.js
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  View, Text, StyleSheet, Alert, ActivityIndicator, ScrollView, 
+  View, Text, StyleSheet, Alert, ScrollView, 
   TextInput, AppState, KeyboardAvoidingView, Platform, TouchableOpacity 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,8 +11,9 @@ import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import CustomActivityIndicator from '../components/CustomActivityIndicator';
 
-const API_BASE_URL = 'http://192.168.0.48:8000'; // CONFIRME SEU IP E PORTA
+const API_BASE_URL = 'http://192.168.0.28:8000'; // CONFIRME SEU IP E PORTA
 
 const BackendProgressBar = ({ progress, text }) => (
   <View style={styles.backendProgressContainer}>
@@ -216,7 +217,7 @@ const HomeScreen = ({ navigation, route }) => {
           <View style={styles.container}>
             <Text style={styles.title}>KYO DAY GadoCount</Text>
 
-            {isPickerLoading && <ActivityIndicator size="large" color="#007AFF" style={styles.loader}/>}
+            {isPickerLoading && <CustomActivityIndicator size="large" color="#007AFF" style={styles.loader}/>}
             
             {appStatus === 'idle' && (
               <>
@@ -281,7 +282,7 @@ const HomeScreen = ({ navigation, route }) => {
                       ? 'Solicitando análise ao servidor...' 
                       : 'Analisando vídeo no servidor...'}
                   </Text>
-                  {!backendProgressData ? <ActivityIndicator size="large" color="#007AFF" style={{marginVertical: 20}}/> :
+                  {!backendProgressData ? <CustomActivityIndicator size="large" color="#007AFF" style={{marginVertical: 20}}/> :
                    backendProgressData.erro ? <Text style={styles.errorText}>Erro: {backendProgressData.erro}</Text> : (
                     <>
                       <BackendProgressBar

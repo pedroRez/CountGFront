@@ -18,7 +18,7 @@ export async function pickAndUploadVideo() {
       type: 'video/mp4',
     });
 
-    const response = await axios.post('http://192.168.0.48:8000', formData, {
+    const response = await axios.post('http://192.168.0.28:8000', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
 

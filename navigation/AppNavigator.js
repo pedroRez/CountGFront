@@ -1,6 +1,9 @@
+// navigation/AppNavigator.js
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
+// --- MUDANÇA IMPORTANTE AQUI ---
+// Importamos createNativeStackNavigator em vez de createStackNavigator
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 // Importe todas as suas telas
 import OnboardingScreen from '../screens/OnboardingScreen';
@@ -9,19 +12,20 @@ import ResultsScreen from '../screens/ResultsScreen';
 import RecordVideoScreen from '../screens/RecordVideoScreen';
 import CameraTestScreen from '../screens/CameraTestScreen';
 
-const Stack = createStackNavigator();
+// --- MUDANÇA IMPORTANTE AQUI ---
+// Criamos o Stack usando o createNativeStackNavigator
+const Stack = createNativeStackNavigator();
 
 export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
   return (
     <NavigationContainer>
       <Stack.Navigator>
         {isFirstLaunch ? (
-          // Se for o PRIMEIRO LANÇAMENTO:
+          // Se for o primeiro lançamento
           <Stack.Screen
             name="OnboardingInitial"
             options={{ headerShown: false }}
           >
-            {/* CORREÇÃO: Removidos os colchetes desnecessários ao redor da função */}
             {props => (
               <OnboardingScreen
                 {...props}
@@ -31,7 +35,7 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
             )}
           </Stack.Screen>
         ) : (
-          // Se NÃO for o primeiro lançamento, renderiza as telas principais
+          // Telas principais do aplicativo
           <React.Fragment>
             <Stack.Screen
               name="Home"

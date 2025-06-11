@@ -5,12 +5,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
   Platform
 } from 'react-native';
 import * as ExpoCameraModule from 'expo-camera';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import CustomActivityIndicator from '../components/CustomActivityIndicator';
 
 const formatSecondsToMMSS = (totalSeconds) => {
   if (isNaN(totalSeconds) || totalSeconds < 0) totalSeconds = 0;
@@ -97,7 +97,7 @@ export default function RecordVideoScreen({ navigation }) {
   };
   
   if (hasPermission === null) {
-    return ( <View style={styles.centered}><ActivityIndicator size="large" color="#FFF" /><Text style={styles.infoText}>Solicitando permissões...</Text></View> );
+    return ( <View style={styles.centered}><CustomActivityIndicator size="large" color="#FFF" /><Text style={styles.infoText}>Solicitando permissões...</Text></View> );
   }
   if (hasPermission === false) {
     return (

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, Alert, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Alert, StyleSheet } from 'react-native';
 import axios from 'axios';
 import BigButton from './BigButton';
 
 // CONFIRME SEU IP E PORTA
-const API_BASE_URL = 'http://192.168.0.48:8000';
+const API_BASE_URL = 'http://192.168.0.28:8000';
 
 const InternalProgressBar = ({ progress }) => (
   <View style={styles.progressBarContainer}>
