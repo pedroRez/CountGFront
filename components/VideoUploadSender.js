@@ -4,7 +4,7 @@ import axios from 'axios';
 import BigButton from './BigButton';
 
 // CONFIRME SEU IP E PORTA
-const API_BASE_URL = 'https://countg.onrender.com';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
 const InternalProgressBar = ({ progress }) => (
   <View style={styles.progressBarContainer}>

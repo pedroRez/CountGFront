@@ -12,7 +12,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 
-const API_BASE_URL = 'https://countg.onrender.com';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
 const BackendProgressBar = ({ progress, text }) => (
   <View style={styles.backendProgressContainer}>

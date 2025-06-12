@@ -1,6 +1,8 @@
 import * as DocumentPicker from 'expo-document-picker';
 import axios from 'axios';
 
+
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 export async function pickAndUploadVideo() {
   try {
     const result = await DocumentPicker.getDocumentAsync({
@@ -18,7 +20,7 @@ export async function pickAndUploadVideo() {
       type: 'video/mp4',
     });
 
-    const response = await axios.post('https://countg.onrender.com', formData, {
+    const response = await axios.post(API_BASE_URL, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
 

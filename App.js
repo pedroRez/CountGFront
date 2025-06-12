@@ -8,7 +8,7 @@ import AppNavigator from './navigation/AppNavigator';
 import CustomActivityIndicator from './components/CustomActivityIndicator';
 
 const APP_LAUNCHED_KEY = 'appAlreadyLaunched';
-const API_BASE_URL = 'https://countg.onrender.com';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
 export default function App() {
   const [isFirstLaunch, setIsFirstLaunch] = useState(null);

@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { View, Text, Button, Alert } from 'react-native';
 import axios from 'axios';
 
-const API_BASE_URL = 'https://countg.onrender.com';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
 export default function VideoProcessor({
   video,
