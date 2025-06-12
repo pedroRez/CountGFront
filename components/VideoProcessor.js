@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { View, Text, Button, Alert } from 'react-native';
 import axios from 'axios';
 
-const API_BASE_URL = 'http://192.168.0.48:8000';
+const API_BASE_URL = 'https://countg.onrender.com';
 
 export default function VideoProcessor({
   video,
