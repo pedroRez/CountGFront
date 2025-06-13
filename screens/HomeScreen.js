@@ -49,7 +49,7 @@ const ORIENTATIONS = [
 const MODEL_OPTIONS = [
     { id: 'n', label: 'Rápido', description: 'Menor precisão' },
     { id: 'm', label: 'Normal', description: 'Equilibrado' },
-    { id: 'l', label: 'Preciso', description: 'Mais lento' },
+    { id: 'l', label: 'Preciso', description: 'Maior precisão' },
 ];
 
 const HomeScreen = ({ navigation, route }) => {
@@ -61,7 +61,7 @@ const HomeScreen = ({ navigation, route }) => {
   const [userEmail, setUserEmail] = useState('');
   const [userConsent, setUserConsent] = useState(false);
   const [selectedOrientation, setSelectedOrientation] = useState(null);
-  const [modelChoice, setModelChoice] = useState('m');
+  const [modelChoice, setModelChoice] = useState('l');
 
   const pollingIntervalRef = useRef(null);
   const appStateListenerRef = useRef(AppState.currentState);
