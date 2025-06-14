@@ -7,7 +7,7 @@ import HomeScreen from '../screens/HomeScreen';
 import ResultsScreen from '../screens/ResultsScreen';
 import RecordVideoScreen from '../screens/RecordVideoScreen';
 import CameraTestScreen from '../screens/CameraTestScreen';
-
+import SettingsScreen from '../screens/SettingsScreen';
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
@@ -55,6 +55,11 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
               component={CameraTestScreen} 
               options={{ title: 'Teste de Câmera' }} 
             />
+            <Stack.Screen 
+              name="Settings"
+              component={SettingsScreen} 
+              options={{ title: 'Configurações' }} 
+            /> 
           </React.Fragment>
         )}
       </Stack.Navigator>

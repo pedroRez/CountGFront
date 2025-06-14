@@ -66,6 +66,17 @@ const HomeScreen = ({ navigation, route }) => {
   const pollingIntervalRef = useRef(null);
   const appStateListenerRef = useRef(AppState.currentState);
 
+  // Este hook adiciona o botão ao cabeçalho da tela
+  React.useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={{ marginRight: 15 }}>
+          <MaterialCommunityIcons name="cog-outline" size={28} color="#007AFF" />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
+
   useFocusEffect(
     React.useCallback(() => {
       if (route.params?.newlyRecordedVideo) {
@@ -76,7 +87,7 @@ const HomeScreen = ({ navigation, route }) => {
         setAppStatus('selected');
         navigation.setParams({ newlyRecordedVideo: null }); 
       }
-    }, [route.params?.newlyRecordedVideo])
+    }, [route.params?.newlyRecordedVideo, navigation])
   );
 
   useEffect(() => {
