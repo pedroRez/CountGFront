@@ -4,14 +4,14 @@ import {
   TextInput, AppState, KeyboardAvoidingView, Platform, TouchableOpacity 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import BigButton from '../components/BigButton';
 import VideoUploadSender from '../components/VideoUploadSender';
 import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
-import MenuButton from '../components/MenuButton'; // Importa nosso novo botão animado
-import BigButton from '../components/BigButton';
+import MenuButton from '../components/MenuButton';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -40,10 +40,8 @@ const formatDuration = (millis) => {
 };
 
 const ORIENTATIONS = [
-  { id: 'N', label: 'Baixo ↑ Cima' },
-  { id: 'S', label: 'Cima ↓ Baixo' },
-  { id: 'E', label: 'Esq. → Dir.' },
-  { id: 'W', label: 'Dir. ← Esq.' },
+  { id: 'N', label: 'Baixo ↑ Cima' }, { id: 'S', label: 'Cima ↓ Baixo' },
+  { id: 'E', label: 'Esq. → Dir.' }, { id: 'W', label: 'Dir. ← Esq.' },
 ];
 
 const MODEL_OPTIONS = [
@@ -52,7 +50,8 @@ const MODEL_OPTIONS = [
     { id: 'l', label: 'Preciso', description: 'Maior precisão' },
 ];
 
-const HomeScreen = ({ navigation, route }) => {
+const HomeScreen = ({ route }) => {
+  const navigation = useNavigation();
   const [selectedVideoAsset, setSelectedVideoAsset] = useState(null);
   const [isPickerLoading, setIsPickerLoading] = useState(false);
   const [appStatus, setAppStatus] = useState('idle');
@@ -61,12 +60,11 @@ const HomeScreen = ({ navigation, route }) => {
   const [userEmail, setUserEmail] = useState('');
   const [userConsent, setUserConsent] = useState(false);
   const [selectedOrientation, setSelectedOrientation] = useState(null);
-  const [modelChoice, setModelChoice] = useState('l');
+  const [modelChoice, setModelChoice] = useState('m');
 
   const pollingIntervalRef = useRef(null);
   const appStateListenerRef = useRef(AppState.currentState);
 
-  // Este hook adiciona o botão ao cabeçalho da tela
   React.useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
@@ -87,13 +85,13 @@ const HomeScreen = ({ navigation, route }) => {
         setAppStatus('selected');
         navigation.setParams({ newlyRecordedVideo: null }); 
       }
-    }, [route.params?.newlyRecordedVideo, navigation])
+    }, [route.params?.newlyRecordedVideo])
   );
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (appStateListenerRef.current.match(/inactive|background/) && nextAppState === 'active' && appStatus === 'polling_progress') {
-        if (processingVideoName) checkBackendProgress(processingVideoName, true);
+        if (processingVideoName) checkBackendProgress(processingVideoName);
       }
       appStateListenerRef.current = nextAppState;
     });
@@ -122,47 +120,31 @@ const HomeScreen = ({ navigation, route }) => {
 
   const navigateToRecordScreen = () => { resetAllStates(); navigation.navigate('RecordVideo'); };
 
-  const handleFileUploadComplete = (uploadResponseData) => {
-    if (uploadResponseData && uploadResponseData.nome_arquivo) {
-      setProcessingVideoName(uploadResponseData.nome_arquivo);
-      triggerBackendProcessing(uploadResponseData.nome_arquivo, selectedOrientation, modelChoice);
+  // Chamada quando o UPLOAD do arquivo é concluído (agora usando o fluxo simplificado)
+  const handleProcessingStarted = (responseData) => {
+    if (responseData && responseData.nome_arquivo) {
+      setProcessingVideoName(responseData.nome_arquivo);
+      setAppStatus('polling_progress');
     } else {
-      Alert.alert('Erro de Upload', 'Informação do arquivo enviado não recebida do backend.');
+      Alert.alert('Erro', 'O servidor não iniciou o processamento corretamente.');
       setAppStatus('selected');
     }
   };
-
-  const handleFileUploadError = (error) => {
-    Alert.alert("Falha no Upload", "O envio do arquivo falhou. Por favor, tente novamente.");
+  
+  const handleUploadError = (error) => {
     setAppStatus('selected');
   };
   
+  // Esta função não é mais necessária no fluxo simplificado,
+  // mas o código antigo que você postou ainda a tinha.
+  // Vou removê-la para alinhar com a arquitetura final.
+  /*
   const triggerBackendProcessing = async (nomeArquivo, orientation, model) => {
-    if (!orientation || !model) { Alert.alert("Seleção Necessária", "Por favor, escolha a orientação e o nível de processamento."); setAppStatus('selected'); return; }
-    setAppStatus('prediction_requested'); setBackendProgressData(null);
-    try {
-      const payload = { 
-          nome_arquivo: nomeArquivo,
-          orientation: orientation,
-          model_choice: model,
-          target_classes: ["cow"]
-      };
-      const response = await axios.post(`${API_BASE_URL}/predict-video/`, payload);
-      if (response.data && response.data.status === 'iniciado') {
-        setAppStatus('polling_progress');
-      } else {
-        Alert.alert('Erro ao Iniciar Análise', response.data.message || 'Não foi possível iniciar o processamento.');
-        setAppStatus('selected');
-      }
-    } catch (error) {
-      const errorMsg = error.response?.data?.detail || 'Falha ao solicitar o início da análise. Verifique o servidor.';
-      Alert.alert('Erro de Comunicação', errorMsg);
-      setAppStatus('selected');
-    }
+    // ...
   };
+  */
   
-  const checkBackendProgress = async (videoName, isImmediateCheck = false) => {
-    if (!videoName || (appStatus !== 'polling_progress' && !isImmediateCheck)) { if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current); return; }
+  const checkBackendProgress = async (videoName) => {
     try {
       const response = await axios.get(`${API_BASE_URL}/progresso/${videoName}`);
       const progressData = response.data;
@@ -175,9 +157,7 @@ const HomeScreen = ({ navigation, route }) => {
           Alert.alert('Erro no Processamento', `O servidor retornou um erro: ${progressData.erro}`);
           resetAllStates();
         } else if (progressData.resultado) {
-          let finalMessage = "Análise Concluída!";
-          if(userEmail.trim() !== '' && userConsent) { finalMessage = "Análise Concluída & Contribuição Recebida!\n\nObrigado por nos ajudar!"; }
-          Alert.alert("Status", finalMessage);
+          Alert.alert("Análise Concluída!");
           navigation.navigate('ResultsScreen', { results: progressData.resultado });
           setTimeout(() => resetAllStates(), 500);
         } else { Alert.alert('Processamento Concluído', 'Resultado inválido do backend.'); resetAllStates(); }
@@ -187,7 +167,7 @@ const HomeScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     if (appStatus === 'polling_progress' && processingVideoName) {
-      checkBackendProgress(processingVideoName, true); 
+      checkBackendProgress(processingVideoName); 
       pollingIntervalRef.current = setInterval(() => { checkBackendProgress(processingVideoName); }, 3000);
     }
     return () => { if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current); };
@@ -210,9 +190,9 @@ const HomeScreen = ({ navigation, route }) => {
           <>
             <Text style={styles.subtitle}>Selecione uma opção para iniciar</Text>
             <View style={styles.menuContainer}>
-              <MenuButton label="Gravar Vídeo" icon="camera-outline" onPress={navigateToRecordScreen} index={0}/>
+              <MenuButton label="Gravar Vídeo" icon="camera-outline" onPress={() => navigation.navigate('RecordVideo')} index={0}/>
               <MenuButton label="Vídeo da Galeria" icon="image-multiple-outline" onPress={handlePickFromGallery} index={1}/>
-              <MenuButton label="Câmera Wi-Fi" icon="wifi-strength-4" onPress={() => Alert.alert("Em Breve", "A integração com câmeras Wi-Fi estará disponível em futuras versões.")} index={2}/>
+              <MenuButton label="Câmera Wi-Fi" icon="wifi-strength-4" onPress={() => Alert.alert("Em Breve", "Integração com câmeras Wi-Fi.")} index={2}/>
               <MenuButton label="Tutorial" icon="help-circle-outline" onPress={() => navigation.navigate('OnboardingTutorial')} index={3}/>
             </View>
           </>
@@ -230,13 +210,10 @@ const HomeScreen = ({ navigation, route }) => {
             
             <View style={styles.contributionSection}>
               <Text style={styles.contributionTitle}>Ajude a treinar nossa IA!</Text>
-              <Text style={styles.contributionText}>
-                Contribuições úteis dão <Text style={styles.bold}>acesso gratuito futuro</Text> ao app completo!
-              </Text>
-              <TextInput style={styles.emailInput} placeholder="Seu email para contato (opcional)" value={userEmail} onChangeText={setUserEmail} keyboardType="email-address" autoCapitalize="none" placeholderTextColor="#888"/>
+              <TextInput style={styles.emailInput} placeholder="Seu email (opcional)" value={userEmail} onChangeText={setUserEmail} keyboardType="email-address" autoCapitalize="none" placeholderTextColor="#888"/>
               <TouchableOpacity style={[styles.consentTouchable, userConsent && styles.consentTouchableChecked]} onPress={() => setUserConsent(!userConsent)}>
                 <MaterialCommunityIcons name={userConsent ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"} size={26} color={userConsent ? "#28a745" : "#555"} style={styles.checkboxIcon}/>
-                <Text style={styles.consentText}>Concordo em usar este vídeo para treino da IA</Text>
+                <Text style={styles.consentText}>Concordo em usar este vídeo para treino</Text>
               </TouchableOpacity>
             </View>
 
@@ -244,14 +221,8 @@ const HomeScreen = ({ navigation, route }) => {
               <Text style={styles.choiceTitle}>Orientação do Movimento</Text>
               <View style={styles.orientationButtonsContainer}>
                 {ORIENTATIONS.map(orient => (
-                  <TouchableOpacity
-                    key={orient.id}
-                    style={[styles.orientationButton, selectedOrientation === orient.id && styles.orientationButtonSelected]}
-                    onPress={() => setSelectedOrientation(orient.id)}
-                  >
-                    <Text style={[styles.orientationButtonText, selectedOrientation === orient.id && styles.orientationButtonTextSelected]}>
-                      {orient.label}
-                    </Text>
+                  <TouchableOpacity key={orient.id} style={[styles.orientationButton, selectedOrientation === orient.id && styles.orientationButtonSelected]} onPress={() => setSelectedOrientation(orient.id)}>
+                    <Text style={[styles.orientationButtonText, selectedOrientation === orient.id && styles.orientationButtonTextSelected]}>{orient.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -261,11 +232,7 @@ const HomeScreen = ({ navigation, route }) => {
               <Text style={styles.choiceTitle}>Nível de Processamento</Text>
               <View style={styles.modelButtonsContainer}>
                 {MODEL_OPTIONS.map(opt => (
-                  <TouchableOpacity
-                    key={opt.id}
-                    style={[styles.modelButton, modelChoice === opt.id && styles.modelButtonSelected]}
-                    onPress={() => setModelChoice(opt.id)}
-                  >
+                  <TouchableOpacity key={opt.id} style={[styles.modelButton, modelChoice === opt.id && styles.modelButtonSelected]} onPress={() => setModelChoice(opt.id)}>
                     <Text style={[styles.modelButtonText, modelChoice === opt.id && styles.modelButtonTextSelected]}>{opt.label}</Text>
                     <Text style={[styles.modelButtonDesc, modelChoice === opt.id && styles.modelButtonTextSelected]}>{opt.description}</Text>
                   </TouchableOpacity>
@@ -276,8 +243,9 @@ const HomeScreen = ({ navigation, route }) => {
             <VideoUploadSender
               videoAsset={selectedVideoAsset}
               email={userEmail} consent={userConsent} orientation={selectedOrientation}
-              onFileUploadComplete={handleFileUploadComplete}
-              onFileUploadError={handleFileUploadError}
+              modelChoice={modelChoice}
+              onProcessingStarted={handleProcessingStarted}
+              onUploadError={handleUploadError}
             />
             <TouchableOpacity onPress={resetAllStates} style={styles.cancelButton}>
                 <Text style={styles.cancelButtonText}>Cancelar / Escolher Outro</Text>
@@ -303,9 +271,7 @@ const HomeScreen = ({ navigation, route }) => {
               <BigButton title="Cancelar Análise" onPress={handleCancelProcessing} buttonStyle={styles.cancelAnalysisButton} />
             </View>
         );
-
-      default:
-        return null;
+      default: return null;
     }
   };
 
@@ -354,13 +320,13 @@ const styles = StyleSheet.create({
   consentTouchable: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f9fa',
     paddingVertical: 12, paddingHorizontal: 15, borderRadius: 8, 
-    width: '100%', marginBottom: 5, borderWidth: 1, borderColor: '#ced4da',
+    width: '100%', borderWidth: 1, borderColor: '#ced4da',
   },
   consentTouchableChecked: { backgroundColor: '#e6ffed', borderColor: '#28a745' },
   checkboxIcon: { marginRight: 10 },
   consentText: { fontSize: 14, color: '#495057', flexShrink: 1 },
   choiceSection: {
-    width: '100%', marginTop: 15, marginBottom: 15, paddingTop: 15,
+    width: '100%', marginTop: 15, marginBottom: 10, paddingTop: 15,
     borderTopWidth: 1, borderColor: '#e8e8e8',
   },
   choiceTitle: { fontSize: 16, fontWeight: 'bold', textAlign: 'center', marginBottom: 10, color: '#333' },
@@ -368,7 +334,7 @@ const styles = StyleSheet.create({
   orientationButton: {
     backgroundColor: '#f0f0f0', padding: 12, borderRadius: 8,
     borderWidth: 1.5, borderColor: '#ddd', margin: 4, width: '47%', 
-    alignItems: 'center', justifyContent: 'center',
+    minHeight: 50, alignItems: 'center', justifyContent: 'center',
   },
   orientationButtonSelected: { backgroundColor: '#007AFF', borderColor: '#0056b3' },
   orientationButtonText: { color: '#333', fontSize: 14, textAlign: 'center', fontWeight: 'bold' },
@@ -376,11 +342,11 @@ const styles = StyleSheet.create({
   modelButtonsContainer: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
   modelButton: {
     backgroundColor: '#f0f0f0', padding: 10, borderRadius: 8, borderWidth: 1.5,
-    borderColor: '#ddd', marginVertical: 5, width: '32%', alignItems: 'center',
+    borderColor: '#ddd', marginVertical: 5, width: '32%', alignItems: 'center', minHeight: 70, justifyContent: 'center'
   },
   modelButtonSelected: { backgroundColor: '#ff9800', borderColor: '#e68a00' },
   modelButtonText: { color: '#333', fontSize: 14, fontWeight: 'bold' },
-  modelButtonDesc: { color: '#555', fontSize: 10, marginTop: 3 },
+  modelButtonDesc: { color: '#555', fontSize: 10, marginTop: 3, textAlign: 'center' },
   modelButtonTextSelected: { color: 'white' },
   cancelButton: { marginTop: 15, paddingVertical: 12 },
   cancelButtonText: { color: '#6c757d', fontSize: 16, fontWeight: '600' },
