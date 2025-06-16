@@ -289,7 +289,7 @@ const HomeScreen = ({ route }) => {
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
           <View style={styles.container}>
-            <Text style={styles.title}>KYO DAY GadoCount</Text>
+            <Text style={styles.title}>CountG</Text>
             {renderContent()}
           </View>
         </ScrollView>
