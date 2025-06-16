@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "KYO DAY GadoCount",
+    "name": "CountG",
     "slug": "countg",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kyoday.gadocount"
+      "bundleIdentifier": "com.kyoday.countg"
     },
     "android": {
       "adaptiveIcon": {
@@ -25,7 +25,8 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
       ],
-      "package": "com.kyoday.gadocount"
+      "versionCode": 2, 
+      "package": "com.rezendepedro.CounG" 
     },
     "web": {
       "favicon": "./assets/favicon.png",
