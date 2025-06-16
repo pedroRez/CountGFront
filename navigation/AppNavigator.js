@@ -2,25 +2,25 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
+// Remova a importação de TouchableOpacity e MaterialCommunityIcons daqui, pois agora estão no CustomHeader
+// import { TouchableOpacity } from 'react-native';
+// import { MaterialCommunityIcons } from '@expo/vector-icons';
+
 import OnboardingScreen from '../screens/OnboardingScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ResultsScreen from '../screens/ResultsScreen';
 import RecordVideoScreen from '../screens/RecordVideoScreen';
 import CameraTestScreen from '../screens/CameraTestScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import CustomHeader from '../components/CustomHeader'; // <<< Importa nosso novo cabeçalho
+
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
   return (
     <NavigationContainer>
-      {/* A MUDANÇA ESTÁ AQUI: Adicionamos opções padrão ao Navigator.
-        'animation: "none"' desabilita as animações de transição entre telas.
-        Se o ActivityIndicator problemático é parte da animação, isso pode resolver.
-      */}
-      <Stack.Navigator 
-        screenOptions={{
-          animation: 'none' 
-        }}
+      <Stack.Navigator
+        // Removemos as screenOptions daqui, pois agora controlamos tudo no CustomHeader
       >
         {isFirstLaunch ? (
           <Stack.Screen name="OnboardingInitial" options={{ headerShown: false }}>
@@ -33,9 +33,13 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
             <Stack.Screen
               name="Home"
               component={HomeScreen}
-              options={{ title: 'KYO DAY GadoCount' }}
+              // --- CORREÇÃO PRINCIPAL AQUI ---
+              // A propriedade 'header' substitui completamente o cabeçalho padrão
+              options={{
+                header: () => <CustomHeader title="KYO DAY GadoCount" />,
+              }}
             />
-             <Stack.Screen
+            <Stack.Screen
               name="RecordVideo"
               component={RecordVideoScreen}
               options={{ headerShown: false }}
@@ -51,15 +55,15 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
               options={{ title: 'Guia de Filmagem' }}
             />
             <Stack.Screen 
+              name="Settings" 
+              component={SettingsScreen} 
+              options={{ title: 'Configurações' }} 
+            />
+            <Stack.Screen 
               name="CameraTest" 
               component={CameraTestScreen} 
               options={{ title: 'Teste de Câmera' }} 
             />
-            <Stack.Screen 
-              name="Settings"
-              component={SettingsScreen} 
-              options={{ title: 'Configurações' }} 
-            /> 
           </React.Fragment>
         )}
       </Stack.Navigator>

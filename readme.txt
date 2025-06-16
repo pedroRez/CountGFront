@@ -11,9 +11,9 @@ cd CountG
 
 # 2. Criar ambiente virtual
 #python 3.10
-python3.10 -m venv venv310
+py -3.10 -m venv venv
 ou
-python -m venv venv
+py-m venv venv
 
 # 3. Ativar ambiente virtual
 # - No Windows:

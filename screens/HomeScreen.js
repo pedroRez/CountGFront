@@ -4,12 +4,13 @@ import {
   TextInput, AppState, KeyboardAvoidingView, Platform, TouchableOpacity 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import BigButton from '../components/BigButton';
-import VideoUploadSender from '../components/VideoUploadSender';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+
+import BigButton from '../components/BigButton';
+import VideoUploadSender from '../components/VideoUploadSender';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import MenuButton from '../components/MenuButton';
 
@@ -40,14 +41,16 @@ const formatDuration = (millis) => {
 };
 
 const ORIENTATIONS = [
-  { id: 'N', label: 'Baixo ↑ Cima' }, { id: 'S', label: 'Cima ↓ Baixo' },
-  { id: 'E', label: 'Esq. → Dir.' }, { id: 'W', label: 'Dir. ← Esq.' },
+  { id: 'N', label: 'Baixo ↑ Cima' },
+  { id: 'S', label: 'Cima ↓ Baixo' },
+  { id: 'E', label: 'Esq. → Dir.' },
+  { id: 'W', label: 'Dir. ← Esq.' },
 ];
 
 const MODEL_OPTIONS = [
     { id: 'n', label: 'Rápido', description: 'Menor precisão' },
     { id: 'm', label: 'Normal', description: 'Equilibrado' },
-    { id: 'l', label: 'Preciso', description: 'Maior precisão' },
+    { id: 'l', label: 'Preciso', description: 'Mais lento' },
 ];
 
 const HomeScreen = ({ route }) => {
@@ -85,7 +88,7 @@ const HomeScreen = ({ route }) => {
         setAppStatus('selected');
         navigation.setParams({ newlyRecordedVideo: null }); 
       }
-    }, [route.params?.newlyRecordedVideo])
+    }, [route.params?.newlyRecordedVideo, navigation])
   );
 
   useEffect(() => {
@@ -118,12 +121,9 @@ const HomeScreen = ({ route }) => {
     setIsPickerLoading(false);
   };
 
-  const navigateToRecordScreen = () => { resetAllStates(); navigation.navigate('RecordVideo'); };
-
-  // Chamada quando o UPLOAD do arquivo é concluído (agora usando o fluxo simplificado)
   const handleProcessingStarted = (responseData) => {
-    if (responseData && responseData.nome_arquivo) {
-      setProcessingVideoName(responseData.nome_arquivo);
+    if (responseData && responseData.video_name) {
+      setProcessingVideoName(responseData.video_name);
       setAppStatus('polling_progress');
     } else {
       Alert.alert('Erro', 'O servidor não iniciou o processamento corretamente.');
@@ -135,20 +135,14 @@ const HomeScreen = ({ route }) => {
     setAppStatus('selected');
   };
   
-  // Esta função não é mais necessária no fluxo simplificado,
-  // mas o código antigo que você postou ainda a tinha.
-  // Vou removê-la para alinhar com a arquitetura final.
-  /*
-  const triggerBackendProcessing = async (nomeArquivo, orientation, model) => {
-    // ...
-  };
-  */
-  
   const checkBackendProgress = async (videoName) => {
+    if (!videoName || appStatus !== 'polling_progress') {
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+      return;
+    }
     try {
       const response = await axios.get(`${API_BASE_URL}/progresso/${videoName}`);
       const progressData = response.data;
-      if (appStatus !== 'polling_progress') { if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current); return; }
       setBackendProgressData(progressData);
       if (progressData.finalizado) {
         if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
@@ -162,7 +156,9 @@ const HomeScreen = ({ route }) => {
           setTimeout(() => resetAllStates(), 500);
         } else { Alert.alert('Processamento Concluído', 'Resultado inválido do backend.'); resetAllStates(); }
       }
-    } catch (error) { setBackendProgressData(prev => ({...(prev || {}), erro: "Falha ao obter progresso."})); }
+    } catch (error) { 
+        setBackendProgressData(prev => ({...(prev || {}), erro: "Falha ao obter progresso."}));
+    }
   };
 
   useEffect(() => {
@@ -170,7 +166,7 @@ const HomeScreen = ({ route }) => {
       checkBackendProgress(processingVideoName); 
       pollingIntervalRef.current = setInterval(() => { checkBackendProgress(processingVideoName); }, 3000);
     }
-    return () => { if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current); };
+    return () => { if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); }};
   }, [appStatus, processingVideoName]);
 
   const handleCancelProcessing = async () => {
@@ -181,6 +177,37 @@ const HomeScreen = ({ route }) => {
       } catch (error) { Alert.alert('Erro', 'Não foi possível enviar solicitação de cancelamento.'); }
       finally { resetAllStates(); }
     }
+  };
+
+  const renderProcessingContent = () => {
+    if (!backendProgressData) {
+      return <CustomActivityIndicator size="large" color="#007AFF" style={{marginVertical: 20}}/>;
+    }
+    if (backendProgressData.erro) {
+      return <Text style={styles.errorText}>Erro: {backendProgressData.erro}</Text>;
+    }
+    
+    let progressValue = 0;
+    let progressText = "Preparando...";
+    const statusMessage = backendProgressData.tempo_restante || '';
+
+    if (statusMessage.includes('%')) {
+      const percentageMatch = statusMessage.match(/(\d+)/);
+      if (percentageMatch) {
+        progressValue = parseInt(percentageMatch[0], 10) / 100;
+      }
+      progressText = statusMessage.split(':')[0];
+    } else {
+      progressValue = (backendProgressData.frame_atual || 0) / (backendProgressData.total_frames_estimado || 1);
+      progressText = `Processando frames`;
+    }
+
+    return (
+      <>
+        <BackendProgressBar progress={progressValue} text={progressText} />
+        <Text style={styles.etaText}>Status: {statusMessage}</Text>
+      </>
+    );
   };
 
   const renderContent = () => {
@@ -197,17 +224,14 @@ const HomeScreen = ({ route }) => {
             </View>
           </>
         );
-
       case 'picking':
         return <CustomActivityIndicator size="large" color="#007AFF" style={styles.loader}/>;
-
       case 'selected':
         return (
           <View style={styles.selectionContainer}>
             <Text style={styles.selectedVideoTitle}>Vídeo Pronto para Análise</Text>
             <Text style={styles.selectedVideoInfo} numberOfLines={1}>{selectedVideoAsset.fileName || selectedVideoAsset.uri.split('/').pop()}</Text>
             {selectedVideoAsset.duration != null && <Text style={styles.videoInfoText}>Duração: {formatDuration(selectedVideoAsset.duration)}</Text>}
-            
             <View style={styles.contributionSection}>
               <Text style={styles.contributionTitle}>Ajude a treinar nossa IA!</Text>
               <TextInput style={styles.emailInput} placeholder="Seu email (opcional)" value={userEmail} onChangeText={setUserEmail} keyboardType="email-address" autoCapitalize="none" placeholderTextColor="#888"/>
@@ -216,7 +240,6 @@ const HomeScreen = ({ route }) => {
                 <Text style={styles.consentText}>Concordo em usar este vídeo para treino</Text>
               </TouchableOpacity>
             </View>
-
             <View style={styles.choiceSection}>
               <Text style={styles.choiceTitle}>Orientação do Movimento</Text>
               <View style={styles.orientationButtonsContainer}>
@@ -227,7 +250,6 @@ const HomeScreen = ({ route }) => {
                 ))}
               </View>
             </View>
-
             <View style={styles.choiceSection}>
               <Text style={styles.choiceTitle}>Nível de Processamento</Text>
               <View style={styles.modelButtonsContainer}>
@@ -239,35 +261,22 @@ const HomeScreen = ({ route }) => {
                 ))}
               </View>
             </View>
-
             <VideoUploadSender
-              videoAsset={selectedVideoAsset}
-              email={userEmail} consent={userConsent} orientation={selectedOrientation}
-              modelChoice={modelChoice}
-              onProcessingStarted={handleProcessingStarted}
-              onUploadError={handleUploadError}
+              videoAsset={selectedVideoAsset} email={userEmail} consent={userConsent}
+              orientation={selectedOrientation} modelChoice={modelChoice}
+              onProcessingStarted={handleProcessingStarted} onUploadError={handleUploadError}
             />
             <TouchableOpacity onPress={resetAllStates} style={styles.cancelButton}>
-                <Text style={styles.cancelButtonText}>Cancelar / Escolher Outro</Text>
+              <Text style={styles.cancelButtonText}>Cancelar / Escolher Outro</Text>
             </TouchableOpacity>
           </View>
         );
-
       case 'prediction_requested':
       case 'polling_progress':
         return (
             <View style={styles.processingContainerFull}>
-              <Text style={styles.statusTitle}>{appStatus === 'prediction_requested' ? 'Solicitando análise...' : 'Analisando vídeo...'}</Text>
-              {!backendProgressData ? <CustomActivityIndicator size="large" color="#007AFF" style={{marginVertical: 20}}/> :
-               backendProgressData.erro ? <Text style={styles.errorText}>Erro: {backendProgressData.erro}</Text> : (
-                <>
-                  <BackendProgressBar
-                    progress={(backendProgressData.frame_atual || 0) / (backendProgressData.total_frames_estimado || 1)}
-                    text={`${backendProgressData.frame_atual || 0} de ${backendProgressData.total_frames_estimado || '?'} frames`}
-                  />
-                  <Text style={styles.etaText}>Status: {backendProgressData.tempo_restante || 'Calculando...'}</Text>
-                </>
-              )}
+              <Text style={styles.statusTitle}>Analisando vídeo no servidor...</Text>
+              {renderProcessingContent()}
               <BigButton title="Cancelar Análise" onPress={handleCancelProcessing} buttonStyle={styles.cancelAnalysisButton} />
             </View>
         );
@@ -298,7 +307,7 @@ const styles = StyleSheet.create({
   loader: { marginVertical: 20 },
   menuContainer: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
   selectionContainer: {
-    alignItems: 'center', marginVertical: 15, width: '100%', padding: 20,
+    alignItems: 'center', marginVertical: 15, width: '100%', padding: 15,
     backgroundColor: '#fff', borderRadius: 12, elevation: 3, shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4,
   },
@@ -310,8 +319,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#e8e8e8',
   },
   contributionTitle: { fontSize: 17, fontWeight: 'bold', textAlign: 'center', marginBottom: 10, color: '#007AFF' },
-  contributionText: { fontSize: 14, textAlign: 'center', marginBottom: 15, color: '#444', lineHeight: 20 },
-  bold: { fontWeight: 'bold'},
   emailInput: {
     width: '100%', borderWidth: 1, borderColor: '#ced4da', borderRadius: 8,
     paddingHorizontal: 15, paddingVertical: Platform.OS === 'ios' ? 14 : 10, 
@@ -326,7 +333,7 @@ const styles = StyleSheet.create({
   checkboxIcon: { marginRight: 10 },
   consentText: { fontSize: 14, color: '#495057', flexShrink: 1 },
   choiceSection: {
-    width: '100%', marginTop: 15, marginBottom: 10, paddingTop: 15,
+    width: '100%', marginTop: 10, marginBottom: 10, paddingTop: 15,
     borderTopWidth: 1, borderColor: '#e8e8e8',
   },
   choiceTitle: { fontSize: 16, fontWeight: 'bold', textAlign: 'center', marginBottom: 10, color: '#333' },
