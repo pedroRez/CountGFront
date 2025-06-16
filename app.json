@@ -30,13 +30,13 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "name": "KYO DAY GadoCount - Contagem de Gado IA",
-      "shortName": "KYO DAY Gado",
+      "name": "CountG - Contagem de Gado IA",
+      "shortName": "CountG",
       "startUrl": "/",
       "display": "standalone",
       "backgroundColor": "#ffffff",
       "themeColor": "#007AFF",
-      "description": "Aplicativo KYO DAY para contagem de gado por Inteligência Artificial.",
+      "description": "Aplicativo CountG para contagem de gado por Inteligência Artificial.",
       "lang": "pt-BR",
       "icons": [
         {
@@ -58,8 +58,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Permitir que KYO DAY GadoCount acesse sua câmera para gravar vídeos.",
-          "microphonePermission": "Permitir que KYO DAY GadoCount acesse seu microfone para gravar áudio (opcional).",
+          "cameraPermission": "Permitir que CounG  acesse sua câmera para gravar vídeos.",
+          "microphonePermission": "Permitir que CounG acesse seu microfone para gravar áudio (opcional).",
           "recordAudioAndroid": true
         }
       ],
