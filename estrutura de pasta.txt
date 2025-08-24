@@ -21,8 +21,6 @@ C:.
 │       splash-icon.png
 │
 ├───components
-│       VideoProcessor.js
-│       VideoUploader.js
 │       VideoUploadSender.js
 │
 └───utils
