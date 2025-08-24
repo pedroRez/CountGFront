@@ -104,8 +104,23 @@ export default function App() {
   );
 }
 
-// Sua função de reset para desenvolvimento
-export const developerResetFirstLaunch = async () => { /* ... */ };
+/**
+ * Reseta manualmente a flag de primeira execução do aplicativo.
+ *
+ * Função de **desenvolvimento** – não utilize em produção.
+ * Remove `APP_LAUNCHED_KEY` do AsyncStorage e limpa configurações
+ * de API salvas, permitindo que o app execute o onboarding novamente.
+ */
+export const developerResetFirstLaunch = async () => {
+  try {
+    await AsyncStorage.removeItem(APP_LAUNCHED_KEY);
+    // Opcional: redefinir também as configurações da API
+    await AsyncStorage.removeItem('@api_settings');
+    console.log('developerResetFirstLaunch: APP_LAUNCHED_KEY removido.');
+  } catch (error) {
+    console.error('developerResetFirstLaunch: falha ao remover chave', error);
+  }
+};
 
 const styles = StyleSheet.create({
   loadingContainer: {
