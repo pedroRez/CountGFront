@@ -15,6 +15,8 @@ import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import MenuButton from '../components/MenuButton';
 import { useApi } from '../context/ApiContext';
 
+const { MediaTypeOptions } = ImagePicker;
+
 const BackendProgressBar = ({ progress, text }) => (
   <View style={styles.backendProgressContainer}>
     <Text style={styles.processingInfoText}>{text}</Text>
@@ -113,7 +115,7 @@ const HomeScreen = ({ route }) => {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) { Alert.alert('Permissão Necessária', 'Acesso à galeria é necessário.'); resetAllStates(); return; }
-      let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: "Videos", quality: 0.8 });
+      let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: MediaTypeOptions.Videos, quality: 0.8 });
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setSelectedVideoAsset(result.assets[0]); setAppStatus('selected');
       } else { resetAllStates(); }
