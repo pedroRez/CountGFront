@@ -96,7 +96,7 @@ export default function VideoUploadSender({
         title={statusText}
         onPress={handleProcessRequest}
         disabled={isUploading}
-        buttonStyle={[styles.actionButton, isUploading && styles.actionButtonDisabled]}
+        buttonStyle={styles.actionButton}
       />
       {isUploading && (
         <View style={styles.progressWrapper}>
@@ -110,7 +110,6 @@ export default function VideoUploadSender({
 const styles = StyleSheet.create({
   container: { marginTop: 20, width: '100%', alignItems: 'center' },
   actionButton: { backgroundColor: '#28a745', width: '100%' },
-  actionButtonDisabled: { backgroundColor: '#a5d6a7' },
   progressWrapper: { width: '100%', marginTop: 10 },
   progressBarContainer: { height: 10, width: '100%', backgroundColor: '#e0e0e0', borderRadius: 5, overflow: 'hidden' },
   progressBarFill: { height: '100%', backgroundColor: '#007AFF' },

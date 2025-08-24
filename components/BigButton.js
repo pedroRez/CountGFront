@@ -3,16 +3,28 @@ import { Text, Pressable, StyleSheet, View } from 'react-native';
 // Se for usar ícones do Expo:
 // import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-const BigButton = ({ title, onPress, buttonStyle, textStyle, iconName, iconFamily, iconSize = 22, iconColor = 'white' }) => {
+const BigButton = ({
+  title,
+  onPress,
+  buttonStyle,
+  textStyle,
+  iconName,
+  iconFamily,
+  iconSize = 22,
+  iconColor = 'white',
+  disabled = false,
+}) => {
   // const IconComponent = iconFamily; // Ex: MaterialCommunityIcons
 
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       style={({ pressed }) => [
         styles.button,
         buttonStyle,
-        pressed && styles.buttonPressed,
+        disabled && styles.buttonDisabled,
+        pressed && !disabled && styles.buttonPressed,
       ]}
     >
       {/* {IconComponent && iconName && (
@@ -43,6 +55,9 @@ const styles = StyleSheet.create({
   buttonPressed: {
     opacity: 0.8,
     transform: [{ scale: 0.98 }]
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
   icon: {
     marginRight: 10,
