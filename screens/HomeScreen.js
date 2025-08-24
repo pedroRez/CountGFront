@@ -13,8 +13,7 @@ import BigButton from '../components/BigButton';
 import VideoUploadSender from '../components/VideoUploadSender';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import MenuButton from '../components/MenuButton';
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+import { useApi } from '../context/ApiContext';
 
 const BackendProgressBar = ({ progress, text }) => (
   <View style={styles.backendProgressContainer}>
@@ -55,6 +54,7 @@ const MODEL_OPTIONS = [
 
 const HomeScreen = ({ route }) => {
   const navigation = useNavigation();
+  const { apiUrl } = useApi();
   const [selectedVideoAsset, setSelectedVideoAsset] = useState(null);
   const [isPickerLoading, setIsPickerLoading] = useState(false);
   const [appStatus, setAppStatus] = useState('idle');
@@ -141,7 +141,7 @@ const HomeScreen = ({ route }) => {
       return;
     }
     try {
-      const response = await axios.get(`${API_BASE_URL}/progresso/${videoName}`);
+      const response = await axios.get(`${apiUrl}/progresso/${videoName}`);
       const progressData = response.data;
       setBackendProgressData(progressData);
       if (progressData.finalizado) {
@@ -172,7 +172,7 @@ const HomeScreen = ({ route }) => {
   const handleCancelProcessing = async () => {
     if (processingVideoName) {
       try {
-        await axios.get(`${API_BASE_URL}/cancelar-processamento/${processingVideoName}`);
+        await axios.get(`${apiUrl}/cancelar-processamento/${processingVideoName}`);
         Alert.alert('Cancelado', 'Solicitação de cancelamento da análise enviada.');
       } catch (error) { Alert.alert('Erro', 'Não foi possível enviar solicitação de cancelamento.'); }
       finally { resetAllStates(); }

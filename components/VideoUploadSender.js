@@ -3,8 +3,7 @@ import { View, Text, Alert, StyleSheet } from 'react-native';
 import axios from 'axios';
 import BigButton from './BigButton';
 import CustomActivityIndicator from './CustomActivityIndicator';
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+import { useApi } from '../context/ApiContext';
 
 const InternalProgressBar = ({ progress }) => (
   <View style={styles.progressBarContainer}>
@@ -17,6 +16,7 @@ export default function VideoUploadSender({
   onProcessingStarted,
   onUploadError,
 }) {
+  const { apiUrl } = useApi();
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [statusText, setStatusText] = useState("Processar Vídeo");
@@ -26,7 +26,7 @@ export default function VideoUploadSender({
       Alert.alert('Faltam Dados', 'Por favor, selecione um vídeo, a orientação e o nível de processamento.');
       return;
     }
-    if (!API_BASE_URL) {
+    if (!apiUrl) {
       Alert.alert('Erro de Configuração', 'A URL da API não foi encontrada.');
       return;
     }
@@ -50,7 +50,7 @@ export default function VideoUploadSender({
     setStatusText("Enviando... 0%");
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/process-video/`, formData, {
+      const response = await axios.post(`${apiUrl}/process-video/`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
           // --- LOGS DE DEPURAÇÃO ADICIONADOS AQUI ---
