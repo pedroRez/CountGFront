@@ -1,9 +1,9 @@
 import * as DocumentPicker from 'expo-document-picker';
 import axios from 'axios';
+import { useApi } from '../context/ApiContext';
 
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 export async function pickAndUploadVideo() {
+  const { apiUrl } = useApi();
   try {
     const result = await DocumentPicker.getDocumentAsync({
       type: 'video/*',
@@ -20,7 +20,7 @@ export async function pickAndUploadVideo() {
       type: 'video/mp4',
     });
 
-    const response = await axios.post(API_BASE_URL, formData, {
+    const response = await axios.post(apiUrl, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
 
