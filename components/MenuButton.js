@@ -1,7 +1,12 @@
 import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSequence } from 'react-native-reanimated';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSequence,
+} from 'react-native-reanimated';
 
 const MenuButton = ({ label, icon, onPress, index }) => {
   // Valores de animação
@@ -24,7 +29,7 @@ const MenuButton = ({ label, icon, onPress, index }) => {
       opacity: opacity.value,
     };
   });
-  
+
   const pressingStyle = useAnimatedStyle(() => {
     return {
       transform: [{ scale: withTiming(scale.value, { duration: 50 }) }],
@@ -58,7 +63,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: "#000",
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 3.84,

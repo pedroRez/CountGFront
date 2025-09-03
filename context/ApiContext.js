@@ -3,7 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 
 // Lê a URL padrão do arquivo .env
-const DEFAULT_API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://pedrorezp3-countg.hf.space/';
+const DEFAULT_API_URL =
+  process.env.EXPO_PUBLIC_API_URL || 'https://pedrorezp3-countg.hf.space/';
 const STORAGE_KEY = '@api_settings';
 
 // Cria o contexto
@@ -26,7 +27,7 @@ export const ApiProvider = ({ children }) => {
           setApiUrl(enabled && customUrl ? customUrl : DEFAULT_API_URL);
         }
       } catch (e) {
-        console.error("Falha ao carregar configurações da API:", e);
+        console.error('Falha ao carregar configurações da API:', e);
         setApiUrl(DEFAULT_API_URL);
       } finally {
         setIsSettingsLoading(false);
@@ -39,7 +40,7 @@ export const ApiProvider = ({ children }) => {
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     } catch (e) {
-      console.error("Falha ao salvar configurações da API:", e);
+      console.error('Falha ao salvar configurações da API:', e);
     }
   };
 
@@ -51,11 +52,12 @@ export const ApiProvider = ({ children }) => {
 
   const updateIsCustomUrlEnabled = (enabled, currentCustomUrl) => {
     setIsCustomUrlEnabled(enabled);
-    const newUrl = enabled && currentCustomUrl ? currentCustomUrl : DEFAULT_API_URL;
+    const newUrl =
+      enabled && currentCustomUrl ? currentCustomUrl : DEFAULT_API_URL;
     setApiUrl(newUrl);
     saveSettings({ customUrl: currentCustomUrl, enabled: enabled });
   };
-  
+
   const value = {
     apiUrl,
     setApiUrl: updateApiUrl,
@@ -81,9 +83,9 @@ export const ApiProvider = ({ children }) => {
 export const useApi = () => useContext(ApiContext);
 
 const styles = StyleSheet.create({
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    }
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 });

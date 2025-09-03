@@ -15,14 +15,16 @@ const AppContent = () => {
   const [isFirstLaunch, setIsFirstLaunch] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const appState = useRef(AppState.currentState);
-  
+
   // Pega a URL da API do nosso contexto global
   const { apiUrl } = useApi();
 
   // Função para "acordar" o servidor, agora usando a URL do contexto
   const wakeUpServer = async () => {
     if (!apiUrl) {
-      console.log("App.js: Nenhuma URL de API definida, pulando 'wake-up call'.");
+      console.log(
+        "App.js: Nenhuma URL de API definida, pulando 'wake-up call'."
+      );
       return;
     }
     console.log(`App.js: Enviando requisição 'wake-up' para ${apiUrl}...`);
@@ -31,7 +33,9 @@ const AppContent = () => {
       console.log("App.js: Servidor respondeu ao 'wake-up call'.");
     } catch (error) {
       if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-        console.warn("App.js: 'Wake-up call' para o servidor demorou a responder (timeout).");
+        console.warn(
+          "App.js: 'Wake-up call' para o servidor demorou a responder (timeout)."
+        );
       } else {
         console.error("App.js: Erro no 'wake-up call':", error.message);
       }
@@ -51,11 +55,14 @@ const AppContent = () => {
     };
 
     checkIfFirstLaunch();
-    
+
     // Lógica para o 'wake-up call'
     wakeUpServer();
-    const subscription = AppState.addEventListener('change', nextAppState => {
-      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
         wakeUpServer();
       }
       appState.current = nextAppState;
@@ -69,7 +76,7 @@ const AppContent = () => {
   const handleOnboardingComplete = async () => {
     try {
       await AsyncStorage.setItem(APP_LAUNCHED_KEY, 'true');
-      setIsFirstLaunch(false); 
+      setIsFirstLaunch(false);
     } catch (error) {
       console.error("Erro ao salvar 'appAlreadyLaunched':", error);
       setIsFirstLaunch(false);
@@ -93,7 +100,7 @@ const AppContent = () => {
       />
     </>
   );
-}
+};
 
 // O componente principal App agora apenas fornece o contexto
 export default function App() {
@@ -127,6 +134,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF', 
+    backgroundColor: '#FFFFFF',
   },
 });

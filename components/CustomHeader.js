@@ -1,5 +1,11 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -15,10 +21,15 @@ const CustomHeader = ({ title }) => {
       <View style={styles.sideComponent} />
 
       {/* Título da Tela */}
-      <Text style={styles.title} numberOfLines={1}>{title}</Text>
+      <Text style={styles.title} numberOfLines={1}>
+        {title}
+      </Text>
 
       {/* Botão de Configurações à direita */}
-      <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.sideComponent}>
+      <TouchableOpacity
+        onPress={() => navigation.navigate('Settings')}
+        style={styles.sideComponent}
+      >
         <MaterialCommunityIcons name="cog-outline" size={28} color="#007AFF" />
       </TouchableOpacity>
     </View>
@@ -48,8 +59,8 @@ const styles = StyleSheet.create({
   sideComponent: {
     width: 40, // Largura fixa para os componentes laterais
     alignItems: 'center',
-    justifyContent: 'center'
-  }
+    justifyContent: 'center',
+  },
 });
 
 export default CustomHeader;

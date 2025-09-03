@@ -17,7 +17,7 @@ const ResultsScreen = ({ route, navigation }) => {
 
           <Text style={styles.resultLabel}>Vídeo Processado (Nome):</Text>
           <Text style={styles.resultValue}>{results.video_processado}</Text>
-          
+
           <Text style={styles.resultLabel}>Total de Frames:</Text>
           <Text style={styles.resultValue}>{results.total_frames}</Text>
 
@@ -30,7 +30,10 @@ const ResultsScreen = ({ route, navigation }) => {
             <View>
               <Text style={styles.resultLabel}>Detalhes por Classe:</Text>
               {Object.entries(results.por_classe).map(([classe, contagem]) => (
-                <Text key={classe} style={styles.resultValue}>  • {classe}: {contagem}</Text>
+                <Text key={classe} style={styles.resultValue}>
+                  {' '}
+                  • {classe}: {contagem}
+                </Text>
               ))}
             </View>
           )}
@@ -107,7 +110,7 @@ const styles = StyleSheet.create({
   newAnalysisButton: {
     backgroundColor: '#007AFF', // Azul
     width: '90%',
-  }
+  },
 });
 
 export default ResultsScreen;

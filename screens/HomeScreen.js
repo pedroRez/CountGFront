@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  View, Text, StyleSheet, Alert, ScrollView, 
-  TextInput, AppState, KeyboardAvoidingView, Platform, TouchableOpacity 
+import {
+  View,
+  Text,
+  StyleSheet,
+  Alert,
+  ScrollView,
+  TextInput,
+  AppState,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -21,9 +29,16 @@ const BackendProgressBar = ({ progress, text }) => (
   <View style={styles.backendProgressContainer}>
     <Text style={styles.processingInfoText}>{text}</Text>
     <View style={styles.progressBarContainer}>
-      <View style={[styles.progressBarFill, { width: `${Math.min(progress * 100, 100)}%` }]} />
+      <View
+        style={[
+          styles.progressBarFill,
+          { width: `${Math.min(progress * 100, 100)}%` },
+        ]}
+      />
     </View>
-    <Text style={styles.progressPercentText}>{Math.round(progress * 100)}%</Text>
+    <Text style={styles.progressPercentText}>
+      {Math.round(progress * 100)}%
+    </Text>
   </View>
 );
 
@@ -36,7 +51,9 @@ const formatDuration = (millis) => {
   let seconds = totalSeconds % 60;
   const pad = (num) => String(num).padStart(2, '0');
   let str = '';
-  if (hours > 0) { str += `${pad(hours)}:`; }
+  if (hours > 0) {
+    str += `${pad(hours)}:`;
+  }
   str += `${pad(minutes)}:${pad(seconds)}`;
   return str;
 };
@@ -49,9 +66,9 @@ const ORIENTATIONS = [
 ];
 
 const MODEL_OPTIONS = [
-    { id: 'n', label: 'Rápido', description: 'Menor precisão' },
-    { id: 'm', label: 'Normal', description: 'Equilibrado' },
-    { id: 'l', label: 'Preciso', description: 'Mais lento' },
+  { id: 'n', label: 'Rápido', description: 'Menor precisão' },
+  { id: 'm', label: 'Normal', description: 'Equilibrado' },
+  { id: 'l', label: 'Preciso', description: 'Mais lento' },
 ];
 
 const HomeScreen = ({ route }) => {
@@ -73,8 +90,15 @@ const HomeScreen = ({ route }) => {
   React.useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={{ marginRight: 15 }}>
-          <MaterialCommunityIcons name="cog-outline" size={28} color="#007AFF" />
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Settings')}
+          style={{ marginRight: 15 }}
+        >
+          <MaterialCommunityIcons
+            name="cog-outline"
+            size={28}
+            color="#007AFF"
+          />
         </TouchableOpacity>
       ),
     });
@@ -84,42 +108,74 @@ const HomeScreen = ({ route }) => {
     React.useCallback(() => {
       if (route.params?.newlyRecordedVideo) {
         const video = route.params.newlyRecordedVideo;
-        resetAllStates(); 
+        resetAllStates();
         setSelectedVideoAsset(video);
-        if (video.orientation) { setSelectedOrientation(video.orientation); }
+        if (video.orientation) {
+          setSelectedOrientation(video.orientation);
+        }
         setAppStatus('selected');
-        navigation.setParams({ newlyRecordedVideo: null }); 
+        navigation.setParams({ newlyRecordedVideo: null });
       }
     }, [route.params?.newlyRecordedVideo, navigation])
   );
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (appStateListenerRef.current.match(/inactive|background/) && nextAppState === 'active' && appStatus === 'polling_progress') {
+      if (
+        appStateListenerRef.current.match(/inactive|background/) &&
+        nextAppState === 'active' &&
+        appStatus === 'polling_progress'
+      ) {
         if (processingVideoName) checkBackendProgress(processingVideoName);
       }
       appStateListenerRef.current = nextAppState;
     });
-    return () => { subscription.remove(); if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current); };
+    return () => {
+      subscription.remove();
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+    };
   }, [appStatus, processingVideoName]);
 
   const resetAllStates = () => {
-    setSelectedVideoAsset(null); setProcessingVideoName(null); setBackendProgressData(null);
+    setSelectedVideoAsset(null);
+    setProcessingVideoName(null);
+    setBackendProgressData(null);
     if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-    pollingIntervalRef.current = null; setAppStatus('idle'); setIsPickerLoading(false);
-    setUserEmail(''); setUserConsent(false); setSelectedOrientation(null); setModelChoice('m');
+    pollingIntervalRef.current = null;
+    setAppStatus('idle');
+    setIsPickerLoading(false);
+    setUserEmail('');
+    setUserConsent(false);
+    setSelectedOrientation(null);
+    setModelChoice('m');
   };
 
   const handlePickFromGallery = async () => {
-    resetAllStates(); setAppStatus('picking'); setIsPickerLoading(true);
+    resetAllStates();
+    setAppStatus('picking');
+    setIsPickerLoading(true);
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) { Alert.alert('Permissão Necessária', 'Acesso à galeria é necessário.'); resetAllStates(); return; }
-      let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: MediaTypeOptions.Videos, quality: 0.8 });
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permissão Necessária', 'Acesso à galeria é necessário.');
+        resetAllStates();
+        return;
+      }
+      let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: MediaTypeOptions.Videos,
+        quality: 0.8,
+      });
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setSelectedVideoAsset(result.assets[0]); setAppStatus('selected');
-      } else { resetAllStates(); }
-    } catch (error) { Alert.alert('Erro', 'Falha ao carregar vídeo da galeria.'); resetAllStates(); }
+        setSelectedVideoAsset(result.assets[0]);
+        setAppStatus('selected');
+      } else {
+        resetAllStates();
+      }
+    } catch (error) {
+      Alert.alert('Erro', 'Falha ao carregar vídeo da galeria.');
+      resetAllStates();
+    }
     setIsPickerLoading(false);
   };
 
@@ -128,15 +184,18 @@ const HomeScreen = ({ route }) => {
       setProcessingVideoName(responseData.video_name);
       setAppStatus('polling_progress');
     } else {
-      Alert.alert('Erro', 'O servidor não iniciou o processamento corretamente.');
+      Alert.alert(
+        'Erro',
+        'O servidor não iniciou o processamento corretamente.'
+      );
       setAppStatus('selected');
     }
   };
-  
+
   const handleUploadError = (error) => {
     setAppStatus('selected');
   };
-  
+
   const checkBackendProgress = async (videoName) => {
     if (!videoName || appStatus !== 'polling_progress') {
       if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
@@ -147,50 +206,90 @@ const HomeScreen = ({ route }) => {
       const progressData = response.data;
       setBackendProgressData(progressData);
       if (progressData.finalizado) {
-        if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+        if (pollingIntervalRef.current)
+          clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
         if (progressData.erro) {
-          Alert.alert('Erro no Processamento', `O servidor retornou um erro: ${progressData.erro}`);
+          Alert.alert(
+            'Erro no Processamento',
+            `O servidor retornou um erro: ${progressData.erro}`
+          );
           resetAllStates();
         } else if (progressData.resultado) {
-          Alert.alert("Análise Concluída!");
-          navigation.navigate('ResultsScreen', { results: progressData.resultado });
+          Alert.alert('Análise Concluída!');
+          navigation.navigate('ResultsScreen', {
+            results: progressData.resultado,
+          });
           setTimeout(() => resetAllStates(), 500);
-        } else { Alert.alert('Processamento Concluído', 'Resultado inválido do backend.'); resetAllStates(); }
+        } else {
+          Alert.alert(
+            'Processamento Concluído',
+            'Resultado inválido do backend.'
+          );
+          resetAllStates();
+        }
       }
-    } catch (error) { 
-        setBackendProgressData(prev => ({...(prev || {}), erro: "Falha ao obter progresso."}));
+    } catch (error) {
+      setBackendProgressData((prev) => ({
+        ...(prev || {}),
+        erro: 'Falha ao obter progresso.',
+      }));
     }
   };
 
   useEffect(() => {
     if (appStatus === 'polling_progress' && processingVideoName) {
-      checkBackendProgress(processingVideoName); 
-      pollingIntervalRef.current = setInterval(() => { checkBackendProgress(processingVideoName); }, 3000);
+      checkBackendProgress(processingVideoName);
+      pollingIntervalRef.current = setInterval(() => {
+        checkBackendProgress(processingVideoName);
+      }, 3000);
     }
-    return () => { if (pollingIntervalRef.current) { clearInterval(pollingIntervalRef.current); }};
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
   }, [appStatus, processingVideoName]);
 
   const handleCancelProcessing = async () => {
     if (processingVideoName) {
       try {
-        await axios.get(`${apiUrl}/cancelar-processamento/${processingVideoName}`);
-        Alert.alert('Cancelado', 'Solicitação de cancelamento da análise enviada.');
-      } catch (error) { Alert.alert('Erro', 'Não foi possível enviar solicitação de cancelamento.'); }
-      finally { resetAllStates(); }
+        await axios.get(
+          `${apiUrl}/cancelar-processamento/${processingVideoName}`
+        );
+        Alert.alert(
+          'Cancelado',
+          'Solicitação de cancelamento da análise enviada.'
+        );
+      } catch (error) {
+        Alert.alert(
+          'Erro',
+          'Não foi possível enviar solicitação de cancelamento.'
+        );
+      } finally {
+        resetAllStates();
+      }
     }
   };
 
   const renderProcessingContent = () => {
     if (!backendProgressData) {
-      return <CustomActivityIndicator size="large" color="#007AFF" style={{marginVertical: 20}}/>;
+      return (
+        <CustomActivityIndicator
+          size="large"
+          color="#007AFF"
+          style={{ marginVertical: 20 }}
+        />
+      );
     }
     if (backendProgressData.erro) {
-      return <Text style={styles.errorText}>Erro: {backendProgressData.erro}</Text>;
+      return (
+        <Text style={styles.errorText}>Erro: {backendProgressData.erro}</Text>
+      );
     }
-    
+
     let progressValue = 0;
-    let progressText = "Preparando...";
+    let progressText = 'Preparando...';
     const statusMessage = backendProgressData.tempo_restante || '';
 
     if (statusMessage.includes('%')) {
@@ -200,7 +299,9 @@ const HomeScreen = ({ route }) => {
       }
       progressText = statusMessage.split(':')[0];
     } else {
-      progressValue = (backendProgressData.frame_atual || 0) / (backendProgressData.total_frames_estimado || 1);
+      progressValue =
+        (backendProgressData.frame_atual || 0) /
+        (backendProgressData.total_frames_estimado || 1);
       progressText = `Processando frames`;
     }
 
@@ -217,37 +318,119 @@ const HomeScreen = ({ route }) => {
       case 'idle':
         return (
           <>
-            <Text style={styles.subtitle}>Selecione uma opção para iniciar</Text>
+            <Text style={styles.subtitle}>
+              Selecione uma opção para iniciar
+            </Text>
             <View style={styles.menuContainer}>
-              <MenuButton label="Gravar Vídeo" icon="camera-outline" onPress={() => navigation.navigate('RecordVideo')} index={0}/>
-              <MenuButton label="Vídeo da Galeria" icon="image-multiple-outline" onPress={handlePickFromGallery} index={1}/>
-              <MenuButton label="Câmera Wi-Fi" icon="wifi-strength-4" onPress={() => Alert.alert("Em Breve", "Integração com câmeras Wi-Fi.")} index={2}/>
-              <MenuButton label="Tutorial" icon="help-circle-outline" onPress={() => navigation.navigate('OnboardingTutorial')} index={3}/>
+              <MenuButton
+                label="Gravar Vídeo"
+                icon="camera-outline"
+                onPress={() => navigation.navigate('RecordVideo')}
+                index={0}
+              />
+              <MenuButton
+                label="Vídeo da Galeria"
+                icon="image-multiple-outline"
+                onPress={handlePickFromGallery}
+                index={1}
+              />
+              <MenuButton
+                label="Câmera Wi-Fi"
+                icon="wifi-strength-4"
+                onPress={() =>
+                  Alert.alert('Em Breve', 'Integração com câmeras Wi-Fi.')
+                }
+                index={2}
+              />
+              <MenuButton
+                label="Tutorial"
+                icon="help-circle-outline"
+                onPress={() => navigation.navigate('OnboardingTutorial')}
+                index={3}
+              />
             </View>
           </>
         );
       case 'picking':
-        return <CustomActivityIndicator size="large" color="#007AFF" style={styles.loader}/>;
+        return (
+          <CustomActivityIndicator
+            size="large"
+            color="#007AFF"
+            style={styles.loader}
+          />
+        );
       case 'selected':
         return (
           <View style={styles.selectionContainer}>
-            <Text style={styles.selectedVideoTitle}>Vídeo Pronto para Análise</Text>
-            <Text style={styles.selectedVideoInfo} numberOfLines={1}>{selectedVideoAsset.fileName || selectedVideoAsset.uri.split('/').pop()}</Text>
-            {selectedVideoAsset.duration != null && <Text style={styles.videoInfoText}>Duração: {formatDuration(selectedVideoAsset.duration)}</Text>}
+            <Text style={styles.selectedVideoTitle}>
+              Vídeo Pronto para Análise
+            </Text>
+            <Text style={styles.selectedVideoInfo} numberOfLines={1}>
+              {selectedVideoAsset.fileName ||
+                selectedVideoAsset.uri.split('/').pop()}
+            </Text>
+            {selectedVideoAsset.duration != null && (
+              <Text style={styles.videoInfoText}>
+                Duração: {formatDuration(selectedVideoAsset.duration)}
+              </Text>
+            )}
             <View style={styles.contributionSection}>
-              <Text style={styles.contributionTitle}>Ajude a treinar nossa IA!</Text>
-              <TextInput style={styles.emailInput} placeholder="Seu email (opcional)" value={userEmail} onChangeText={setUserEmail} keyboardType="email-address" autoCapitalize="none" placeholderTextColor="#888"/>
-              <TouchableOpacity style={[styles.consentTouchable, userConsent && styles.consentTouchableChecked]} onPress={() => setUserConsent(!userConsent)}>
-                <MaterialCommunityIcons name={userConsent ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"} size={26} color={userConsent ? "#28a745" : "#555"} style={styles.checkboxIcon}/>
-                <Text style={styles.consentText}>Concordo em usar este vídeo para treino</Text>
+              <Text style={styles.contributionTitle}>
+                Ajude a treinar nossa IA!
+              </Text>
+              <TextInput
+                style={styles.emailInput}
+                placeholder="Seu email (opcional)"
+                value={userEmail}
+                onChangeText={setUserEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                placeholderTextColor="#888"
+              />
+              <TouchableOpacity
+                style={[
+                  styles.consentTouchable,
+                  userConsent && styles.consentTouchableChecked,
+                ]}
+                onPress={() => setUserConsent(!userConsent)}
+              >
+                <MaterialCommunityIcons
+                  name={
+                    userConsent
+                      ? 'checkbox-marked-circle'
+                      : 'checkbox-blank-circle-outline'
+                  }
+                  size={26}
+                  color={userConsent ? '#28a745' : '#555'}
+                  style={styles.checkboxIcon}
+                />
+                <Text style={styles.consentText}>
+                  Concordo em usar este vídeo para treino
+                </Text>
               </TouchableOpacity>
             </View>
             <View style={styles.choiceSection}>
               <Text style={styles.choiceTitle}>Orientação do Movimento</Text>
               <View style={styles.orientationButtonsContainer}>
-                {ORIENTATIONS.map(orient => (
-                  <TouchableOpacity key={orient.id} style={[styles.orientationButton, selectedOrientation === orient.id && styles.orientationButtonSelected]} onPress={() => setSelectedOrientation(orient.id)}>
-                    <Text style={[styles.orientationButtonText, selectedOrientation === orient.id && styles.orientationButtonTextSelected]}>{orient.label}</Text>
+                {ORIENTATIONS.map((orient) => (
+                  <TouchableOpacity
+                    key={orient.id}
+                    style={[
+                      styles.orientationButton,
+                      selectedOrientation === orient.id &&
+                        styles.orientationButtonSelected,
+                    ]}
+                    onPress={() => setSelectedOrientation(orient.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.orientationButtonText,
+                        selectedOrientation === orient.id &&
+                          styles.orientationButtonTextSelected,
+                      ]}
+                    >
+                      {orient.label}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -255,41 +438,86 @@ const HomeScreen = ({ route }) => {
             <View style={styles.choiceSection}>
               <Text style={styles.choiceTitle}>Nível de Processamento</Text>
               <View style={styles.modelButtonsContainer}>
-                {MODEL_OPTIONS.map(opt => (
-                  <TouchableOpacity key={opt.id} style={[styles.modelButton, modelChoice === opt.id && styles.modelButtonSelected]} onPress={() => setModelChoice(opt.id)}>
-                    <Text style={[styles.modelButtonText, modelChoice === opt.id && styles.modelButtonTextSelected]}>{opt.label}</Text>
-                    <Text style={[styles.modelButtonDesc, modelChoice === opt.id && styles.modelButtonTextSelected]}>{opt.description}</Text>
+                {MODEL_OPTIONS.map((opt) => (
+                  <TouchableOpacity
+                    key={opt.id}
+                    style={[
+                      styles.modelButton,
+                      modelChoice === opt.id && styles.modelButtonSelected,
+                    ]}
+                    onPress={() => setModelChoice(opt.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.modelButtonText,
+                        modelChoice === opt.id &&
+                          styles.modelButtonTextSelected,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.modelButtonDesc,
+                        modelChoice === opt.id &&
+                          styles.modelButtonTextSelected,
+                      ]}
+                    >
+                      {opt.description}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
             <VideoUploadSender
-              videoAsset={selectedVideoAsset} email={userEmail} consent={userConsent}
-              orientation={selectedOrientation} modelChoice={modelChoice}
-              onProcessingStarted={handleProcessingStarted} onUploadError={handleUploadError}
+              videoAsset={selectedVideoAsset}
+              email={userEmail}
+              consent={userConsent}
+              orientation={selectedOrientation}
+              modelChoice={modelChoice}
+              onProcessingStarted={handleProcessingStarted}
+              onUploadError={handleUploadError}
             />
-            <TouchableOpacity onPress={resetAllStates} style={styles.cancelButton}>
-              <Text style={styles.cancelButtonText}>Cancelar / Escolher Outro</Text>
+            <TouchableOpacity
+              onPress={resetAllStates}
+              style={styles.cancelButton}
+            >
+              <Text style={styles.cancelButtonText}>
+                Cancelar / Escolher Outro
+              </Text>
             </TouchableOpacity>
           </View>
         );
       case 'prediction_requested':
       case 'polling_progress':
         return (
-            <View style={styles.processingContainerFull}>
-              <Text style={styles.statusTitle}>Analisando vídeo no servidor...</Text>
-              {renderProcessingContent()}
-              <BigButton title="Cancelar Análise" onPress={handleCancelProcessing} buttonStyle={styles.cancelAnalysisButton} />
-            </View>
+          <View style={styles.processingContainerFull}>
+            <Text style={styles.statusTitle}>
+              Analisando vídeo no servidor...
+            </Text>
+            {renderProcessingContent()}
+            <BigButton
+              title="Cancelar Análise"
+              onPress={handleCancelProcessing}
+              buttonStyle={styles.cancelAnalysisButton}
+            />
+          </View>
         );
-      default: return null;
+      default:
+        return null;
     }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.container}>
             <Text style={styles.title}>CountG</Text>
             {renderContent()}
@@ -302,79 +530,233 @@ const HomeScreen = ({ route }) => {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#f0f2f5' },
-  scrollContainer: { flexGrow: 1, justifyContent: 'center', paddingVertical: 20 },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
   container: { alignItems: 'center', paddingHorizontal: 15 },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#2c3e50', textAlign: 'center' },
-  subtitle: { fontSize: 16, color: '#555', marginTop: 8, marginBottom: 30, textAlign: 'center' },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#555',
+    marginTop: 8,
+    marginBottom: 30,
+    textAlign: 'center',
+  },
   loader: { marginVertical: 20 },
-  menuContainer: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
+  menuContainer: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   selectionContainer: {
-    alignItems: 'center', marginVertical: 15, width: '100%', padding: 15,
-    backgroundColor: '#fff', borderRadius: 12, elevation: 3, shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4,
+    alignItems: 'center',
+    marginVertical: 15,
+    width: '100%',
+    padding: 15,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  selectedVideoTitle: { fontSize: 18, fontWeight: '600', color: '#333', marginBottom: 10, textAlign: 'center' },
-  selectedVideoInfo: { fontSize: 14, color: '#555', marginBottom: 5, textAlign: 'center', paddingHorizontal: 10 },
-  videoInfoText: { fontSize: 14, color: '#555', marginBottom: 15, textAlign: 'center' },
+  selectedVideoTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  selectedVideoInfo: {
+    fontSize: 14,
+    color: '#555',
+    marginBottom: 5,
+    textAlign: 'center',
+    paddingHorizontal: 10,
+  },
+  videoInfoText: {
+    fontSize: 14,
+    color: '#555',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
   contributionSection: {
-    width: '100%', paddingVertical: 15, marginTop: 10, marginBottom: 15,
-    borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#e8e8e8',
+    width: '100%',
+    paddingVertical: 15,
+    marginTop: 10,
+    marginBottom: 15,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#e8e8e8',
   },
-  contributionTitle: { fontSize: 17, fontWeight: 'bold', textAlign: 'center', marginBottom: 10, color: '#007AFF' },
+  contributionTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 10,
+    color: '#007AFF',
+  },
   emailInput: {
-    width: '100%', borderWidth: 1, borderColor: '#ced4da', borderRadius: 8,
-    paddingHorizontal: 15, paddingVertical: Platform.OS === 'ios' ? 14 : 10, 
-    fontSize: 16, marginBottom: 15, backgroundColor: '#f8f9fa'
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#ced4da',
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    paddingVertical: Platform.OS === 'ios' ? 14 : 10,
+    fontSize: 16,
+    marginBottom: 15,
+    backgroundColor: '#f8f9fa',
   },
   consentTouchable: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f9fa',
-    paddingVertical: 12, paddingHorizontal: 15, borderRadius: 8, 
-    width: '100%', borderWidth: 1, borderColor: '#ced4da',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#ced4da',
   },
-  consentTouchableChecked: { backgroundColor: '#e6ffed', borderColor: '#28a745' },
+  consentTouchableChecked: {
+    backgroundColor: '#e6ffed',
+    borderColor: '#28a745',
+  },
   checkboxIcon: { marginRight: 10 },
   consentText: { fontSize: 14, color: '#495057', flexShrink: 1 },
   choiceSection: {
-    width: '100%', marginTop: 10, marginBottom: 10, paddingTop: 15,
-    borderTopWidth: 1, borderColor: '#e8e8e8',
+    width: '100%',
+    marginTop: 10,
+    marginBottom: 10,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderColor: '#e8e8e8',
   },
-  choiceTitle: { fontSize: 16, fontWeight: 'bold', textAlign: 'center', marginBottom: 10, color: '#333' },
-  orientationButtonsContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around' },
+  choiceTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 10,
+    color: '#333',
+  },
+  orientationButtonsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+  },
   orientationButton: {
-    backgroundColor: '#f0f0f0', padding: 12, borderRadius: 8,
-    borderWidth: 1.5, borderColor: '#ddd', margin: 4, width: '47%', 
-    minHeight: 50, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#f0f0f0',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#ddd',
+    margin: 4,
+    width: '47%',
+    minHeight: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  orientationButtonSelected: { backgroundColor: '#007AFF', borderColor: '#0056b3' },
-  orientationButtonText: { color: '#333', fontSize: 14, textAlign: 'center', fontWeight: 'bold' },
+  orientationButtonSelected: {
+    backgroundColor: '#007AFF',
+    borderColor: '#0056b3',
+  },
+  orientationButtonText: {
+    color: '#333',
+    fontSize: 14,
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
   orientationButtonTextSelected: { color: 'white' },
-  modelButtonsContainer: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
+  modelButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
   modelButton: {
-    backgroundColor: '#f0f0f0', padding: 10, borderRadius: 8, borderWidth: 1.5,
-    borderColor: '#ddd', marginVertical: 5, width: '32%', alignItems: 'center', minHeight: 70, justifyContent: 'center'
+    backgroundColor: '#f0f0f0',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#ddd',
+    marginVertical: 5,
+    width: '32%',
+    alignItems: 'center',
+    minHeight: 70,
+    justifyContent: 'center',
   },
   modelButtonSelected: { backgroundColor: '#ff9800', borderColor: '#e68a00' },
   modelButtonText: { color: '#333', fontSize: 14, fontWeight: 'bold' },
-  modelButtonDesc: { color: '#555', fontSize: 10, marginTop: 3, textAlign: 'center' },
+  modelButtonDesc: {
+    color: '#555',
+    fontSize: 10,
+    marginTop: 3,
+    textAlign: 'center',
+  },
   modelButtonTextSelected: { color: 'white' },
   cancelButton: { marginTop: 15, paddingVertical: 12 },
   cancelButtonText: { color: '#6c757d', fontSize: 16, fontWeight: '600' },
-  processingContainerFull: { 
-    marginVertical: 20, padding: 20, width: '100%', alignItems: 'center',
-    backgroundColor: '#fff', borderRadius: 12, elevation: 3,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1, shadowRadius: 4,
+  processingContainerFull: {
+    marginVertical: 20,
+    padding: 20,
+    width: '100%',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  statusTitle: { fontSize: 18, fontWeight: '600', marginBottom: 15, color: '#007AFF' },
-  backendProgressContainer: { width: '100%', alignItems: 'center', marginBottom:10 },
-  processingInfoText: { marginBottom: 8, fontSize: 15, color: '#333' }, 
-  progressBarContainer: { height: 12, width: '100%', backgroundColor: '#e9ecef', borderRadius: 6, overflow: 'hidden' },
+  statusTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 15,
+    color: '#007AFF',
+  },
+  backendProgressContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  processingInfoText: { marginBottom: 8, fontSize: 15, color: '#333' },
+  progressBarContainer: {
+    height: 12,
+    width: '100%',
+    backgroundColor: '#e9ecef',
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
   progressBarFill: { height: '100%', backgroundColor: '#28a745' },
   progressPercentText: { marginTop: 5, fontSize: 13, color: '#495057' },
-  etaText: { marginTop: 8, fontSize: 13, color: '#6c757d', fontStyle: 'italic' },
-  errorText: { fontSize: 16, color: '#dc3545', textAlign: 'center', marginBottom:15 },
-  cancelAnalysisButton: { backgroundColor: '#dc3545', marginTop: 20, width: '100%' },
-  tutorialButton: { backgroundColor: '#6c757d', width: '100%', marginTop: 20 }
+  etaText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#6c757d',
+    fontStyle: 'italic',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#dc3545',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  cancelAnalysisButton: {
+    backgroundColor: '#dc3545',
+    marginTop: 20,
+    width: '100%',
+  },
+  tutorialButton: { backgroundColor: '#6c757d', width: '100%', marginTop: 20 },
 });
 
 export default HomeScreen;

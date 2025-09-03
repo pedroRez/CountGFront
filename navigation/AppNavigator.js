@@ -20,12 +20,19 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        // Removemos as screenOptions daqui, pois agora controlamos tudo no CustomHeader
+      // Removemos as screenOptions daqui, pois agora controlamos tudo no CustomHeader
       >
         {isFirstLaunch ? (
-          <Stack.Screen name="OnboardingInitial" options={{ headerShown: false }}>
-            {props => (
-              <OnboardingScreen {...props} onComplete={onOnboardingComplete} isInitial={true} />
+          <Stack.Screen
+            name="OnboardingInitial"
+            options={{ headerShown: false }}
+          >
+            {(props) => (
+              <OnboardingScreen
+                {...props}
+                onComplete={onOnboardingComplete}
+                isInitial={true}
+              />
             )}
           </Stack.Screen>
         ) : (
@@ -54,15 +61,15 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
               component={OnboardingScreen}
               options={{ title: 'Guia de Filmagem' }}
             />
-            <Stack.Screen 
-              name="Settings" 
-              component={SettingsScreen} 
-              options={{ title: 'Configurações' }} 
+            <Stack.Screen
+              name="Settings"
+              component={SettingsScreen}
+              options={{ title: 'Configurações' }}
             />
-            <Stack.Screen 
-              name="CameraTest" 
-              component={CameraTestScreen} 
-              options={{ title: 'Teste de Câmera' }} 
+            <Stack.Screen
+              name="CameraTest"
+              component={CameraTestScreen}
+              options={{ title: 'Teste de Câmera' }}
             />
           </React.Fragment>
         )}
