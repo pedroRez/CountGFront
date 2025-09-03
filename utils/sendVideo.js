@@ -16,7 +16,7 @@ export async function pickAndUploadVideo() {
     const formData = new FormData();
     formData.append('file', {
       uri: video.uri,
-      name: 'entrada.mp4', // usa sempre o mesmo nome
+      name: 'entrada.mp4', // always use the same name
       type: 'video/mp4',
     });
 
@@ -24,8 +24,8 @@ export async function pickAndUploadVideo() {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
 
-    console.log('Bois detectados:', response.data.count);
+    console.log('Cattle detected:', response.data.count);
   } catch (err) {
-    console.error('Erro ao enviar vídeo:', err);
+    console.error('Error sending video:', err);
   }
 }

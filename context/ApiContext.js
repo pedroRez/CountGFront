@@ -2,21 +2,21 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 
-// Lê a URL padrão do arquivo .env
+// Read the default URL from the .env file
 const DEFAULT_API_URL =
   process.env.EXPO_PUBLIC_API_URL || 'https://pedrorezp3-countg.hf.space/';
 const STORAGE_KEY = '@api_settings';
 
-// Cria o contexto
+// Create the context
 export const ApiContext = createContext();
 
-// Cria o "Provedor" do contexto, que gerenciará o estado
+// Create the context provider that manages state
 export const ApiProvider = ({ children }) => {
   const [apiUrl, setApiUrl] = useState(DEFAULT_API_URL);
   const [isCustomUrlEnabled, setIsCustomUrlEnabled] = useState(false);
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
 
-  // Carrega as configurações salvas ao iniciar o app
+  // Load saved settings when the app starts
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -27,7 +27,7 @@ export const ApiProvider = ({ children }) => {
           setApiUrl(enabled && customUrl ? customUrl : DEFAULT_API_URL);
         }
       } catch (e) {
-        console.error('Falha ao carregar configurações da API:', e);
+        console.error('Failed to load API settings:', e);
         setApiUrl(DEFAULT_API_URL);
       } finally {
         setIsSettingsLoading(false);
@@ -40,13 +40,13 @@ export const ApiProvider = ({ children }) => {
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     } catch (e) {
-      console.error('Falha ao salvar configurações da API:', e);
+      console.error('Failed to save API settings:', e);
     }
   };
 
   const updateApiUrl = (newUrl) => {
     setApiUrl(newUrl);
-    // Salva a configuração atual
+    // Save the current configuration
     saveSettings({ customUrl: newUrl, enabled: isCustomUrlEnabled });
   };
 
@@ -67,7 +67,7 @@ export const ApiProvider = ({ children }) => {
     DEFAULT_API_URL,
   };
 
-  // Mostra um loader enquanto as configurações da API são carregadas do AsyncStorage
+  // Show a loader while the API settings are loaded from AsyncStorage
   if (isSettingsLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -79,7 +79,7 @@ export const ApiProvider = ({ children }) => {
   return <ApiContext.Provider value={value}>{children}</ApiContext.Provider>;
 };
 
-// Hook customizado para facilitar o uso do contexto
+// Custom hook to simplify context usage
 export const useApi = () => useContext(ApiContext);
 
 const styles = StyleSheet.create({

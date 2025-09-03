@@ -28,18 +28,18 @@ export default function VideoUploadSender({
   const { apiUrl } = useApi();
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [statusText, setStatusText] = useState('Processar Vídeo');
+  const [statusText, setStatusText] = useState('Process Video');
 
   const handleProcessRequest = async () => {
     if (!videoAsset || !orientation || !modelChoice) {
       Alert.alert(
-        'Faltam Dados',
-        'Por favor, selecione um vídeo, a orientação e o nível de processamento.'
+        'Missing Data',
+        'Please select a video, orientation, and processing level.'
       );
       return;
     }
     if (!apiUrl) {
-      Alert.alert('Erro de Configuração', 'A URL da API não foi encontrada.');
+      Alert.alert('Configuration Error', 'The API URL was not found.');
       return;
     }
 
@@ -63,15 +63,15 @@ export default function VideoUploadSender({
 
     setIsUploading(true);
     setUploadProgress(0);
-    setStatusText('Enviando... 0%');
+    setStatusText('Uploading... 0%');
 
     try {
       const response = await axios.post(`${apiUrl}/process-video/`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
-          // --- LOGS DE DEPURAÇÃO ADICIONADOS AQUI ---
+          // --- DEBUG LOGS ADDED HERE ---
           console.log(
-            `[UPLOAD PROGRESS] Evento recebido: loaded=${progressEvent.loaded}, total=${progressEvent.total}`
+            `[UPLOAD PROGRESS] Event received: loaded=${progressEvent.loaded}, total=${progressEvent.total}`
           );
 
           let percent = 0;
@@ -79,25 +79,25 @@ export default function VideoUploadSender({
             percent = progressEvent.loaded / progressEvent.total;
           }
           console.log(
-            `[UPLOAD PROGRESS] Porcentagem calculada (bruta): ${percent}`
+            `[UPLOAD PROGRESS] Raw calculated percentage: ${percent}`
           );
 
-          // Trava o valor em no máximo 1.0 (100%)
+          // Clamp the value to a maximum of 1.0 (100%)
           const clampedProgress = Math.min(percent, 1.0);
           console.log(
-            `[UPLOAD PROGRESS] Progresso final (limitado a 1.0): ${clampedProgress}`
+            `[UPLOAD PROGRESS] Final progress (clamped to 1.0): ${clampedProgress}`
           );
 
           setUploadProgress(clampedProgress);
 
-          const displayText = `Enviando... ${Math.round(clampedProgress * 100)}%`;
+          const displayText = `Uploading... ${Math.round(clampedProgress * 100)}%`;
           setStatusText(displayText);
         },
         timeout: 600000,
       });
 
-      // Quando o upload termina, antes de chamar o callback, atualiza o status
-      setStatusText('Upload concluído. Aguardando início do processamento...');
+      // When upload finishes, update status before calling the callback
+      setStatusText('Upload complete. Waiting for processing to start...');
 
       if (onProcessingStarted) {
         onProcessingStarted(response.data);
@@ -105,12 +105,12 @@ export default function VideoUploadSender({
     } catch (error) {
       const errorMsg =
         error.response?.data?.detail ||
-        'Falha ao enviar vídeo para processamento.';
-      Alert.alert('Erro no Envio', errorMsg);
+        'Failed to upload video for processing.';
+      Alert.alert('Upload Error', errorMsg);
       if (onUploadError) onUploadError(error);
     } finally {
       setIsUploading(false);
-      setStatusText('Processar Vídeo');
+      setStatusText('Process Video');
     }
   };
 

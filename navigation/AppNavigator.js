@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-// Remova a importação de TouchableOpacity e MaterialCommunityIcons daqui, pois agora estão no CustomHeader
+// Remove TouchableOpacity and MaterialCommunityIcons imports here; they are now in CustomHeader
 // import { TouchableOpacity } from 'react-native';
 // import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -12,7 +12,7 @@ import ResultsScreen from '../screens/ResultsScreen';
 import RecordVideoScreen from '../screens/RecordVideoScreen';
 import CameraTestScreen from '../screens/CameraTestScreen';
 import SettingsScreen from '../screens/SettingsScreen';
-import CustomHeader from '../components/CustomHeader'; // <<< Importa nosso novo cabeçalho
+import CustomHeader from '../components/CustomHeader'; // <<< Import our new header
 
 const Stack = createNativeStackNavigator();
 
@@ -20,7 +20,7 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
   return (
     <NavigationContainer>
       <Stack.Navigator
-      // Removemos as screenOptions daqui, pois agora controlamos tudo no CustomHeader
+      // Removed screenOptions here since CustomHeader handles everything
       >
         {isFirstLaunch ? (
           <Stack.Screen
@@ -40,8 +40,8 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
             <Stack.Screen
               name="Home"
               component={HomeScreen}
-              // --- CORREÇÃO PRINCIPAL AQUI ---
-              // A propriedade 'header' substitui completamente o cabeçalho padrão
+              // --- MAIN FIX HERE ---
+              // The 'header' property completely replaces the default header
               options={{
                 header: () => <CustomHeader title="KYO DAY GadoCount" />,
               }}
@@ -54,22 +54,22 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
             <Stack.Screen
               name="ResultsScreen"
               component={ResultsScreen}
-              options={{ title: 'Resultados da Análise' }}
+              options={{ title: 'Analysis Results' }}
             />
             <Stack.Screen
               name="OnboardingTutorial"
               component={OnboardingScreen}
-              options={{ title: 'Guia de Filmagem' }}
+              options={{ title: 'Filming Guide' }}
             />
             <Stack.Screen
               name="Settings"
               component={SettingsScreen}
-              options={{ title: 'Configurações' }}
+              options={{ title: 'Settings' }}
             />
             <Stack.Screen
               name="CameraTest"
               component={CameraTestScreen}
-              options={{ title: 'Teste de Câmera' }}
+              options={{ title: 'Camera Test' }}
             />
           </React.Fragment>
         )}
