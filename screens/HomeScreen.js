@@ -59,16 +59,16 @@ const formatDuration = (millis) => {
 };
 
 const ORIENTATIONS = [
-  { id: 'N', label: 'Baixo ↑ Cima' },
-  { id: 'S', label: 'Cima ↓ Baixo' },
-  { id: 'E', label: 'Esq. → Dir.' },
-  { id: 'W', label: 'Dir. ← Esq.' },
+  { id: 'N', label: 'Bottom ↑ Top' },
+  { id: 'S', label: 'Top ↓ Bottom' },
+  { id: 'E', label: 'Left → Right' },
+  { id: 'W', label: 'Right ← Left' },
 ];
 
 const MODEL_OPTIONS = [
-  { id: 'n', label: 'Rápido', description: 'Menor precisão' },
-  { id: 'm', label: 'Normal', description: 'Equilibrado' },
-  { id: 'l', label: 'Preciso', description: 'Mais lento' },
+  { id: 'n', label: 'Fast', description: 'Lower accuracy' },
+  { id: 'm', label: 'Normal', description: 'Balanced' },
+  { id: 'l', label: 'Precise', description: 'Slower' },
 ];
 
 const HomeScreen = ({ route }) => {
@@ -158,7 +158,7 @@ const HomeScreen = ({ route }) => {
       const permission =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Permissão Necessária', 'Acesso à galeria é necessário.');
+        Alert.alert('Permission Required', 'Gallery access is required.');
         resetAllStates();
         return;
       }
@@ -173,7 +173,7 @@ const HomeScreen = ({ route }) => {
         resetAllStates();
       }
     } catch (error) {
-      Alert.alert('Erro', 'Falha ao carregar vídeo da galeria.');
+      Alert.alert('Error', 'Failed to load video from gallery.');
       resetAllStates();
     }
     setIsPickerLoading(false);
@@ -184,10 +184,7 @@ const HomeScreen = ({ route }) => {
       setProcessingVideoName(responseData.video_name);
       setAppStatus('polling_progress');
     } else {
-      Alert.alert(
-        'Erro',
-        'O servidor não iniciou o processamento corretamente.'
-      );
+      Alert.alert('Error', 'The server did not start processing correctly.');
       setAppStatus('selected');
     }
   };
@@ -216,16 +213,13 @@ const HomeScreen = ({ route }) => {
           );
           resetAllStates();
         } else if (progressData.resultado) {
-          Alert.alert('Análise Concluída!');
+          Alert.alert('Analysis Complete!');
           navigation.navigate('ResultsScreen', {
             results: progressData.resultado,
           });
           setTimeout(() => resetAllStates(), 500);
         } else {
-          Alert.alert(
-            'Processamento Concluído',
-            'Resultado inválido do backend.'
-          );
+          Alert.alert('Processing Complete', 'Invalid backend result.');
           resetAllStates();
         }
       }
@@ -257,15 +251,9 @@ const HomeScreen = ({ route }) => {
         await axios.get(
           `${apiUrl}/cancelar-processamento/${processingVideoName}`
         );
-        Alert.alert(
-          'Cancelado',
-          'Solicitação de cancelamento da análise enviada.'
-        );
+        Alert.alert('Cancelled', 'Analysis cancellation request sent.');
       } catch (error) {
-        Alert.alert(
-          'Erro',
-          'Não foi possível enviar solicitação de cancelamento.'
-        );
+        Alert.alert('Error', 'Could not send cancellation request.');
       } finally {
         resetAllStates();
       }
@@ -318,27 +306,25 @@ const HomeScreen = ({ route }) => {
       case 'idle':
         return (
           <>
-            <Text style={styles.subtitle}>
-              Selecione uma opção para iniciar
-            </Text>
+            <Text style={styles.subtitle}>Select an option to start</Text>
             <View style={styles.menuContainer}>
               <MenuButton
-                label="Gravar Vídeo"
+                label="Record Video"
                 icon="camera-outline"
                 onPress={() => navigation.navigate('RecordVideo')}
                 index={0}
               />
               <MenuButton
-                label="Vídeo da Galeria"
+                label="Gallery Video"
                 icon="image-multiple-outline"
                 onPress={handlePickFromGallery}
                 index={1}
               />
               <MenuButton
-                label="Câmera Wi-Fi"
+                label="Wi-Fi Camera"
                 icon="wifi-strength-4"
                 onPress={() =>
-                  Alert.alert('Em Breve', 'Integração com câmeras Wi-Fi.')
+                  Alert.alert('Coming Soon', 'Integration with Wi-Fi cameras.')
                 }
                 index={2}
               />
@@ -363,7 +349,7 @@ const HomeScreen = ({ route }) => {
         return (
           <View style={styles.selectionContainer}>
             <Text style={styles.selectedVideoTitle}>
-              Vídeo Pronto para Análise
+              Video Ready for Analysis
             </Text>
             <Text style={styles.selectedVideoInfo} numberOfLines={1}>
               {selectedVideoAsset.fileName ||
@@ -371,16 +357,14 @@ const HomeScreen = ({ route }) => {
             </Text>
             {selectedVideoAsset.duration != null && (
               <Text style={styles.videoInfoText}>
-                Duração: {formatDuration(selectedVideoAsset.duration)}
+                Duration: {formatDuration(selectedVideoAsset.duration)}
               </Text>
             )}
             <View style={styles.contributionSection}>
-              <Text style={styles.contributionTitle}>
-                Ajude a treinar nossa IA!
-              </Text>
+              <Text style={styles.contributionTitle}>Help train our AI!</Text>
               <TextInput
                 style={styles.emailInput}
-                placeholder="Seu email (opcional)"
+                placeholder="Your email (optional)"
                 value={userEmail}
                 onChangeText={setUserEmail}
                 keyboardType="email-address"
@@ -405,12 +389,12 @@ const HomeScreen = ({ route }) => {
                   style={styles.checkboxIcon}
                 />
                 <Text style={styles.consentText}>
-                  Concordo em usar este vídeo para treino
+                  I agree to use this video for training
                 </Text>
               </TouchableOpacity>
             </View>
             <View style={styles.choiceSection}>
-              <Text style={styles.choiceTitle}>Orientação do Movimento</Text>
+              <Text style={styles.choiceTitle}>Movement Orientation</Text>
               <View style={styles.orientationButtonsContainer}>
                 {ORIENTATIONS.map((orient) => (
                   <TouchableOpacity
@@ -436,7 +420,7 @@ const HomeScreen = ({ route }) => {
               </View>
             </View>
             <View style={styles.choiceSection}>
-              <Text style={styles.choiceTitle}>Nível de Processamento</Text>
+              <Text style={styles.choiceTitle}>Processing Level</Text>
               <View style={styles.modelButtonsContainer}>
                 {MODEL_OPTIONS.map((opt) => (
                   <TouchableOpacity
@@ -483,7 +467,7 @@ const HomeScreen = ({ route }) => {
               style={styles.cancelButton}
             >
               <Text style={styles.cancelButtonText}>
-                Cancelar / Escolher Outro
+                Cancel / Choose Another
               </Text>
             </TouchableOpacity>
           </View>
@@ -492,12 +476,10 @@ const HomeScreen = ({ route }) => {
       case 'polling_progress':
         return (
           <View style={styles.processingContainerFull}>
-            <Text style={styles.statusTitle}>
-              Analisando vídeo no servidor...
-            </Text>
+            <Text style={styles.statusTitle}>Analyzing video on server...</Text>
             {renderProcessingContent()}
             <BigButton
-              title="Cancelar Análise"
+              title="Cancel Analysis"
               onPress={handleCancelProcessing}
               buttonStyle={styles.cancelAnalysisButton}
             />

@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Switch, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
-import { useApi } from '../context/ApiContext'; // Importa nosso hook customizado
+import { useApi } from '../context/ApiContext'; // Import our custom hook
 import BigButton from '../components/BigButton';
 
 const SettingsScreen = () => {
-  // Pega os valores e funções do nosso contexto global
+  // Retrieve values and functions from our global context
   const {
     apiUrl,
     setApiUrl,
@@ -15,7 +15,7 @@ const SettingsScreen = () => {
     DEFAULT_API_URL,
   } = useApi();
 
-  // Estado local para o campo de texto, inicializado com a URL do contexto
+  // Local state for the text field, initialized with the context URL
   const [textInputUrl, setTextInputUrl] = useState(
     isCustomUrlEnabled ? apiUrl : ''
   );
@@ -25,33 +25,33 @@ const SettingsScreen = () => {
     const urlToTest = isCustomUrlEnabled ? textInputUrl : DEFAULT_API_URL;
     if (!urlToTest || !urlToTest.startsWith('http')) {
       Alert.alert(
-        'URL Inválida',
-        'Por favor, insira uma URL válida começando com http:// ou https://'
+        'Invalid URL',
+        'Please enter a valid URL starting with http:// or https://'
       );
       return;
     }
 
     setIsTesting(true);
-    Alert.alert('Testando...', `Tentando conectar a ${urlToTest}`);
+    Alert.alert('Testing...', `Trying to connect to ${urlToTest}`);
 
     try {
-      // Tenta fazer uma requisição GET para a rota raiz da API
-      const response = await axios.get(urlToTest, { timeout: 10000 }); // Timeout de 10 segundos
+      // Attempt a GET request to the API root
+      const response = await axios.get(urlToTest, { timeout: 10000 }); // 10-second timeout
       if (response.status === 200) {
         Alert.alert(
-          'Sucesso!',
-          `Conexão com ${urlToTest} bem-sucedida.\nStatus do Servidor: ${response.data.status || 'OK'}`
+          'Success!',
+          `Connection to ${urlToTest} successful.\nServer status: ${response.data.status || 'OK'}`
         );
       } else {
         Alert.alert(
-          'Falha na Conexão',
-          `O servidor respondeu com o status: ${response.status}`
+          'Connection Failed',
+          `The server responded with status: ${response.status}`
         );
       }
     } catch (error) {
       Alert.alert(
-        'Erro de Conexão',
-        `Não foi possível conectar ao servidor. Verifique a URL e sua conexão.\n\nDetalhes: ${error.message}`
+        'Connection Error',
+        `Could not connect to the server. Check the URL and your connection.\n\nDetails: ${error.message}`
       );
     } finally {
       setIsTesting(false);
@@ -60,7 +60,7 @@ const SettingsScreen = () => {
 
   const handleToggleSwitch = (value) => {
     setIsCustomUrlEnabled(value);
-    // Se estiver habilitando a URL customizada, já salva o que estiver no campo de texto
+    // If enabling the custom URL, save whatever is in the text field
     if (value) {
       setApiUrl(textInputUrl);
     }
@@ -68,7 +68,7 @@ const SettingsScreen = () => {
 
   const handleUrlChange = (text) => {
     setTextInputUrl(text);
-    // Se a URL customizada estiver habilitada, atualiza o contexto em tempo real
+    // If the custom URL is enabled, update the context in real time
     if (isCustomUrlEnabled) {
       setApiUrl(text);
     }
@@ -77,19 +77,19 @@ const SettingsScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>Configurações da API</Text>
+        <Text style={styles.title}>API Settings</Text>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Servidor Padrão</Text>
+          <Text style={styles.sectionTitle}>Default Server</Text>
           <Text style={styles.infoText}>
-            O servidor padrão configurado no aplicativo é:
+            The default server configured in the app is:
           </Text>
           <Text style={styles.urlText}>{DEFAULT_API_URL}</Text>
         </View>
 
         <View style={styles.section}>
           <View style={styles.switchContainer}>
-            <Text style={styles.sectionTitle}>Usar Servidor Customizado</Text>
+            <Text style={styles.sectionTitle}>Use Custom Server</Text>
             <Switch
               trackColor={{ false: '#767577', true: '#81b0ff' }}
               thumbColor={isCustomUrlEnabled ? '#007AFF' : '#f4f3f4'}
@@ -102,14 +102,14 @@ const SettingsScreen = () => {
             placeholder="http://192.168.X.XX:8000"
             value={textInputUrl}
             onChangeText={handleUrlChange}
-            editable={isCustomUrlEnabled} // Só permite editar se o switch estiver ligado
+            editable={isCustomUrlEnabled} // Only editable if the switch is on
             autoCapitalize="none"
             keyboardType="url"
           />
         </View>
 
         <BigButton
-          title={isTesting ? 'Testando...' : 'Testar Conexão'}
+          title={isTesting ? 'Testing...' : 'Test Connection'}
           onPress={handleTestConnection}
           disabled={isTesting}
         />

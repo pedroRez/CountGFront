@@ -27,14 +27,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "name": "CountG - Contagem de Gado IA",
+      "name": "CountG - Cattle Counting AI",
       "shortName": "CountG",
       "startUrl": "/",
       "display": "standalone",
       "backgroundColor": "#ffffff",
       "themeColor": "#007AFF",
-      "description": "Aplicativo CountG para contagem de gado por Inteligência Artificial.",
-      "lang": "pt-BR",
+      "description": "CountG app for cattle counting using Artificial Intelligence.",
+      "lang": "en-US",
       "icons": [
         {
           "src": "./assets/adaptive-icon.png",
@@ -55,8 +55,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Permitir que CounG  acesse sua câmera para gravar vídeos.",
-          "microphonePermission": "Permitir que CounG acesse seu microfone para gravar áudio (opcional).",
+          "cameraPermission": "Allow CountG to access your camera to record videos.",
+          "microphonePermission": "Allow CountG to access your microphone to record audio (optional).",
           "recordAudioAndroid": true
         }
       ],

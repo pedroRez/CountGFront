@@ -2,14 +2,14 @@ import React from 'react';
 import { ActivityIndicator, Platform } from 'react-native';
 
 const CustomActivityIndicator = (props) => {
-  // Esta é a nossa lógica de correção.
-  // Ele verifica se a prop 'size' é "large" e se o OS é Android.
-  // Se for, ele usa o número 50. Caso contrário, usa o valor original.
+  // Adjustment logic:
+  // If the 'size' prop is "large" and the OS is Android,
+  // use the numeric value 50; otherwise, use the original value.
   const size =
     props.size === 'large' && Platform.OS === 'android' ? 50 : props.size;
 
-  // Retorna o ActivityIndicator padrão, passando todas as props originais,
-  // mas com a nossa prop 'size' corrigida.
+  // Return the standard ActivityIndicator, passing all original props
+  // but with our corrected 'size' value.
   return <ActivityIndicator {...props} size={size} />;
 };
 

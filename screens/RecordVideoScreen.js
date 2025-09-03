@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 
-// Função para formatar o tempo
+// Function to format time
 const formatSecondsToMMSS = (totalSeconds) => {
   if (isNaN(totalSeconds) || totalSeconds < 0) totalSeconds = 0;
   const minutes = Math.floor(totalSeconds / 60);
@@ -22,48 +22,48 @@ const formatSecondsToMMSS = (totalSeconds) => {
   return `${pad(minutes)}:${pad(seconds)}`;
 };
 
-// --- NOVA CONFIGURAÇÃO DAS GUIAS DE ORIENTAÇÃO ---
+// --- NEW ORIENTATION GUIDE CONFIGURATION ---
 const GUIDE_ORIENTATIONS = [
   {
     id: 'E',
-    label: 'Esq → Dir',
+    label: 'Left → Right',
     lineStyle: 'vertical',
     arrowIcon: 'arrow-right-bold-outline',
   },
   {
     id: 'W',
-    label: 'Dir ← Esq',
+    label: 'Right ← Left',
     lineStyle: 'vertical',
     arrowIcon: 'arrow-left-bold-outline',
   },
   {
     id: 'S',
-    label: 'Cima ↓ Baixo',
+    label: 'Top ↓ Bottom',
     lineStyle: 'horizontal',
     arrowIcon: 'arrow-down-bold-outline',
   },
   {
     id: 'N',
-    label: 'Baixo ↑ Cima',
+    label: 'Bottom ↑ Top',
     lineStyle: 'horizontal',
     arrowIcon: 'arrow-up-bold-outline',
   },
 ];
 
 export default function RecordVideoScreen({ navigation }) {
-  // --- Estados do Componente ---
+  // --- Component state ---
   const [hasPermission, setHasPermission] = useState(null);
   const [cameraType, setCameraType] = useState('back');
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isCameraReady, setIsCameraReady] = useState(false);
-  // --- NOVO ESTADO PARA A ORIENTAÇÃO DA GUIA ---
+  // --- New state for guide orientation ---
   const [guideOrientationIndex, setGuideOrientationIndex] = useState(0);
 
   const cameraRef = useRef(null);
   const recordingTimerRef = useRef(null);
 
-  // --- Lógica de Permissões (como antes) ---
+  // --- Permission logic ---
   useEffect(() => {
     (async () => {
       const { status: cameraStatus } =
@@ -77,7 +77,7 @@ export default function RecordVideoScreen({ navigation }) {
     };
   }, []);
 
-  // --- Funções de Controle (Timer e Câmera) ---
+  // --- Control functions (Timer and Camera) ---
   const startRecordingTimer = () => {
     setElapsedTime(0);
     recordingTimerRef.current = setInterval(
@@ -92,14 +92,14 @@ export default function RecordVideoScreen({ navigation }) {
 
   const toggleCameraType = () => {
     if (!isRecording) {
-      setIsCameraReady(false); // Força a câmera a se re-inicializar
+      setIsCameraReady(false); // Force the camera to reinitialize
       setCameraType((currentType) =>
         currentType === 'back' ? 'front' : 'back'
       );
     }
   };
 
-  // --- NOVA FUNÇÃO PARA ALTERNAR A ORIENTAÇÃO DA GUIA ---
+  // --- New function to toggle guide orientation ---
   const toggleGuideOrientation = () => {
     if (!isRecording) {
       setGuideOrientationIndex(
@@ -117,13 +117,13 @@ export default function RecordVideoScreen({ navigation }) {
     }
 
     if (!isCameraReady || !cameraRef.current) {
-      Alert.alert('Aguarde', 'A câmera ainda não está pronta.');
+      Alert.alert('Wait', 'The camera is not ready yet.');
       return;
     }
     if (!hasPermission) {
       Alert.alert(
-        'Permissão Necessária',
-        'Acesso à câmera e microfone é necessário.'
+        'Permission Required',
+        'Camera and microphone access is required.'
       );
       return;
     }
@@ -152,13 +152,13 @@ export default function RecordVideoScreen({ navigation }) {
         )
       ) {
         Alert.alert(
-          'Gravação Curta Demais',
-          'Por favor, tente gravar por pelo menos alguns segundos.'
+          'Recording Too Short',
+          'Please try recording for at least a few seconds.'
         );
       } else {
         Alert.alert(
-          'Erro de Gravação',
-          `Não foi possível gravar o vídeo: ${error.message}`
+          'Recording Error',
+          `Could not record the video: ${error.message}`
         );
       }
     } finally {
@@ -171,7 +171,7 @@ export default function RecordVideoScreen({ navigation }) {
     return (
       <View style={styles.centered}>
         <CustomActivityIndicator size="large" color="#FFF" />
-        <Text style={styles.infoText}>Solicitando permissões...</Text>
+        <Text style={styles.infoText}>Requesting permissions...</Text>
       </View>
     );
   }
@@ -179,19 +179,19 @@ export default function RecordVideoScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.centered}>
         <Text style={styles.infoText}>
-          Acesso à câmera e microfone é necessário.
+          Camera and microphone access is required.
         </Text>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backButton}
         >
-          <Text style={styles.backButtonText}>Voltar</Text>
+          <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
   }
 
-  // Pega a configuração da guia atual com base no índice do estado
+  // Get the current guide configuration based on the state index
   const currentGuide = GUIDE_ORIENTATIONS[guideOrientationIndex];
 
   return (
@@ -212,7 +212,7 @@ export default function RecordVideoScreen({ navigation }) {
               </Text>
             </View>
           )}
-          {/* --- GUIAS VISUAIS DINÂMICAS --- */}
+          {/* --- DYNAMIC VISUAL GUIDES --- */}
           {currentGuide.lineStyle === 'vertical' && (
             <View style={styles.verticalLine} />
           )}
@@ -231,7 +231,7 @@ export default function RecordVideoScreen({ navigation }) {
       </ExpoCameraModule.CameraView>
 
       <View style={styles.controlsContainer}>
-        {/* --- NOVO BOTÃO DE ORIENTAÇÃO --- */}
+        {/* --- NEW ORIENTATION BUTTON --- */}
         <TouchableOpacity
           onPress={toggleGuideOrientation}
           style={styles.controlButton}
@@ -280,7 +280,7 @@ export default function RecordVideoScreen({ navigation }) {
               { color: isRecording ? '#666' : 'white' },
             ]}
           >
-            Trocar
+            Switch
           </Text>
         </TouchableOpacity>
       </View>
@@ -288,7 +288,7 @@ export default function RecordVideoScreen({ navigation }) {
   );
 }
 
-// Estilos
+// Styles
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'black' },
   centered: {
