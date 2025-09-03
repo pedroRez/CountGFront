@@ -1,6 +1,12 @@
 {
-  "name": "coungfront",
+  "name": "countgfront",
   "version": "1.0.0",
+  "description": "Mobile interface for the CountG project built with React Native and Expo.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pedroRez/CountGFront"
+  },
   "main": "index.js",
   "scripts": {
     "start": "expo start",
