@@ -26,6 +26,10 @@ CountGFront is the mobile interface for the CountG project. Built with React Nat
    cd CountGFront
    npm install
    ```
+   Configure o arquivo `.env` para apontar para o backend local:
+   ```bash
+   EXPO_PUBLIC_API_URL="http://<seu-ip-local>:8000"
+   ```
 
 ## Usage
 
