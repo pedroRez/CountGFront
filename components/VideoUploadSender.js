@@ -66,46 +66,50 @@ export default function VideoUploadSender({
     setStatusText('Uploading... 0%');
 
     try {
-      const response = await axios.post(`${apiUrl}/upload-video/`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: (progressEvent) => {
-          // Prevent updates if loaded exceeds total
-          if (progressEvent.loaded > progressEvent.total) {
+      const responseData = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${apiUrl}/upload-video/`);
+        xhr.timeout = 600000;
+
+        xhr.upload.onprogress = (event) => {
+          if (event.loaded >= event.total) {
+            xhr.upload.onprogress = null;
             return;
           }
 
           console.log(
-            `[UPLOAD PROGRESS] Event received: loaded=${progressEvent.loaded}, total=${progressEvent.total}`
+            `[UPLOAD PROGRESS] Event received: loaded=${event.loaded}, total=${event.total}`
           );
 
-          let percent = 0;
-          if (progressEvent.total) {
-            percent = progressEvent.loaded / progressEvent.total;
-          }
-
-          // Clamp the value to a maximum of 1.0 (100%)
+          const percent = event.total ? event.loaded / event.total : 0;
           const clampedProgress = Math.min(percent, 1.0);
 
           setUploadProgress(clampedProgress);
+          setStatusText(`Uploading... ${Math.round(clampedProgress * 100)}%`);
+        };
 
-          const displayText = `Uploading... ${Math.round(
-            clampedProgress * 100
-          )}%`;
-          setStatusText(displayText);
-
-          if (progressEvent.loaded === progressEvent.total) {
-            console.log('[UPLOAD PROGRESS] Upload complete.');
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText));
+            } catch (e) {
+              resolve({});
+            }
+          } else {
+            reject(new Error('Upload failed'));
           }
-        },
-        timeout: 600000,
+        };
+
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.ontimeout = () => reject(new Error('Upload timeout'));
+
+        xhr.send(formData);
       });
 
-      // When upload finishes, initiate prediction
       setStatusText('Upload complete. Starting analysis...');
 
-      // Additional parameters required by the backend for prediction
       const predictResponse = await axios.post(`${apiUrl}/predict-video/`, {
-        nome_arquivo: response.data?.nome_arquivo,
+        nome_arquivo: responseData?.nome_arquivo,
         orientation,
         model_choice: modelChoice,
         // TODO: Replace placeholder values with real data as needed
@@ -118,7 +122,7 @@ export default function VideoUploadSender({
       }
     } catch (error) {
       const errorMsg =
-        error.response?.data?.detail || 'Failed to start video processing.';
+        error.response?.data?.detail || error.message || 'Failed to start video processing.';
       Alert.alert('Processing Error', errorMsg);
       if (onUploadError) onUploadError(error);
     } finally {
