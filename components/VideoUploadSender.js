@@ -69,7 +69,11 @@ export default function VideoUploadSender({
       const response = await axios.post(`${apiUrl}/upload-video/`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
-          // --- DEBUG LOGS ADDED HERE ---
+          // Prevent updates if loaded exceeds total
+          if (progressEvent.loaded > progressEvent.total) {
+            return;
+          }
+
           console.log(
             `[UPLOAD PROGRESS] Event received: loaded=${progressEvent.loaded}, total=${progressEvent.total}`
           );
@@ -78,20 +82,20 @@ export default function VideoUploadSender({
           if (progressEvent.total) {
             percent = progressEvent.loaded / progressEvent.total;
           }
-          console.log(
-            `[UPLOAD PROGRESS] Raw calculated percentage: ${percent}`
-          );
 
           // Clamp the value to a maximum of 1.0 (100%)
           const clampedProgress = Math.min(percent, 1.0);
-          console.log(
-            `[UPLOAD PROGRESS] Final progress (clamped to 1.0): ${clampedProgress}`
-          );
 
           setUploadProgress(clampedProgress);
 
-          const displayText = `Uploading... ${Math.round(clampedProgress * 100)}%`;
+          const displayText = `Uploading... ${Math.round(
+            clampedProgress * 100
+          )}%`;
           setStatusText(displayText);
+
+          if (progressEvent.loaded === progressEvent.total) {
+            console.log('[UPLOAD PROGRESS] Upload complete.');
+          }
         },
         timeout: 600000,
       });
@@ -99,18 +103,16 @@ export default function VideoUploadSender({
       // When upload finishes, initiate prediction
       setStatusText('Upload complete. Starting analysis...');
 
-      const predictResponse = await axios.post(
-        `${apiUrl}/predict-video/`,
-        { nome_arquivo: response.data?.nome_arquivo }
-      );
+      const predictResponse = await axios.post(`${apiUrl}/predict-video/`, {
+        nome_arquivo: response.data?.nome_arquivo,
+      });
 
       if (onProcessingStarted) {
         onProcessingStarted(predictResponse.data);
       }
     } catch (error) {
       const errorMsg =
-        error.response?.data?.detail ||
-        'Failed to start video processing.';
+        error.response?.data?.detail || 'Failed to start video processing.';
       Alert.alert('Processing Error', errorMsg);
       if (onUploadError) onUploadError(error);
     } finally {
