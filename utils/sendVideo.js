@@ -20,7 +20,7 @@ export async function pickAndUploadVideo() {
       type: 'video/mp4',
     });
 
-    const response = await axios.post(apiUrl, formData, {
+    const response = await axios.post(`${apiUrl}/upload-video/`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
 
