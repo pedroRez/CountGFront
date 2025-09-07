@@ -180,8 +180,9 @@ const HomeScreen = ({ route }) => {
   };
 
   const handleProcessingStarted = (responseData) => {
-    if (responseData && responseData.video_name) {
-      setProcessingVideoName(responseData.video_name);
+    const videoName = responseData?.video_name || responseData?.nome_arquivo;
+    if (videoName) {
+      setProcessingVideoName(videoName);
       setAppStatus('polling_progress');
     } else {
       Alert.alert('Error', 'The server did not start processing correctly.');

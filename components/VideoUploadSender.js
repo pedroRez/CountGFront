@@ -96,17 +96,22 @@ export default function VideoUploadSender({
         timeout: 600000,
       });
 
-      // When upload finishes, update status before calling the callback
-      setStatusText('Upload complete. Waiting for processing to start...');
+      // When upload finishes, initiate prediction
+      setStatusText('Upload complete. Starting analysis...');
+
+      const predictResponse = await axios.post(
+        `${apiUrl}/predict-video/`,
+        { nome_arquivo: response.data?.nome_arquivo }
+      );
 
       if (onProcessingStarted) {
-        onProcessingStarted(response.data);
+        onProcessingStarted(predictResponse.data);
       }
     } catch (error) {
       const errorMsg =
         error.response?.data?.detail ||
-        'Failed to upload video for processing.';
-      Alert.alert('Upload Error', errorMsg);
+        'Failed to start video processing.';
+      Alert.alert('Processing Error', errorMsg);
       if (onUploadError) onUploadError(error);
     } finally {
       setIsUploading(false);
