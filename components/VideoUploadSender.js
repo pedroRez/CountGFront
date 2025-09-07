@@ -103,8 +103,14 @@ export default function VideoUploadSender({
       // When upload finishes, initiate prediction
       setStatusText('Upload complete. Starting analysis...');
 
+      // Additional parameters required by the backend for prediction
       const predictResponse = await axios.post(`${apiUrl}/predict-video/`, {
         nome_arquivo: response.data?.nome_arquivo,
+        orientation,
+        model_choice: modelChoice,
+        // TODO: Replace placeholder values with real data as needed
+        target_classes: [],
+        line_position_ratio: null,
       });
 
       if (onProcessingStarted) {
