@@ -66,7 +66,7 @@ export default function VideoUploadSender({
     setStatusText('Uploading... 0%');
 
     try {
-      const response = await axios.post(`${apiUrl}/process-video/`, formData, {
+      const response = await axios.post(`${apiUrl}/upload-video/`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
           // --- DEBUG LOGS ADDED HERE ---
