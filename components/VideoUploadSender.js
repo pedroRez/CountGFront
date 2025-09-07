@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, Alert, StyleSheet } from 'react-native';
+import { View, Text, Alert, StyleSheet, TextInput } from 'react-native';
 import axios from 'axios';
 import BigButton from './BigButton';
-import CustomActivityIndicator from './CustomActivityIndicator';
 import { useApi } from '../context/ApiContext';
 
 const InternalProgressBar = ({ progress }) => (
@@ -29,6 +28,7 @@ export default function VideoUploadSender({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [statusText, setStatusText] = useState('Process Video');
+  const [linePositionRatio, setLinePositionRatio] = useState('0.5');
 
   const handleProcessRequest = async () => {
     if (!videoAsset || !orientation || !modelChoice) {
@@ -40,6 +40,15 @@ export default function VideoUploadSender({
     }
     if (!apiUrl) {
       Alert.alert('Configuration Error', 'The API URL was not found.');
+      return;
+    }
+
+    const ratioNum = parseFloat(linePositionRatio);
+    if (isNaN(ratioNum) || ratioNum < 0 || ratioNum > 1) {
+      Alert.alert(
+        'Invalid Ratio',
+        'Please provide a line position ratio between 0 and 1.'
+      );
       return;
     }
 
@@ -114,7 +123,7 @@ export default function VideoUploadSender({
         model_choice: modelChoice,
         // TODO: Replace placeholder values with real data as needed
         target_classes: [],
-        line_position_ratio: null,
+        line_position_ratio: ratioNum,
       });
 
       if (onProcessingStarted) {
@@ -133,6 +142,15 @@ export default function VideoUploadSender({
 
   return (
     <View style={styles.container}>
+      <View style={styles.inputWrapper}>
+        <Text style={styles.label}>Line Position Ratio (0-1)</Text>
+        <TextInput
+          style={styles.input}
+          value={linePositionRatio}
+          onChangeText={setLinePositionRatio}
+          keyboardType="numeric"
+        />
+      </View>
       <BigButton
         title={statusText}
         onPress={handleProcessRequest}
@@ -152,6 +170,15 @@ const styles = StyleSheet.create({
   container: { marginTop: 20, width: '100%', alignItems: 'center' },
   actionButton: { backgroundColor: '#28a745', width: '100%' },
   progressWrapper: { width: '100%', marginTop: 10 },
+  inputWrapper: { width: '100%', marginBottom: 10 },
+  label: { marginBottom: 5 },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 4,
+    padding: 8,
+    width: '100%',
+  },
   progressBarContainer: {
     height: 10,
     width: '100%',
