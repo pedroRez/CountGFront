@@ -1,6 +1,16 @@
-import React, { useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { VideoEditor } from 'expo-video-editor';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Dimensions,
+} from 'react-native';
+import {
+  VideoPlayer,
+  Trimmer,
+  ProcessingManager,
+} from 'react-native-video-processing';
 
 /**
  * Screen allowing the user to trim a video.
@@ -10,7 +20,11 @@ import { VideoEditor } from 'expo-video-editor';
  */
 export default function VideoEditorScreen({ route, navigation }) {
   const { asset } = route.params || {};
-  const editorRef = useRef(null);
+  const [startTime, setStartTime] = useState(0);
+  const initialDuration = asset?.duration ?? 0;
+  const [endTime, setEndTime] = useState(
+    initialDuration > 1000 ? initialDuration / 1000 : initialDuration,
+  );
 
   const handleCancel = () => {
     navigation.goBack();
@@ -18,12 +32,16 @@ export default function VideoEditorScreen({ route, navigation }) {
 
   const handleConfirm = async () => {
     try {
-      const result = await editorRef.current?.trimAsync();
-      if (result?.uri) {
+      const result = await ProcessingManager.trim(asset?.uri, {
+        startTime,
+        endTime,
+      });
+      if (result) {
+        const duration = (endTime - startTime) * 1000;
         const trimmedAsset = {
-          uri: result.uri,
-          duration: result.duration,
-          fileName: asset?.fileName || result.uri.split('/').pop(),
+          uri: result,
+          duration,
+          fileName: asset?.fileName || result.split('/').pop(),
           mimeType: asset?.mimeType || 'video/mp4',
           orientation: asset?.orientation,
         };
@@ -36,10 +54,26 @@ export default function VideoEditorScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
-      <VideoEditor
-        ref={editorRef}
+      <VideoPlayer
+        source={asset?.uri}
         style={styles.editor}
-        videoUri={asset?.uri}
+        startTime={startTime}
+        endTime={endTime}
+        play={false}
+        resizeMode={VideoPlayer.Constants.resizeMode.CONTAIN}
+      />
+
+      <Trimmer
+        source={asset?.uri}
+        onChange={({ startTime: s, endTime: e }) => {
+          setStartTime(s);
+          setEndTime(e);
+        }}
+        height={80}
+        width={Dimensions.get('window').width}
+        themeColor="#fff"
+        thumbWidth={14}
+        trackerColor="#007AFF"
       />
 
       {/* Future placeholder for direction selection */}
