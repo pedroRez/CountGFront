@@ -106,17 +106,22 @@ const HomeScreen = ({ route }) => {
 
   useFocusEffect(
     React.useCallback(() => {
-      if (route.params?.newlyRecordedVideo) {
-        const video = route.params.newlyRecordedVideo;
+      const { trimmedVideo, newlyRecordedVideo } = route.params || {};
+      const video = trimmedVideo || newlyRecordedVideo;
+      if (video) {
         resetAllStates();
         setSelectedVideoAsset(video);
         if (video.orientation) {
           setSelectedOrientation(video.orientation);
         }
         setAppStatus('selected');
-        navigation.setParams({ newlyRecordedVideo: null });
+        navigation.setParams({ trimmedVideo: null, newlyRecordedVideo: null });
       }
-    }, [route.params?.newlyRecordedVideo, navigation])
+    }, [
+      route.params?.trimmedVideo,
+      route.params?.newlyRecordedVideo,
+      navigation,
+    ])
   );
 
   useEffect(() => {
@@ -167,8 +172,7 @@ const HomeScreen = ({ route }) => {
         quality: 0.8,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setSelectedVideoAsset(result.assets[0]);
-        setAppStatus('selected');
+        navigation.navigate('VideoEditor', { asset: result.assets[0] });
       } else {
         resetAllStates();
       }

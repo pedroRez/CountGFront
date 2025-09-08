@@ -27,7 +27,7 @@ export default function VideoEditorScreen({ route, navigation }) {
           mimeType: asset?.mimeType || 'video/mp4',
           orientation: asset?.orientation,
         };
-        navigation.replace('Home', { newlyRecordedVideo: trimmedAsset });
+        navigation.navigate('Home', { trimmedVideo: trimmedAsset });
       }
     } catch (error) {
       console.warn('Video trimming failed', error);
