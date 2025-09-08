@@ -1,0 +1,11 @@
+venv/
+venv310/
+dataset/
+__pycache__/
+videos/
+uploads/
+videos_processados/
+videos_processados_temp/
+data/
+model/
+.env

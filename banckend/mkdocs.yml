@@ -1,0 +1,29 @@
+# To preview the documentation locally, run:
+#   mkdocs serve
+# To deploy to GitHub Pages, run:
+#   mkdocs gh-deploy --force
+
+site_name: CountG
+docs_dir: docs
+
+nav:
+  - Home: en/index.md
+  - Environment Setup: en/setup.md
+  - API Reference: en/api-reference.md
+
+plugins:
+  - search
+  - mkdocs-static-i18n:
+      default_language: en
+      languages:
+        en: English
+        pt: Português
+      docs_structure: folder
+      nav_translations:
+        pt:
+          Home: Início
+          Environment Setup: Configuração do Ambiente
+          API Reference: Referência da API
+
+theme:
+  name: material
