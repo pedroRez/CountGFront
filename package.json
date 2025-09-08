@@ -38,7 +38,8 @@
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
-    "react-native-video-processing": "^1.7.2"
+    "expo-av": "~15.1.7",
+    "ffmpeg-kit-react-native": "^6.0.2"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
