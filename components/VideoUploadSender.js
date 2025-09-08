@@ -31,7 +31,9 @@ export default function VideoUploadSender({
   const [linePositionRatio, setLinePositionRatio] = useState('0.5');
 
   const handleProcessRequest = async () => {
-    if (!videoAsset || !orientation || !modelChoice) {
+    const assetUri = videoAsset?.uri || videoAsset?.localUri;
+    const finalOrientation = orientation || videoAsset?.orientation;
+    if (!assetUri || !finalOrientation || !modelChoice) {
       Alert.alert(
         'Missing Data',
         'Please select a video, orientation, and processing level.'
@@ -52,16 +54,16 @@ export default function VideoUploadSender({
       return;
     }
 
-    const fileName = videoAsset.fileName || videoAsset.uri.split('/').pop();
+    const fileName = videoAsset.fileName || assetUri.split('/').pop();
     const mimeType = videoAsset.mimeType || 'video/mp4';
 
     const formData = new FormData();
     formData.append('file', {
-      uri: videoAsset.uri,
+      uri: assetUri,
       name: fileName,
       type: mimeType,
     });
-    formData.append('orientation', orientation);
+    formData.append('orientation', finalOrientation);
     formData.append('model_choice', modelChoice);
     if (email && email.trim() !== '') {
       formData.append('email', email.trim());
@@ -119,7 +121,7 @@ export default function VideoUploadSender({
 
       const predictResponse = await axios.post(`${apiUrl}/predict-video/`, {
         nome_arquivo: responseData?.nome_arquivo,
-        orientation,
+        orientation: finalOrientation,
         model_choice: modelChoice,
         // TODO: Replace placeholder values with real data as needed
         target_classes: [],
@@ -131,7 +133,9 @@ export default function VideoUploadSender({
       }
     } catch (error) {
       const errorMsg =
-        error.response?.data?.detail || error.message || 'Failed to start video processing.';
+        error.response?.data?.detail ||
+        error.message ||
+        'Failed to start video processing.';
       Alert.alert('Processing Error', errorMsg);
       if (onUploadError) onUploadError(error);
     } finally {
