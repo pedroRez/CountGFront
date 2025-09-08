@@ -6,11 +6,19 @@ import {
   TouchableOpacity,
   Dimensions,
 } from 'react-native';
-import {
-  VideoPlayer,
-  Trimmer,
-  ProcessingManager,
-} from 'react-native-video-processing';
+
+let VideoPlayer;
+let Trimmer;
+let ProcessingManager;
+try {
+  ({
+    VideoPlayer,
+    Trimmer,
+    ProcessingManager,
+  } = require('react-native-video-processing'));
+} catch (error) {
+  console.warn('react-native-video-processing module is not available', error);
+}
 
 /**
  * Screen allowing the user to trim a video.
@@ -23,17 +31,20 @@ export default function VideoEditorScreen({ route, navigation }) {
   const [startTime, setStartTime] = useState(0);
   const initialDuration = asset?.duration ?? 0;
   const [endTime, setEndTime] = useState(
-    initialDuration > 1000 ? initialDuration / 1000 : initialDuration,
+    initialDuration > 1000 ? initialDuration / 1000 : initialDuration
   );
 
-  const resizeMode =
-    VideoPlayer?.Constants?.resizeMode?.CONTAIN ?? 'contain';
+  const resizeMode = VideoPlayer?.Constants?.resizeMode?.CONTAIN ?? 'contain';
 
   const handleCancel = () => {
     navigation.goBack();
   };
 
   const handleConfirm = async () => {
+    if (!ProcessingManager) {
+      console.warn('ProcessingManager is not available');
+      return;
+    }
     try {
       const result = await ProcessingManager.trim(asset?.uri, {
         startTime,
@@ -54,6 +65,16 @@ export default function VideoEditorScreen({ route, navigation }) {
       console.warn('Video trimming failed', error);
     }
   };
+
+  if (!VideoPlayer || !Trimmer || !ProcessingManager) {
+    return (
+      <View style={[styles.container, styles.placeholder]}>
+        <Text style={styles.placeholderText}>
+          Player de vídeo não está disponível
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
