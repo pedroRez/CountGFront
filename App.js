@@ -5,7 +5,8 @@ import { View, StyleSheet, Alert, AppState } from 'react-native';
 import axios from 'axios';
 import AppNavigator from './navigation/AppNavigator';
 import CustomActivityIndicator from './components/CustomActivityIndicator';
-import { ApiProvider, useApi } from './context/ApiContext'; // Import our provider and hook
+import { ApiProvider, useApi } from './context/ApiContext';
+import { OrientationMapProvider } from './context/OrientationMapContext';
 
 const APP_LAUNCHED_KEY = 'appAlreadyLaunched';
 
@@ -102,7 +103,9 @@ const AppContent = () => {
 export default function App() {
   return (
     <ApiProvider>
-      <AppContent />
+      <OrientationMapProvider>
+        <AppContent />
+      </OrientationMapProvider>
     </ApiProvider>
   );
 }
