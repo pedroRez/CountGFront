@@ -26,6 +26,9 @@ export default function VideoEditorScreen({ route, navigation }) {
     initialDuration > 1000 ? initialDuration / 1000 : initialDuration,
   );
 
+  const resizeMode =
+    VideoPlayer?.Constants?.resizeMode?.CONTAIN ?? 'contain';
+
   const handleCancel = () => {
     navigation.goBack();
   };
@@ -60,7 +63,7 @@ export default function VideoEditorScreen({ route, navigation }) {
         startTime={startTime}
         endTime={endTime}
         play={false}
-        resizeMode={VideoPlayer.Constants.resizeMode.CONTAIN}
+        resizeMode={resizeMode}
       />
 
       <Trimmer
