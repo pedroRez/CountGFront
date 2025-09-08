@@ -107,12 +107,19 @@ const HomeScreen = ({ route }) => {
   useFocusEffect(
     React.useCallback(() => {
       const { trimmedVideo, newlyRecordedVideo } = route.params || {};
-      const video = trimmedVideo || newlyRecordedVideo;
-      if (video) {
+      const rawVideo = trimmedVideo || newlyRecordedVideo;
+      if (rawVideo?.uri) {
         resetAllStates();
-        setSelectedVideoAsset(video);
-        if (video.orientation) {
-          setSelectedOrientation(video.orientation);
+        const enrichedVideo = {
+          uri: rawVideo.uri,
+          fileName: rawVideo.fileName || rawVideo.uri.split('/').pop(),
+          mimeType: rawVideo.mimeType || 'video/mp4',
+          duration: rawVideo.duration ?? 0,
+          orientation: rawVideo.orientation || null,
+        };
+        setSelectedVideoAsset(enrichedVideo);
+        if (enrichedVideo.orientation) {
+          setSelectedOrientation(enrichedVideo.orientation);
         }
         setAppStatus('selected');
         navigation.setParams({ trimmedVideo: null, newlyRecordedVideo: null });
