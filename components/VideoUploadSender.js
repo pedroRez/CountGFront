@@ -19,6 +19,7 @@ export default function VideoUploadSender({
   videoAsset,
   orientation,
   modelChoice,
+  targetClasses,
   onProcessingStarted,
   onUploadError,
 }) {
@@ -109,14 +110,21 @@ export default function VideoUploadSender({
 
       setStatusText('Upload complete. Starting analysis...');
 
-      const predictResponse = await axios.post(`${apiUrl}/predict-video/`, {
+      const predictPayload = {
         nome_arquivo: responseData?.nome_arquivo,
         orientation: finalOrientation,
         model_choice: modelChoice,
-        // TODO: Replace placeholder values with real data as needed
-        target_classes: [],
         line_position_ratio: ratioNum,
-      });
+        target_classes:
+          Array.isArray(targetClasses) && targetClasses.length > 0
+            ? targetClasses
+            : null,
+      };
+
+      const predictResponse = await axios.post(
+        `${apiUrl}/predict-video/`,
+        predictPayload
+      );
 
       if (onProcessingStarted) {
         onProcessingStarted(predictResponse.data);
