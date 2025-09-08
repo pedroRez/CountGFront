@@ -12,6 +12,7 @@ import ResultsScreen from '../screens/ResultsScreen';
 import RecordVideoScreen from '../screens/RecordVideoScreen';
 import CameraTestScreen from '../screens/CameraTestScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import VideoEditorScreen from '../screens/VideoEditorScreen';
 import CustomHeader from '../components/CustomHeader'; // <<< Import our new header
 
 const Stack = createNativeStackNavigator();
@@ -70,6 +71,11 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
               name="CameraTest"
               component={CameraTestScreen}
               options={{ title: 'Camera Test' }}
+            />
+            <Stack.Screen
+              name="VideoEditor"
+              component={VideoEditorScreen}
+              options={{ title: 'Edit Video' }}
             />
           </React.Fragment>
         )}
