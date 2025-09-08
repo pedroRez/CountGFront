@@ -22,19 +22,49 @@ MOVE_TB, MOVE_BT, MOVE_LR, MOVE_RL = (
 
 def get_line_and_direction_config(
     orientation_code: str, width: int, height: int, line_ratio: float = 0.5
-):
+) -> Tuple[str, str, Tuple[Tuple[int, int], Tuple[int, int]], int]:
+    """Configure counting line type and direction.
+
+    The orientation code must be one of ``"N"``, ``"E"``, ``"S"`` or ``"W"``.
+
+    Parameters
+    ----------
+    orientation_code:
+        Cardinal orientation for counting line: ``"N"``, ``"E"``, ``"S"`` or ``"W"``.
+    width:
+        Video frame width in pixels.
+    height:
+        Video frame height in pixels.
+    line_ratio:
+        Relative position of the line in the frame. Defaults to ``0.5``.
+
+    Returns
+    -------
+    tuple
+        ``(line_type, direction, line_points, line_pos_value)`` where
+        ``line_type`` is ``"horizontal"`` or ``"vertical"`` and ``direction``
+        describes movement across the line.
+
+    Raises
+    ------
+    ValueError
+        If ``orientation_code`` is not one of the supported values.
+    """
     orientation_code = str(orientation_code).upper()
+    if orientation_code not in {"N", "E", "S", "W"}:
+        raise ValueError("orientation_code must be one of 'N', 'E', 'S', or 'W'")
+
     line_pos_value = int(
-        (height if orientation_code in ["N", "S"] else width) * line_ratio
+        (height if orientation_code in {"N", "S"} else width) * line_ratio
     )
-    if orientation_code in ["N", "S"]:
+    if orientation_code in {"N", "S"}:
         return (
             LINE_HORIZONTAL,
             MOVE_BT if orientation_code == "N" else MOVE_TB,
             ((0, line_pos_value), (width, line_pos_value)),
             line_pos_value,
         )
-    else:  # E, W, ou padrão
+    else:  # orientation_code is "E" or "W"
         return (
             LINE_VERTICAL,
             MOVE_LR if orientation_code == "E" else MOVE_RL,
@@ -150,14 +180,15 @@ def contar_gado_colab(video_path: str, model_path: str, orientation: str):
     logger.info(f"Vídeo processado salvo como: {output_filename}")
 
 
-# --- EXECUÇÃO DO TESTE ---
-# Substitua os nomes de arquivo pelos que você enviou
-NOME_DO_VIDEO_DE_TESTE = "curto.mp4"
-NOME_DO_MODELO_YOLO = "yolov8l.pt"
-ORIENTACAO_DE_TESTE = "E"  # Teste com 'N', 'S', 'E', ou 'W'
+if __name__ == "__main__":
+    # --- EXECUÇÃO DO TESTE ---
+    # Substitua os nomes de arquivo pelos que você enviou
+    NOME_DO_VIDEO_DE_TESTE = "curto.mp4"
+    NOME_DO_MODELO_YOLO = "yolov8l.pt"
+    ORIENTACAO_DE_TESTE = "E"  # Teste com 'N', 'S', 'E', ou 'W'
 
-contar_gado_colab(
-    video_path=NOME_DO_VIDEO_DE_TESTE,
-    model_path=NOME_DO_MODELO_YOLO,
-    orientation=ORIENTACAO_DE_TESTE,
-)
+    contar_gado_colab(
+        video_path=NOME_DO_VIDEO_DE_TESTE,
+        model_path=NOME_DO_MODELO_YOLO,
+        orientation=ORIENTACAO_DE_TESTE,
+    )

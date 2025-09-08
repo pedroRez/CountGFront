@@ -10,7 +10,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from schemas import VideoRequest
-from utils.contagem_video import contar_gado_em_video
+from utils.contagem_video import contar_gado_em_video, get_line_and_direction_config
 from utils.gerenciador_progresso import ProgressoManager
 
 router = APIRouter()
@@ -154,6 +154,11 @@ async def predict_video_endpoint(request: VideoRequest):
     upload_folder_abs = os.path.abspath(UPLOAD_FOLDER)
     if not abs_path.startswith(upload_folder_abs + os.sep):
         raise HTTPException(status_code=400, detail="Nome de arquivo inválido.")
+
+    try:
+        get_line_and_direction_config(request.orientation, 1, 1)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid orientation code.")
 
     if progresso_manager.is_processing(video_name_on_server):
         logger.warning(

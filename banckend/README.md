@@ -77,6 +77,8 @@ CREATE_ANNOTATED_VIDEO=true
 OMP_NUM_THREADS=12
 ```
 
+Quando `CREATE_ANNOTATED_VIDEO` está ativado, o vídeo anotado (com linha e contador) é salvo. Se `USE_SFTP=false`, o arquivo ficará disponível localmente em `videos_processados/`.
+
 ### Uso da API
 Exemplos de requisições:
 
@@ -198,6 +200,8 @@ USE_SFTP=false
 CREATE_ANNOTATED_VIDEO=true
 OMP_NUM_THREADS=12
 ```
+
+When `CREATE_ANNOTATED_VIDEO` is enabled, the service saves the annotated video (with line and counter). If `USE_SFTP=false`, the file is kept locally in `videos_processados/`.
 
 ### API Usage
 Request examples:

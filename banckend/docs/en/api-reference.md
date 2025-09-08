@@ -18,6 +18,24 @@ favorite API explorer.
 curl http://localhost:8000/
 ```
 
+## `GET /orientation-map`
+Retrieve the list of orientation codes (`N`, `E`, `S`, `W`) with
+human-friendly labels and arrow symbols. Useful for building a directional
+selector in the UI.
+
+**Response**
+```json
+{
+  "N": {"label": "North", "arrow": "\u2191"},
+  "E": {"label": "East", "arrow": "\u2192"},
+  "S": {"label": "South", "arrow": "\u2193"},
+  "W": {"label": "West", "arrow": "\u2190"}
+}
+```
+```bash
+curl http://localhost:8000/orientation-map
+```
+
 ## `POST /upload-video/`
 Upload a video file. Supported formats: `.mp4`, `.mov`, `.avi`, `.mkv`. The
 maximum allowed size is **500 MB**.
@@ -44,7 +62,7 @@ Start processing a previously uploaded video.
 Required fields:
 
 - `nome_arquivo` (string): unique filename returned by `/upload-video/`.
-- `orientation` (string): one of `N`, `NE`, `E`, `SE`, `S`, `SW`, `W`, `NW`.
+- `orientation` (`Orientation` enum): one of `N`, `E`, `S`, `W`. Use [`GET /orientation-map`](#get-orientation-map) to display these options in the UI.
 - `line_position_ratio` (number between `0.0` and `1.0`, default `0.5`):
   counting line position for horizontal/vertical lines.
 

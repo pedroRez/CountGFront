@@ -18,6 +18,23 @@ utilize o link no seu explorador de APIs preferido.
 curl http://localhost:8000/
 ```
 
+## `GET /orientation-map`
+Retorna o mapeamento dos códigos de orientação (`N`, `E`, `S`, `W`) com rótulos
+legíveis e setas. Útil para construir um seletor visual no frontend.
+
+**Resposta**
+```json
+{
+  "N": {"label": "North", "arrow": "\u2191"},
+  "E": {"label": "East", "arrow": "\u2192"},
+  "S": {"label": "South", "arrow": "\u2193"},
+  "W": {"label": "West", "arrow": "\u2190"}
+}
+```
+```bash
+curl http://localhost:8000/orientation-map
+```
+
 ## `POST /upload-video/`
 Envia um arquivo de vídeo.
 
@@ -43,7 +60,7 @@ Inicia o processamento de um vídeo previamente enviado.
 **Campos obrigatórios**
 
 - `nome_arquivo` (string): nome único do vídeo enviado.
-- `orientation` (string): direção do movimento; valores possíveis: `N`, `NE`, `E`, `SE`, `S`, `SW`, `W`, `NW`.
+- `orientation` (`Orientation` enum): direção do movimento; valores possíveis: `N`, `E`, `S`, `W`. Use [`GET /orientation-map`](#get-orientation-map) para exibir essas opções na interface.
 - `line_position_ratio` (número entre `0.0` e `1.0`, padrão `0.5`): posição da linha de contagem.
 
 **Campos opcionais**

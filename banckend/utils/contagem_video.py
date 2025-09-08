@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import logging
 import os
+import subprocess
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -12,17 +15,68 @@ logger = logging.getLogger(__name__)
 # --- Constantes para Clareza ---
 LINE_HORIZONTAL: str = "horizontal"
 LINE_VERTICAL: str = "vertical"
-LINE_DIAGONAL_FWD: str = "diag_fwd"
-LINE_DIAGONAL_BCK: str = "diag_bck"
-
 MOVE_TB: str = "top_bottom"
 MOVE_BT: str = "bottom_top"
 MOVE_LR: str = "left_right"
 MOVE_RL: str = "right_left"
-MOVE_TL_BR: str = "topleft_bottomright"
-MOVE_BR_TL: str = "bottomright_topleft"
-MOVE_TR_BL: str = "topright_bottomleft"
-MOVE_BL_TR: str = "bottomleft_topright"
+
+
+def get_video_rotation(video_path: str) -> int:
+    """Retrieve rotation metadata / Obtém metadados de rotação.
+
+    English:
+        Runs ``ffprobe`` to read the ``rotate`` tag from the first video
+        stream. Returns the rotation angle in degrees (0, 90, 180 or 270).
+
+    Português:
+        Executa ``ffprobe`` para ler a tag ``rotate`` do primeiro stream de
+        vídeo. Retorna o ângulo de rotação em graus (0, 90, 180 ou 270).
+    """
+
+    try:
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream_tags=rotate",
+            "-of",
+            "default=nw=1:nk=1",
+            video_path,
+        ]
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+        )
+        rotation = int(result.stdout.strip())
+        return rotation % 360
+    except Exception as e:  # pragma: no cover - fallback in case of failure
+        logger.debug("Rotation metadata not found or ffprobe failed: %s", e)
+        return 0
+
+
+def apply_rotation(frame: np.ndarray, rotation: int) -> np.ndarray:
+    """Rotate frame according to metadata / Rotaciona frame de acordo com metadados.
+
+    English:
+        Rotates the frame using OpenCV based on the rotation angle.
+
+    Português:
+        Rotaciona o frame utilizando OpenCV conforme o ângulo informado.
+    """
+
+    if rotation == 90:
+        return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    if rotation == 180:
+        return cv2.rotate(frame, cv2.ROTATE_180)
+    if rotation == 270:
+        return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    return frame
 
 
 def get_line_and_direction_config(
@@ -36,8 +90,10 @@ def get_line_and_direction_config(
     orientation code.
 
     Parâmetros / Parameters:
-        orientation_code (str): Código da orientação (ex.: ``"N"`` para norte).
-            Orientation code (e.g. ``"N"`` for north).
+        orientation_code (str): Código da orientação (``"N"``, ``"E"``,
+            ``"S"`` ou ``"W"``).
+            Orientation code, must be one of ``"N"``, ``"E"``, ``"S"`` or
+            ``"W"``.
         width (int): Largura do frame do vídeo.
             Video frame width.
         height (int): Altura do frame do vídeo.
@@ -53,12 +109,14 @@ def get_line_and_direction_config(
         ``(line_type, direction, line_points, line_pos_value, arrow_points)``.
 
     Efeitos colaterais / Side Effects:
-        Emite mensagens de log quando a orientação é desconhecida.
-        Logs a warning when the orientation is unknown.
+        Nenhum.
+        None.
 
     Exceções / Exceptions:
-        Nenhuma é lançada explicitamente.
-        None are explicitly raised.
+        ValueError: Lançada quando ``orientation_code`` não está entre
+            ``"N"``, ``"E"``, ``"S"`` ou ``"W"``.
+        ValueError: Raised when ``orientation_code`` is not one of
+            ``"N"``, ``"E"``, ``"S"`` or ``"W"``.
     """
     (
         line_type,
@@ -69,6 +127,14 @@ def get_line_and_direction_config(
     ) = (None, None, None, None, None)
     orientation_code = str(orientation_code).upper()
     arrow_offset = 60
+
+    if orientation_code not in {"N", "E", "S", "W"}:
+        msg = (
+            f"[AVISO get_line_config] Orientação '{orientation_code}' inválida. "
+            "Use apenas N, E, S ou W."
+        )
+        logger.warning(msg)
+        raise ValueError(msg)
 
     if orientation_code == "S":
         line_type, effective_counting_direction = LINE_HORIZONTAL, MOVE_TB
@@ -94,49 +160,13 @@ def get_line_and_direction_config(
             (line_pos_value - arrow_offset, height // 2),
             (line_pos_value + arrow_offset, height // 2),
         )
-    elif orientation_code == "W":
+    else:  # orientation_code == "W"
         line_type, effective_counting_direction = LINE_VERTICAL, MOVE_RL
         line_pos_value = int(width * line_ratio)
         line_points = ((line_pos_value, 0), (line_pos_value, height))
         arrow_points = (
             (line_pos_value + arrow_offset, height // 2),
             (line_pos_value - arrow_offset, height // 2),
-        )
-    elif orientation_code == "SE":
-        line_type, effective_counting_direction = LINE_DIAGONAL_FWD, MOVE_TL_BR
-        line_points, arrow_points = ((0, 0), (width, height)), (
-            (width // 4, height // 4),
-            (3 * width // 4, 3 * height // 4),
-        )
-    elif orientation_code == "NW":
-        line_type, effective_counting_direction = LINE_DIAGONAL_FWD, MOVE_BR_TL
-        line_points, arrow_points = ((0, 0), (width, height)), (
-            (3 * width // 4, 3 * height // 4),
-            (width // 4, height // 4),
-        )
-    elif orientation_code == "NE":
-        line_type, effective_counting_direction = LINE_DIAGONAL_BCK, MOVE_BL_TR
-        line_points, arrow_points = ((0, height), (width, 0)), (
-            (width // 4, 3 * height // 4),
-            (3 * width // 4, height // 4),
-        )
-    elif orientation_code == "SW":
-        line_type, effective_counting_direction = LINE_DIAGONAL_BCK, MOVE_TR_BL
-        line_points, arrow_points = ((0, height), (width, 0)), (
-            (3 * width // 4, height // 4),
-            (width // 4, 3 * height // 4),
-        )
-    else:
-        logger.warning(
-            f"[AVISO get_line_config] Orientação '{orientation_code}' desconhecida. Usando padrão Leste (E)."
-        )
-        line_type = LINE_VERTICAL
-        effective_counting_direction = MOVE_LR
-        line_pos_value = int(width * line_ratio)
-        line_points = ((line_pos_value, 0), (line_pos_value, height))
-        arrow_points = (
-            (line_pos_value - arrow_offset, height // 2),
-            (line_pos_value + arrow_offset, height // 2),
         )
 
     logger.debug(
@@ -149,65 +179,6 @@ def get_line_and_direction_config(
         line_pos_value,
         arrow_points,
     )
-
-
-# !!! ATENÇÃO: ESTA FUNÇÃO PARA DETECÇÃO DIAGONAL É UM ESBOÇO CONCEITUAL. !!!
-def is_crossing_diagonal_line(
-    p_prev_x: int,
-    p_prev_y: int,
-    p_curr_x: int,
-    p_curr_y: int,
-    line_p1: Tuple[int, int],
-    line_p2: Tuple[int, int],
-    direction: str,
-) -> bool:
-    """Verifica se um objeto cruzou uma linha diagonal.
-
-    Check whether an object crossed a diagonal line.
-
-    Parâmetros / Parameters:
-        p_prev_x, p_prev_y (int): Coordenadas anteriores do objeto.
-            Previous object coordinates.
-        p_curr_x, p_curr_y (int): Coordenadas atuais do objeto.
-            Current object coordinates.
-        line_p1, line_p2 (Tuple[int, int]): Pontos que definem a linha.
-            Points that define the line.
-        direction (str): Direção esperada do cruzamento.
-            Expected crossing direction.
-
-    Retorno / Returns:
-        bool: ``True`` se o objeto cruzou na direção especificada, ``False`` caso contrário.
-        ``True`` if the object crossed in the expected direction, ``False`` otherwise.
-
-    Efeitos colaterais / Side Effects:
-        Nenhum.
-        None.
-
-    Exceções / Exceptions:
-        Nenhuma é lançada explicitamente.
-        None are explicitly raised.
-    """
-    (x1_line, y1_line), (x2_line, y2_line) = line_p1, line_p2
-    val_prev = (float(p_prev_y - y1_line) * (x2_line - x1_line)) - (
-        float(p_prev_x - x1_line) * (y2_line - y1_line)
-    )
-    val_curr = (float(p_curr_y - y1_line) * (x2_line - x1_line)) - (
-        float(p_curr_x - x1_line) * (y2_line - y1_line)
-    )
-    crossed = (val_prev < 0 and val_curr >= 0) or (val_prev > 0 and val_curr <= 0)
-    if not crossed:
-        return False
-    # Verificação de direção SIMPLIFICADA (precisa ser melhorada)
-    if direction == MOVE_TL_BR:
-        return p_curr_x > p_prev_x and p_curr_y > p_prev_y
-    elif direction == MOVE_BR_TL:
-        return p_curr_x < p_prev_x and p_curr_y < p_prev_y
-    elif direction == MOVE_BL_TR:
-        return p_curr_x > p_prev_x and p_curr_y < p_prev_y
-    elif direction == MOVE_TR_BL:
-        return p_curr_x < p_prev_x and p_curr_y > p_prev_y
-    return False
-
 
 def contar_gado_em_video(
     video_path: str,
@@ -223,7 +194,11 @@ def contar_gado_em_video(
 ) -> Optional[Dict[str, Any]]:
     """Realiza a contagem de gado em um arquivo de vídeo.
 
-    Count cattle in a video file.
+    Count cattle in a video file. Frames are rotated according to rotation
+    metadata before processing.
+
+    Os frames são rotacionados conforme metadados de rotação antes do
+    processamento.
 
     Parâmetros / Parameters:
         video_path (str): Caminho local para o vídeo.
@@ -339,11 +314,14 @@ def contar_gado_em_video(
             progresso_manager.erro(video_name, "Falha ao abrir o arquivo de vídeo.")
         return None
 
+    rotation = get_video_rotation(local_video_path)
     original_frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = cap.get(cv2.CAP_PROP_FPS)
     _fps = fps if fps > 0 else 30.0
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    if rotation in (90, 270):
+        width, height = height, width
 
     if width == 0 or height == 0:
         if progresso_manager:
@@ -377,7 +355,9 @@ def contar_gado_em_video(
     local_output_path = ""
     processed_fn = ""
     if CREATE_ANNOTATED_VIDEO:
-        output_dir_local = "videos_processados_temp"
+        output_dir_local = (
+            "videos_processados_temp" if USE_SFTP else "videos_processados"
+        )
         os.makedirs(output_dir_local, exist_ok=True)
         base_name, vid_ext = os.path.splitext(video_name)
         processed_fn = f"processed_{base_name}{vid_ext}"
@@ -411,6 +391,9 @@ def contar_gado_em_video(
         ret, frame = cap.read()
         if not ret:
             break
+
+        if rotation:
+            frame = apply_rotation(frame, rotation)
 
         if frame_atual % frame_skip == 0:
             if not progresso_manager.atualizar(
@@ -471,22 +454,6 @@ def contar_gado_em_video(
                                 and curr_x <= line_coord_val
                             ):
                                 crossed = True
-                        elif (
-                            line_type.startswith("diag")
-                            and has_prev_pos
-                            and line_points is not None
-                        ):
-                            if is_crossing_diagonal_line(
-                                track_previous_x[track_id],
-                                track_previous_y[track_id],
-                                curr_x,
-                                curr_y,
-                                line_points[0],
-                                line_points[1],
-                                str(effective_counting_dir),
-                            ):
-                                crossed = True
-
                         if crossed and (
                             target_classes is None or nome_cls in target_classes
                         ):
@@ -604,15 +571,9 @@ def contar_gado_em_video(
                 if progresso_manager:
                     progresso_manager.erro(video_name, public_url)
         else:
-            # Provide the local file path to the caller before cleanup in case the frontend
-            # needs to access the processed video. The file is removed immediately after
-            # logging.
+            # Store the processed video locally for later access.
             public_url = local_output_path
-            logger.info(
-                f"[INFO] Processed video saved at {local_output_path} and will not be uploaded."
-            )
-            if os.path.exists(local_output_path):
-                os.remove(local_output_path)
+            logger.info(f"[INFO] Processed video saved at {local_output_path}.")
 
     if USE_SFTP:
         if CREATE_ANNOTATED_VIDEO and os.path.exists(local_output_path):

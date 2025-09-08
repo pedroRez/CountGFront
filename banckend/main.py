@@ -2,12 +2,13 @@ import logging
 import os
 
 from dotenv import load_dotenv
+
 # any other module that uses these variables.
 load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routes import video_routes
+from routes import orientation_routes, video_routes
 
 # --- CRITICAL STEP: LOAD ENVIRONMENT VARIABLES FIRST! ---
 # This call must be one of the first lines of your entry point before importing
@@ -20,7 +21,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Create the FastAPI application instance
-app = FastAPI()
+app = FastAPI(
+    title="CountG API",
+    version="0.1.0",
+    description="FastAPI backend for counting and tracking objects in video.",
+)
 
 # CORS configuration (allows frontend to communicate with backend)
 # Allows a React Native app (running on a different origin) to talk to the API.
@@ -39,6 +44,7 @@ app.add_middleware(
 
 # Include routes from video_routes.py
 app.include_router(video_routes.router)
+app.include_router(orientation_routes.router)
 
 
 # Root endpoint for health check

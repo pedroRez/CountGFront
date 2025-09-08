@@ -10,6 +10,7 @@ nav:
   - Home: en/index.md
   - Environment Setup: en/setup.md
   - API Reference: en/api-reference.md
+  - OpenAPI Schema: openapi.json
 
 plugins:
   - search
@@ -24,6 +25,7 @@ plugins:
           Home: Início
           Environment Setup: Configuração do Ambiente
           API Reference: Referência da API
+          OpenAPI Schema: Esquema OpenAPI
 
 theme:
   name: material
