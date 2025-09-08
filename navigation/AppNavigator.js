@@ -75,7 +75,7 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
             <Stack.Screen
               name="VideoEditor"
               component={VideoEditorScreen}
-              options={{ title: 'Edit Video' }}
+              options={{ headerShown: false }}
             />
           </React.Fragment>
         )}
