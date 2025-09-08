@@ -60,7 +60,8 @@
           "recordAudioAndroid": true
         }
       ],
-      "expo-font"
+      "expo-font",
+      "@imgly/editor-react-native"
     ],
     "assetBundlePatterns": ["assets/images/*", "assets/fonts/*"],
     "extra": {
