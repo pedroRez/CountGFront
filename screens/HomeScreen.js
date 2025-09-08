@@ -22,6 +22,7 @@ import VideoUploadSender from '../components/VideoUploadSender';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import MenuButton from '../components/MenuButton';
 import { useApi } from '../context/ApiContext';
+import { useOrientationMap } from '../context/OrientationMapContext';
 
 const { MediaTypeOptions } = ImagePicker;
 
@@ -58,13 +59,6 @@ const formatDuration = (millis) => {
   return str;
 };
 
-const ORIENTATIONS = [
-  { id: 'N', label: 'Bottom ↑ Top' },
-  { id: 'S', label: 'Top ↓ Bottom' },
-  { id: 'E', label: 'Left → Right' },
-  { id: 'W', label: 'Right ← Left' },
-];
-
 const MODEL_OPTIONS = [
   { id: 'n', label: 'Fast', description: 'Lower accuracy' },
   { id: 'm', label: 'Normal', description: 'Balanced' },
@@ -74,6 +68,7 @@ const MODEL_OPTIONS = [
 const HomeScreen = ({ route }) => {
   const navigation = useNavigation();
   const { apiUrl } = useApi();
+  const { orientationMap, fetchOrientationMap } = useOrientationMap();
   const [selectedVideoAsset, setSelectedVideoAsset] = useState(null);
   const [isPickerLoading, setIsPickerLoading] = useState(false);
   const [appStatus, setAppStatus] = useState('idle');
@@ -86,6 +81,10 @@ const HomeScreen = ({ route }) => {
 
   const pollingIntervalRef = useRef(null);
   const appStateListenerRef = useRef(AppState.currentState);
+
+  useEffect(() => {
+    fetchOrientationMap();
+  }, [fetchOrientationMap]);
 
   React.useLayoutEffect(() => {
     navigation.setOptions({
@@ -408,27 +407,33 @@ const HomeScreen = ({ route }) => {
             <View style={styles.choiceSection}>
               <Text style={styles.choiceTitle}>Movement Orientation</Text>
               <View style={styles.orientationButtonsContainer}>
-                {ORIENTATIONS.map((orient) => (
-                  <TouchableOpacity
-                    key={orient.id}
-                    style={[
-                      styles.orientationButton,
-                      selectedOrientation === orient.id &&
-                        styles.orientationButtonSelected,
-                    ]}
-                    onPress={() => setSelectedOrientation(orient.id)}
-                  >
-                    <Text
-                      style={[
-                        styles.orientationButtonText,
-                        selectedOrientation === orient.id &&
-                          styles.orientationButtonTextSelected,
-                      ]}
-                    >
-                      {orient.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {orientationMap ? (
+                  Object.entries(orientationMap).map(
+                    ([id, { label, arrow }]) => (
+                      <TouchableOpacity
+                        key={id}
+                        style={[
+                          styles.orientationButton,
+                          selectedOrientation === id &&
+                            styles.orientationButtonSelected,
+                        ]}
+                        onPress={() => setSelectedOrientation(id)}
+                      >
+                        <Text
+                          style={[
+                            styles.orientationButtonText,
+                            selectedOrientation === id &&
+                              styles.orientationButtonTextSelected,
+                          ]}
+                        >
+                          {label} {arrow}
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  )
+                ) : (
+                  <CustomActivityIndicator size="small" color="#007AFF" />
+                )}
               </View>
             </View>
             <View style={styles.choiceSection}>
