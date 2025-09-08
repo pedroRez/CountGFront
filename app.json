@@ -21,7 +21,10 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "permissions": ["READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE"],
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
       "versionCode": 2,
       "package": "com.rezendepedro.CounG"
     },
@@ -60,10 +63,12 @@
           "recordAudioAndroid": true
         }
       ],
-      "expo-font",
-      "@imgly/editor-react-native"
+      "expo-font"
     ],
-    "assetBundlePatterns": ["assets/images/*", "assets/fonts/*"],
+    "assetBundlePatterns": [
+      "assets/images/*",
+      "assets/fonts/*"
+    ],
     "extra": {
       "eas": {
         "projectId": "a46adc85-0390-4ed7-a306-abd542a28655"
