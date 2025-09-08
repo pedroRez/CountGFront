@@ -17,8 +17,6 @@ const InternalProgressBar = ({ progress }) => (
 
 export default function VideoUploadSender({
   videoAsset,
-  email,
-  consent,
   orientation,
   modelChoice,
   onProcessingStarted,
@@ -63,14 +61,6 @@ export default function VideoUploadSender({
       name: fileName,
       type: mimeType,
     });
-    formData.append('orientation', finalOrientation);
-    formData.append('model_choice', modelChoice);
-    if (email && email.trim() !== '') {
-      formData.append('email', email.trim());
-    }
-    if (consent) {
-      formData.append('consent', String(consent));
-    }
 
     setIsUploading(true);
     setUploadProgress(0);
