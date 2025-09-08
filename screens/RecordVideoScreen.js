@@ -144,7 +144,7 @@ export default function RecordVideoScreen({ navigation }) {
         orientation: currentOrientation.id, // <<< ENVIA A ORIENTAÇÃO SELECIONADA
       };
 
-      navigation.replace('Home', { newlyRecordedVideo: recordedVideoAsset });
+      navigation.replace('VideoEditor', { asset: recordedVideoAsset });
     } catch (error) {
       if (
         error.message.includes(
