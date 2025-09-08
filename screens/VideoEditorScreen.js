@@ -23,8 +23,11 @@ export default function VideoEditorScreen({ route, navigation }) {
         const trimmedAsset = {
           uri: result.uri,
           duration: result.duration,
+          fileName: asset?.fileName || result.uri.split('/').pop(),
+          mimeType: asset?.mimeType || 'video/mp4',
+          orientation: asset?.orientation,
         };
-        navigation.navigate('Home', { trimmedVideo: trimmedAsset });
+        navigation.replace('Home', { newlyRecordedVideo: trimmedAsset });
       }
     } catch (error) {
       console.warn('Video trimming failed', error);
