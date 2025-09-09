@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,19 +6,9 @@ import {
   TouchableOpacity,
   Dimensions,
 } from 'react-native';
-
-let VideoPlayer;
-let Trimmer;
-let ProcessingManager;
-try {
-  ({
-    VideoPlayer,
-    Trimmer,
-    ProcessingManager,
-  } = require('react-native-video-processing'));
-} catch (error) {
-  console.warn('react-native-video-processing module is not available', error);
-}
+import { Video, ResizeMode } from 'expo-av';
+import * as VideoManipulator from 'expo-video-manipulator'; // ou métodos do ffmpeg-kit
+import Slider from '@react-native-community/slider'; // UI para seleção de tempo
 
 /**
  * Screen allowing the user to trim a video.
@@ -30,32 +20,28 @@ export default function VideoEditorScreen({ route, navigation }) {
   const { asset } = route.params || {};
   const [startTime, setStartTime] = useState(0);
   const initialDuration = asset?.duration ?? 0;
-  const [endTime, setEndTime] = useState(
-    initialDuration > 1000 ? initialDuration / 1000 : initialDuration
-  );
-
-  const resizeMode = VideoPlayer?.Constants?.resizeMode?.CONTAIN ?? 'contain';
+  const totalDuration =
+    initialDuration > 1000 ? initialDuration / 1000 : initialDuration;
+  const [endTime, setEndTime] = useState(totalDuration);
+  const videoRef = useRef(null);
 
   const handleCancel = () => {
     navigation.goBack();
   };
 
   const handleConfirm = async () => {
-    if (!ProcessingManager) {
-      console.warn('ProcessingManager is not available');
-      return;
-    }
     try {
-      const result = await ProcessingManager.trim(asset?.uri, {
-        startTime,
-        endTime,
-      });
+      const result = await VideoManipulator.manipulateAsync(
+        asset?.uri,
+        [{ trim: [startTime, endTime] }],
+        { compress: 0, format: VideoManipulator.SaveFormat.MP4 }
+      );
       if (result) {
         const duration = (endTime - startTime) * 1000;
         const trimmedAsset = {
-          uri: result,
+          uri: result.uri,
           duration,
-          fileName: asset?.fileName || result.split('/').pop(),
+          fileName: asset?.fileName || result.uri.split('/').pop(),
           mimeType: asset?.mimeType || 'video/mp4',
           orientation: asset?.orientation,
         };
@@ -66,39 +52,34 @@ export default function VideoEditorScreen({ route, navigation }) {
     }
   };
 
-  if (!VideoPlayer || !Trimmer || !ProcessingManager) {
-    return (
-      <View style={[styles.container, styles.placeholder]}>
-        <Text style={styles.placeholderText}>
-          Player de vídeo não está disponível
-        </Text>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
-      <VideoPlayer
-        source={asset?.uri}
+      <Video
+        ref={videoRef}
+        source={{ uri: asset?.uri }}
         style={styles.editor}
-        startTime={startTime}
-        endTime={endTime}
-        play={false}
-        resizeMode={resizeMode}
+        resizeMode={ResizeMode.CONTAIN}
+        shouldPlay={false}
       />
 
-      <Trimmer
-        source={asset?.uri}
-        onChange={({ startTime: s, endTime: e }) => {
-          setStartTime(s);
-          setEndTime(e);
-        }}
-        height={80}
-        width={Dimensions.get('window').width}
-        themeColor="#fff"
-        thumbWidth={14}
-        trackerColor="#007AFF"
-      />
+      <View style={styles.sliderContainer}>
+        <Text style={styles.sliderLabel}>Start: {startTime.toFixed(2)}s</Text>
+        <Slider
+          style={styles.slider}
+          minimumValue={0}
+          maximumValue={endTime}
+          value={startTime}
+          onValueChange={setStartTime}
+        />
+        <Text style={styles.sliderLabel}>End: {endTime.toFixed(2)}s</Text>
+        <Slider
+          style={styles.slider}
+          minimumValue={startTime}
+          maximumValue={totalDuration}
+          value={endTime}
+          onValueChange={setEndTime}
+        />
+      </View>
 
       {/* Future placeholder for direction selection */}
       <View style={styles.placeholder}>
@@ -132,6 +113,18 @@ const styles = StyleSheet.create({
   },
   editor: {
     flex: 1,
+  },
+  sliderContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  slider: {
+    width: Dimensions.get('window').width - 32,
+    height: 40,
+  },
+  sliderLabel: {
+    color: '#fff',
+    textAlign: 'center',
   },
   placeholder: {
     padding: 16,
