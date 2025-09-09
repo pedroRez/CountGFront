@@ -39,7 +39,9 @@
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
     "expo-av": "~15.1.7",
-    "ffmpeg-kit-react-native": "^6.0.2"
+    "ffmpeg-kit-react-native": "^6.0.2",
+    "@react-native-community/slider": "^5.0.1",
+    "expo-video-manipulator": "*"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
