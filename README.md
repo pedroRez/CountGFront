@@ -110,8 +110,8 @@ The `*-gpl` variants include GPL components and are built with the
 
 ## Known Limitations and Future Improvements
 
-- The trimming screen is built on `react-native-video-processing` and provides
-  only a basic timeline. Frame-precise control and visual thumbnails are not yet
+- The trimming screen currently uses Expo's video manipulator and provides only
+  a basic timeline. Frame-precise control and visual thumbnails are not yet
   available.
 - The current UI may feel clunky for long videos and lacks accessibility
   features.
@@ -120,8 +120,8 @@ Future work:
 
 - Implement a custom dual-thumb slider for start/end selection with preview
   thumbnails.
-- Integrate trimming directly with `ffmpeg-kit` or `expo-video-manipulator` for
-  better performance and cross-platform consistency.
+- Integrate trimming directly with `ffmpeg-kit` for better performance and
+  cross-platform consistency.
 - Extend the editor to support additional operations such as rotation or
   multiple segments.
 
