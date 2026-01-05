@@ -36,59 +36,21 @@ CountGFront is the mobile interface for the CountG project. Built with React Nat
 The app manipulates audio and video and relies on a few extra packages:
 
 - [`expo-av`](https://docs.expo.dev/versions/latest/sdk/av/) for playback and
-  recording.
-- [`expo-video-manipulator`](https://docs.expo.dev/versions/latest/sdk/video-manipulator/)
-  for simple trimming in a fully managed workflow.
-- [`ffmpeg-kit-react-native`](https://github.com/arthenica/ffmpeg-kit)
-  when advanced processing is needed.
+  preview.
+- [`@react-native-community/slider`](https://github.com/callstack/react-native-slider)
+  for trim selection UI.
 
-Install the packages with Expo's helper, choosing either `expo-video-manipulator`
-or `ffmpeg-kit-react-native` depending on the desired workflow:
+Video trimming is applied on the backend using the selected start/end range
+to keep the Expo managed workflow stable.
+
+Install the packages with Expo's helper:
 
 ```bash
-npx expo install expo-av
-
-# Expo managed workflow (lightweight)
-npx expo install expo-video-manipulator
-
-# Bare / prebuild workflow with full FFmpeg
-npm install ffmpeg-kit-react-native
+npx expo install expo-av @react-native-community/slider
 ```
 
-Using `ffmpeg-kit-react-native` requires generating the native project with
-`npx expo prebuild` and building through `expo run:android` or `expo run:ios`.
-
-### Hermes
-
-Hermes is enabled by default in recent React Native versions. If build issues
-occur with `ffmpeg-kit-react-native`, disable Hermes by setting
-`"jsEngine": "jsc"` in `app.json` or by toggling `hermesEnabled=false` in
-`android/gradle.properties`.
-
-### ffmpeg-kit package size and build flags
-
-`ffmpeg-kit-react-native` ships in different variants that impact the final
-binary size:
-
-- `min` / `min-gpl` – smaller, with a reduced codec set.
-- `full` / `full-gpl` – include most codecs but can push the APK/IPA well above
-  typical store limits.
-
-Select a variant during the native build:
-
-```gradle
-// android/build.gradle
-ext.ffmpegKitPackage = "min-gpl"  // or "full-gpl"
-```
-
-```ruby
-# ios/Podfile
-pod 'ffmpeg-kit-react-native/full-gpl'
-```
-
-The `*-gpl` variants include GPL components and are built with the
-`--enable-gpl` flag. Other compile-time flags may be added following the
-[ffmpeg-kit documentation](https://github.com/arthenica/ffmpeg-kit#configure-ffmpeg).
+The frontend sends optional `trim_start_ms` and `trim_end_ms` fields with
+the predict request when a range is selected.
 
 ## Usage
 
@@ -110,18 +72,16 @@ The `*-gpl` variants include GPL components and are built with the
 
 ## Known Limitations and Future Improvements
 
-- The trimming screen currently uses Expo's video manipulator and provides only
-  a basic timeline. Frame-precise control and visual thumbnails are not yet
-  available.
-- The current UI may feel clunky for long videos and lacks accessibility
-  features.
+- The trimming screen captures start/end markers only; the full video is still
+  uploaded and the backend is responsible for cutting the segment.
+- Frame-precise control and visual thumbnails are not yet available.
 
 Future work:
 
 - Implement a custom dual-thumb slider for start/end selection with preview
   thumbnails.
-- Integrate trimming directly with `ffmpeg-kit` for better performance and
-  cross-platform consistency.
+- Explore a maintained native trimming solution to upload only the selected
+  segment.
 - Extend the editor to support additional operations such as rotation or
   multiple segments.
 

@@ -59,6 +59,14 @@ const formatDuration = (millis) => {
   return str;
 };
 
+const formatOrientationLabel = (orientationId, orientationMap) => {
+  if (!orientationId) return 'Nao definido';
+  const details = orientationMap?.[orientationId];
+  if (!details) return orientationId;
+  const arrow = details.arrow ? ` ${details.arrow}` : '';
+  return `${details.label}${arrow}`;
+};
+
 const MODEL_OPTIONS = [
   { id: 'n', label: 'Fast', description: 'Lower accuracy' },
   { id: 'm', label: 'Normal', description: 'Balanced' },
@@ -115,6 +123,8 @@ const HomeScreen = ({ route }) => {
           mimeType: rawVideo.mimeType || 'video/mp4',
           duration: rawVideo.duration ?? 0,
           orientation: rawVideo.orientation || null,
+            trimStartMs: rawVideo.trimStartMs ?? null,
+            trimEndMs: rawVideo.trimEndMs ?? null,
         };
         setSelectedVideoAsset(enrichedVideo);
         if (enrichedVideo.orientation) {
@@ -406,35 +416,15 @@ const HomeScreen = ({ route }) => {
             </View>
             <View style={styles.choiceSection}>
               <Text style={styles.choiceTitle}>Movement Orientation</Text>
-              <View style={styles.orientationButtonsContainer}>
-                {orientationMap ? (
-                  Object.entries(orientationMap).map(
-                    ([id, { label, arrow }]) => (
-                      <TouchableOpacity
-                        key={id}
-                        style={[
-                          styles.orientationButton,
-                          selectedOrientation === id &&
-                            styles.orientationButtonSelected,
-                        ]}
-                        onPress={() => setSelectedOrientation(id)}
-                      >
-                        <Text
-                          style={[
-                            styles.orientationButtonText,
-                            selectedOrientation === id &&
-                              styles.orientationButtonTextSelected,
-                          ]}
-                        >
-                          {label} {arrow}
-                        </Text>
-                      </TouchableOpacity>
-                    )
-                  )
-                ) : (
-                  <CustomActivityIndicator size="small" color="#007AFF" />
-                )}
-              </View>
+              {orientationMap ? (
+                <View style={styles.orientationSummary}>
+                  <Text style={styles.orientationSummaryText}>
+                    {formatOrientationLabel(selectedOrientation, orientationMap)}
+                  </Text>
+                </View>
+              ) : (
+                <CustomActivityIndicator size="small" color="#007AFF" />
+              )}
             </View>
             <View style={styles.choiceSection}>
               <Text style={styles.choiceTitle}>Processing Level</Text>
@@ -648,34 +638,20 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     color: '#333',
   },
-  orientationButtonsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-around',
-  },
-  orientationButton: {
+  orientationSummary: {
     backgroundColor: '#f0f0f0',
     padding: 12,
     borderRadius: 8,
     borderWidth: 1.5,
     borderColor: '#ddd',
-    margin: 4,
-    width: '47%',
-    minHeight: 50,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  orientationButtonSelected: {
-    backgroundColor: '#007AFF',
-    borderColor: '#0056b3',
-  },
-  orientationButtonText: {
+  orientationSummaryText: {
     color: '#333',
     fontSize: 14,
     textAlign: 'center',
     fontWeight: 'bold',
   },
-  orientationButtonTextSelected: { color: 'white' },
   modelButtonsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',

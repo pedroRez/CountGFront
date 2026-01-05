@@ -110,11 +110,25 @@ export default function VideoUploadSender({
 
       setStatusText('Upload complete. Starting analysis...');
 
+      const trimStartMs = Number.isFinite(videoAsset?.trimStartMs)
+        ? Math.max(0, Math.round(videoAsset.trimStartMs))
+        : null;
+      const trimEndMs = Number.isFinite(videoAsset?.trimEndMs)
+        ? Math.max(0, Math.round(videoAsset.trimEndMs))
+        : null;
+      const hasTrimRange =
+        Number.isFinite(trimStartMs) &&
+        Number.isFinite(trimEndMs) &&
+        trimEndMs > trimStartMs;
+
       const predictPayload = {
         nome_arquivo: responseData?.nome_arquivo,
         orientation: finalOrientation,
         model_choice: modelChoice,
         line_position_ratio: ratioNum,
+        ...(hasTrimRange
+          ? { trim_start_ms: trimStartMs, trim_end_ms: trimEndMs }
+          : {}),
         target_classes:
           Array.isArray(targetClasses) && targetClasses.length > 0
             ? targetClasses
