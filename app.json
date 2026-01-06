@@ -63,7 +63,8 @@
           "recordAudioAndroid": true
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-sqlite"
     ],
     "assetBundlePatterns": [
       "assets/images/*",
