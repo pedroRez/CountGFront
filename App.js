@@ -8,6 +8,7 @@ import CustomActivityIndicator from './components/CustomActivityIndicator';
 import { ApiProvider, useApi } from './context/ApiContext';
 import { OrientationMapProvider } from './context/OrientationMapContext';
 import { LanguageProvider } from './context/LanguageContext';
+import { CountsProvider } from './context/CountsContext';
 
 const APP_LAUNCHED_KEY = 'appAlreadyLaunched';
 
@@ -105,9 +106,11 @@ export default function App() {
   return (
     <LanguageProvider>
       <ApiProvider>
-        <OrientationMapProvider>
-          <AppContent />
-        </OrientationMapProvider>
+        <CountsProvider>
+          <OrientationMapProvider>
+            <AppContent />
+          </OrientationMapProvider>
+        </CountsProvider>
       </ApiProvider>
     </LanguageProvider>
   );

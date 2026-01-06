@@ -36,6 +36,7 @@ const translations = {
       filmingGuideTitle: 'Guia de filmagem',
       settingsTitle: 'Configuracoes',
       cameraTestTitle: 'Teste de camera',
+      processedVideoTitle: 'Video processado',
     },
     settings: {
       title: 'Configuracoes da API',
@@ -91,10 +92,27 @@ const translations = {
         linePositionNotSet: 'Nao definido',
         backToEdit: 'Voltar para edicao',
         cancel: 'Cancelar / escolher outro',
+        countNameLabel: 'Nome da contagem',
+        countNamePlaceholder: 'Ex: Lote 3 - curral A',
+        countDescriptionLabel: 'Descricao',
+        countDescriptionPlaceholder: 'Descreva esta contagem',
+      },
+      counts: {
+        title: 'Contagens',
+        empty: 'Nenhuma contagem salva ainda.',
+        countLabel: 'Quantidade',
+        dateLabel: 'Data',
+        playVideo: 'Reproduzir',
+        unnamed: 'Contagem',
+        noVideo: 'Video nao disponivel',
       },
       processing: {
         title: 'Analisando video no servidor...',
         cancel: 'Cancelar analise',
+        savingTitle: 'Salvando video processado...',
+        saveErrorTitle: 'Erro ao salvar video',
+        saveErrorMessage:
+          'Nao foi possivel salvar o video processado no celular.',
       },
       progress: {
         preparing: 'Preparando...',
@@ -197,6 +215,11 @@ const translations = {
       missingDataTitle: 'Dados faltando',
       missingDataMessage:
         'Selecione um video, uma orientacao e um nivel de processamento.',
+      missingCountNameTitle: 'Nome da contagem',
+      missingCountNameMessage: 'Informe um nome para esta contagem.',
+      missingCountDescriptionTitle: 'Descricao da contagem',
+      missingCountDescriptionMessage:
+        'Informe uma descricao para esta contagem.',
       configErrorTitle: 'Erro de configuracao',
       configErrorMessage: 'A URL da API nao foi encontrada.',
       processingErrorTitle: 'Erro no processamento',
@@ -298,6 +321,7 @@ const translations = {
       filmingGuideTitle: 'Filming Guide',
       settingsTitle: 'Settings',
       cameraTestTitle: 'Camera Test',
+      processedVideoTitle: 'Processed video',
     },
     settings: {
       title: 'API Settings',
@@ -352,10 +376,27 @@ const translations = {
         linePositionNotSet: 'Not set',
         backToEdit: 'Back to edit',
         cancel: 'Cancel / Choose Another',
+        countNameLabel: 'Count name',
+        countNamePlaceholder: 'Example: Lot 3 - corral A',
+        countDescriptionLabel: 'Description',
+        countDescriptionPlaceholder: 'Describe this count',
+      },
+      counts: {
+        title: 'Counts',
+        empty: 'No saved counts yet.',
+        countLabel: 'Count',
+        dateLabel: 'Date',
+        playVideo: 'Play',
+        unnamed: 'Count',
+        noVideo: 'Video not available',
       },
       processing: {
         title: 'Analyzing video on server...',
         cancel: 'Cancel Analysis',
+        savingTitle: 'Saving processed video...',
+        saveErrorTitle: 'Save error',
+        saveErrorMessage:
+          'Could not save the processed video on this device.',
       },
       progress: {
         preparing: 'Preparing...',
@@ -457,6 +498,11 @@ const translations = {
       missingDataTitle: 'Missing Data',
       missingDataMessage:
         'Please select a video, orientation, and processing level.',
+      missingCountNameTitle: 'Count name',
+      missingCountNameMessage: 'Please provide a name for this count.',
+      missingCountDescriptionTitle: 'Count description',
+      missingCountDescriptionMessage:
+        'Please provide a description for this count.',
       configErrorTitle: 'Configuration Error',
       configErrorMessage: 'The API URL was not found.',
       processingErrorTitle: 'Processing Error',

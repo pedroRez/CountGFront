@@ -15,6 +15,7 @@ import RecordVideoScreen from '../screens/RecordVideoScreen';
 import CameraTestScreen from '../screens/CameraTestScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import VideoEditorScreen from '../screens/VideoEditorScreen';
+import ProcessedVideoScreen from '../screens/ProcessedVideoScreen';
 import CustomHeader from '../components/CustomHeader'; // <<< Import our new header
 import { useLanguage } from '../context/LanguageContext';
 
@@ -25,8 +26,8 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
   const renderHeaderBack = (navigation) => (
     <TouchableOpacity
       onPress={() => navigation.goBack()}
-      style={{ paddingHorizontal: 12, paddingVertical: 6 }}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      style={{ paddingHorizontal: 14, paddingVertical: 8, marginLeft: 6 }}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
     >
       <MaterialCommunityIcons name="chevron-left" size={30} color="#007AFF" />
     </TouchableOpacity>
@@ -71,6 +72,14 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
               component={ResultsScreen}
               options={({ navigation }) => ({
                 title: t('nav.resultsTitle'),
+                headerLeft: () => renderHeaderBack(navigation),
+              })}
+            />
+            <Stack.Screen
+              name="ProcessedVideo"
+              component={ProcessedVideoScreen}
+              options={({ navigation }) => ({
+                title: t('nav.processedVideoTitle'),
                 headerLeft: () => renderHeaderBack(navigation),
               })}
             />

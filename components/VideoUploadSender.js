@@ -18,6 +18,8 @@ const InternalProgressBar = ({ progress }) => (
 
 export default function VideoUploadSender({
   videoAsset,
+  countName,
+  countDescription,
   orientation,
   modelChoice,
   targetClasses,
@@ -38,6 +40,22 @@ export default function VideoUploadSender({
   const handleProcessRequest = async () => {
     const assetUri = videoAsset?.uri || videoAsset?.localUri;
     const finalOrientation = orientation || videoAsset?.orientation;
+    const trimmedCountName = (countName || '').trim();
+    const trimmedDescription = (countDescription || '').trim();
+    if (!trimmedCountName) {
+      Alert.alert(
+        t('upload.missingCountNameTitle'),
+        t('upload.missingCountNameMessage')
+      );
+      return;
+    }
+    if (!trimmedDescription) {
+      Alert.alert(
+        t('upload.missingCountDescriptionTitle'),
+        t('upload.missingCountDescriptionMessage')
+      );
+      return;
+    }
     if (!assetUri || !finalOrientation || !modelChoice) {
       Alert.alert(
         t('upload.missingDataTitle'),

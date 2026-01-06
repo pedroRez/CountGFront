@@ -47,7 +47,12 @@ const ResultsScreen = ({ route, navigation }) => {
 
         <BigButton
           title={t('results.submitNewVideo')}
-          onPress={() => navigation.navigate('Home', { resetHome: true })} // Return to Home and reset state
+          onPress={() =>
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Home', params: { resetHome: true } }],
+            })
+          } // Return to Home and reset state
           buttonStyle={styles.newAnalysisButton}
         />
       </ScrollView>

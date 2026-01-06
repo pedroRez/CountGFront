@@ -17,6 +17,8 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
+import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
 
 import BigButton from '../components/BigButton';
 import VideoUploadSender from '../components/VideoUploadSender';
@@ -25,6 +27,7 @@ import MenuButton from '../components/MenuButton';
 import { useApi } from '../context/ApiContext';
 import { useOrientationMap } from '../context/OrientationMapContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useCounts } from '../context/CountsContext';
 
 const { MediaTypeOptions } = ImagePicker;
 
@@ -82,6 +85,22 @@ const normalizeDurationMs = (value) => {
   return value > 1000 ? Math.round(value) : Math.round(value * 1000);
 };
 
+const sanitizeFileName = (value) => {
+  if (!value) return 'contagem';
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 24);
+};
+
+const formatDateTime = (value) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleString();
+};
+
 const PROCESSING_STATE_KEY = '@processing_state';
 
 const HomeScreen = ({ route }) => {
@@ -89,17 +108,20 @@ const HomeScreen = ({ route }) => {
   const { apiUrl } = useApi();
   const { orientationMap, fetchOrientationMap } = useOrientationMap();
   const { t } = useLanguage();
+  const { counts, refreshCounts, addCount } = useCounts();
   const [selectedVideoAsset, setSelectedVideoAsset] = useState(null);
   const [isPickerLoading, setIsPickerLoading] = useState(false);
   const [appStatus, setAppStatus] = useState('idle');
   const [processingVideoName, setProcessingVideoName] = useState(null);
   const [backendProgressData, setBackendProgressData] = useState(null);
-  const [userEmail, setUserEmail] = useState('');
-  const [userConsent, setUserConsent] = useState(false);
+  const [countName, setCountName] = useState('');
+  const [countDescription, setCountDescription] = useState('');
   const [selectedOrientation, setSelectedOrientation] = useState(null);
   const [modelChoice, setModelChoice] = useState('m');
   const [hasCheckedProcessingState, setHasCheckedProcessingState] =
     useState(false);
+  const [processingMeta, setProcessingMeta] = useState(null);
+  const [isFinalizing, setIsFinalizing] = useState(false);
 
   const modelOptions = [
     {
@@ -144,6 +166,11 @@ const HomeScreen = ({ route }) => {
         const parsed = JSON.parse(savedState);
         if (parsed?.videoName) {
           setProcessingVideoName(parsed.videoName);
+          if (parsed.meta) {
+            setProcessingMeta(parsed.meta);
+            setCountName(parsed.meta.countName || '');
+            setCountDescription(parsed.meta.countDescription || '');
+          }
           setBackendProgressData(null);
           setAppStatus('polling_progress');
         } else {
@@ -185,7 +212,9 @@ const HomeScreen = ({ route }) => {
       }
       const rawVideo = trimmedVideo || newlyRecordedVideo;
       if (rawVideo?.uri) {
-        resetAllStates();
+        const keepCountInputs =
+          !!trimmedVideo && (countName || countDescription);
+        resetAllStates({ keepCountInputs });
         const enrichedVideo = {
           uri: rawVideo.uri,
           fileName: rawVideo.fileName || rawVideo.uri.split('/').pop(),
@@ -213,8 +242,16 @@ const HomeScreen = ({ route }) => {
       route.params?.trimmedVideo,
       route.params?.newlyRecordedVideo,
       route.params?.resetHome,
+      countName,
+      countDescription,
       navigation,
     ])
+  );
+
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshCounts();
+    }, [refreshCounts])
   );
 
   useEffect(() => {
@@ -234,7 +271,7 @@ const HomeScreen = ({ route }) => {
     };
   }, [appStatus, processingVideoName]);
 
-  const resetAllStates = () => {
+  const resetAllStates = ({ keepCountInputs = false } = {}) => {
     AsyncStorage.removeItem(PROCESSING_STATE_KEY).catch((error) => {
       console.warn('Failed to clear processing state:', error);
     });
@@ -245,10 +282,14 @@ const HomeScreen = ({ route }) => {
     pollingIntervalRef.current = null;
     setAppStatus('idle');
     setIsPickerLoading(false);
-    setUserEmail('');
-    setUserConsent(false);
+    if (!keepCountInputs) {
+      setCountName('');
+      setCountDescription('');
+    }
     setSelectedOrientation(null);
     setModelChoice('m');
+    setProcessingMeta(null);
+    setIsFinalizing(false);
   };
 
   const handlePickFromGallery = async () => {
@@ -282,6 +323,68 @@ const HomeScreen = ({ route }) => {
     setIsPickerLoading(false);
   };
 
+  const buildProcessingMeta = (assetOverride) => {
+    const asset = assetOverride || selectedVideoAsset;
+    const fileName =
+      asset?.fileName || (asset?.uri ? asset.uri.split('/').pop() : null);
+    return {
+      countName: (countName || '').trim(),
+      countDescription: (countDescription || '').trim(),
+      originalVideoName: fileName,
+      orientation: selectedOrientation || asset?.orientation || null,
+      trimStartMs:
+        asset?.trimStartMs === null || asset?.trimStartMs === undefined
+          ? null
+          : Number(asset?.trimStartMs),
+      trimEndMs:
+        asset?.trimEndMs === null || asset?.trimEndMs === undefined
+          ? null
+          : Number(asset?.trimEndMs),
+      linePositionRatio: Number.isFinite(asset?.linePositionRatio)
+        ? asset.linePositionRatio
+        : null,
+      modelChoice,
+    };
+  };
+
+  const resolveProcessedUrl = (url) => {
+    if (!url || typeof url !== 'string') return null;
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    if (!apiUrl) return url;
+    const trimmedApiUrl = apiUrl.replace(/\/+$/, '');
+    const trimmedUrl = url.replace(/^\/+/, '');
+    return `${trimmedApiUrl}/${trimmedUrl}`;
+  };
+
+  const downloadProcessedVideo = async (url, nameForFile) => {
+    const resolvedUrl = resolveProcessedUrl(url);
+    if (!resolvedUrl) return null;
+    const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
+    const safeName = sanitizeFileName(nameForFile);
+    const fileName = `countg_${safeName}_${timestamp}.mp4`;
+    const targetUri = `${FileSystem.documentDirectory}${fileName}`;
+    const downloadResult = await FileSystem.downloadAsync(resolvedUrl, targetUri);
+
+    let savedUri = downloadResult.uri;
+    let savedToGallery = false;
+    try {
+      const permission = await MediaLibrary.requestPermissionsAsync();
+      if (permission.status === 'granted') {
+        const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
+        savedUri = asset.uri;
+        savedToGallery = true;
+      }
+    } catch (error) {
+      console.warn('Failed to save video to gallery:', error);
+    }
+
+    return {
+      downloadUri: downloadResult.uri,
+      savedUri,
+      savedToGallery,
+    };
+  };
+
   const handleBackToEditor = () => {
     if (!selectedVideoAsset?.uri) return;
     const originalDurationMs =
@@ -298,10 +401,12 @@ const HomeScreen = ({ route }) => {
   const handleProcessingStarted = (responseData) => {
     const videoName = responseData?.video_name || responseData?.nome_arquivo;
     if (videoName) {
+      const meta = buildProcessingMeta();
       setProcessingVideoName(videoName);
+      setProcessingMeta(meta);
       AsyncStorage.setItem(
         PROCESSING_STATE_KEY,
-        JSON.stringify({ videoName, startedAt: Date.now() })
+        JSON.stringify({ videoName, startedAt: Date.now(), meta })
       ).catch((error) => {
         console.warn('Failed to save processing state:', error);
       });
@@ -314,6 +419,78 @@ const HomeScreen = ({ route }) => {
 
   const handleUploadError = (error) => {
     setAppStatus('selected');
+  };
+
+  const handleProcessingComplete = async (result) => {
+    if (isFinalizing) return;
+    setIsFinalizing(true);
+    setAppStatus('saving_result');
+
+    const meta = processingMeta || buildProcessingMeta();
+    const processedUrl = result?.video_processado || null;
+    let savedVideoInfo = null;
+
+    if (processedUrl) {
+      try {
+        savedVideoInfo = await downloadProcessedVideo(
+          processedUrl,
+          meta.countName
+        );
+      } catch (error) {
+        Alert.alert(
+          t('home.processing.saveErrorTitle'),
+          t('home.processing.saveErrorMessage')
+        );
+      }
+    } else {
+      Alert.alert(
+        t('home.processing.saveErrorTitle'),
+        t('home.processing.saveErrorMessage')
+      );
+    }
+
+    const totalCount = Number.isFinite(Number(result?.total_count))
+      ? Number(result?.total_count)
+      : null;
+    const record = {
+      name: meta.countName || t('home.counts.unnamed'),
+      description: meta.countDescription,
+      createdAt: new Date().toISOString(),
+      totalCount,
+      processedVideoUrl: processedUrl,
+      localVideoUri: savedVideoInfo?.savedUri || savedVideoInfo?.downloadUri,
+      savedToGallery: savedVideoInfo?.savedToGallery || false,
+      originalVideoName: meta.originalVideoName,
+      orientation: meta.orientation,
+      trimStartMs: meta.trimStartMs,
+      trimEndMs: meta.trimEndMs,
+      linePositionRatio: meta.linePositionRatio,
+      modelChoice: meta.modelChoice,
+    };
+
+    try {
+      await addCount(record);
+    } catch (error) {
+      Alert.alert(
+        t('home.processing.saveErrorTitle'),
+        t('home.processing.saveErrorMessage')
+      );
+    }
+
+    try {
+      await AsyncStorage.removeItem(PROCESSING_STATE_KEY);
+    } catch (error) {
+      console.warn('Failed to clear processing state:', error);
+    }
+
+    setProcessingMeta(null);
+    setIsFinalizing(false);
+    navigation.navigate('ResultsScreen', {
+      results: result,
+      savedVideoUri: record.localVideoUri || null,
+      countRecord: record,
+    });
+    setTimeout(() => resetAllStates(), 500);
   };
 
   const checkBackendProgress = async (videoName) => {
@@ -338,11 +515,8 @@ const HomeScreen = ({ route }) => {
           );
           resetAllStates();
         } else if (progressData.resultado) {
-          Alert.alert(t('home.alerts.analysisComplete'));
-          navigation.navigate('ResultsScreen', {
-            results: progressData.resultado,
-          });
-          setTimeout(() => resetAllStates(), 500);
+          if (isFinalizing) return;
+          await handleProcessingComplete(progressData.resultado);
         } else {
           Alert.alert(
             t('home.alerts.processingComplete'),
@@ -389,6 +563,60 @@ const HomeScreen = ({ route }) => {
         resetAllStates();
       }
     }
+  };
+
+  const renderCountsSection = () => {
+    if (!counts) return null;
+    return (
+      <View style={styles.countsSection}>
+        <Text style={styles.countsTitle}>{t('home.counts.title')}</Text>
+        {counts.length === 0 ? (
+          <Text style={styles.countsEmpty}>{t('home.counts.empty')}</Text>
+        ) : (
+          counts.map((count) => (
+            <View key={count.id} style={styles.countCard}>
+              <View style={styles.countCardHeader}>
+                <Text style={styles.countName} numberOfLines={1}>
+                  {count.name}
+                </Text>
+                <Text style={styles.countDate}>
+                  {formatDateTime(count.created_at)}
+                </Text>
+              </View>
+              {!!count.description && (
+                <Text style={styles.countDescription}>{count.description}</Text>
+              )}
+              <View style={styles.countMetaRow}>
+                <Text style={styles.countMetaLabel}>
+                  {t('home.counts.countLabel')}
+                </Text>
+                <Text style={styles.countMetaValue}>
+                  {Number.isFinite(Number(count.total_count))
+                    ? count.total_count
+                    : '-'}
+                </Text>
+              </View>
+              {count.local_video_uri ? (
+                <TouchableOpacity
+                  onPress={() =>
+                    navigation.navigate('ProcessedVideo', { count })
+                  }
+                  style={styles.countPlayButton}
+                >
+                  <Text style={styles.countPlayText}>
+                    {t('home.counts.playVideo')}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={styles.countNoVideo}>
+                  {t('home.counts.noVideo')}
+                </Text>
+              )}
+            </View>
+          ))
+        )}
+      </View>
+    );
   };
 
   const renderProcessingContent = () => {
@@ -441,6 +669,7 @@ const HomeScreen = ({ route }) => {
       case 'idle':
         return (
           <>
+            {renderCountsSection()}
             <Text style={styles.subtitle}>{t('home.subtitleIdle')}</Text>
             <View style={styles.menuContainer}>
               <MenuButton
@@ -528,40 +757,30 @@ const HomeScreen = ({ route }) => {
                 })}
               </Text>
             )}
-            <View style={styles.contributionSection}>
-              <Text style={styles.contributionTitle}>
-                {t('home.selected.helpTitle')}
+            <View style={styles.formSection}>
+              <Text style={styles.formLabel}>
+                {t('home.selected.countNameLabel')}
               </Text>
               <TextInput
-                style={styles.emailInput}
-                placeholder={t('home.selected.emailPlaceholder')}
-                value={userEmail}
-                onChangeText={setUserEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
+                style={styles.formInput}
+                placeholder={t('home.selected.countNamePlaceholder')}
+                value={countName}
+                onChangeText={setCountName}
+                autoCapitalize="words"
                 placeholderTextColor="#888"
               />
-              <TouchableOpacity
-                style={[
-                  styles.consentTouchable,
-                  userConsent && styles.consentTouchableChecked,
-                ]}
-                onPress={() => setUserConsent(!userConsent)}
-              >
-                <MaterialCommunityIcons
-                  name={
-                    userConsent
-                      ? 'checkbox-marked-circle'
-                      : 'checkbox-blank-circle-outline'
-                  }
-                  size={26}
-                  color={userConsent ? '#28a745' : '#555'}
-                  style={styles.checkboxIcon}
-                />
-                <Text style={styles.consentText}>
-                  {t('home.selected.consentText')}
-                </Text>
-              </TouchableOpacity>
+              <Text style={styles.formLabel}>
+                {t('home.selected.countDescriptionLabel')}
+              </Text>
+              <TextInput
+                style={[styles.formInput, styles.formInputMultiline]}
+                placeholder={t('home.selected.countDescriptionPlaceholder')}
+                value={countDescription}
+                onChangeText={setCountDescription}
+                autoCapitalize="sentences"
+                placeholderTextColor="#888"
+                multiline
+              />
             </View>
             <View style={styles.choiceSection}>
               <Text style={styles.choiceTitle}>
@@ -665,8 +884,8 @@ const HomeScreen = ({ route }) => {
             </TouchableOpacity>
             <VideoUploadSender
               videoAsset={selectedVideoAsset}
-              email={userEmail}
-              consent={userConsent}
+              countName={countName}
+              countDescription={countDescription}
               orientation={selectedOrientation}
               modelChoice={modelChoice}
               onProcessingStarted={handleProcessingStarted}
@@ -695,6 +914,19 @@ const HomeScreen = ({ route }) => {
               title={t('home.processing.cancel')}
               onPress={handleCancelProcessing}
               buttonStyle={styles.cancelAnalysisButton}
+            />
+          </View>
+        );
+      case 'saving_result':
+        return (
+          <View style={styles.processingContainerFull}>
+            <Text style={styles.statusTitle}>
+              {t('home.processing.savingTitle')}
+            </Text>
+            <CustomActivityIndicator
+              size="large"
+              color="#007AFF"
+              style={{ marginVertical: 20 }}
             />
           </View>
         );
@@ -744,6 +976,90 @@ const styles = StyleSheet.create({
     marginBottom: 30,
     textAlign: 'center',
   },
+  countsSection: {
+    width: '100%',
+    paddingHorizontal: 10,
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  countsTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  countsEmpty: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    paddingVertical: 10,
+  },
+  countCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  countCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  countName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    flex: 1,
+    marginRight: 10,
+  },
+  countDate: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  countDescription: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#4b5563',
+  },
+  countMetaRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  countMetaLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  countMetaValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  countPlayButton: {
+    marginTop: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#eef2ff',
+    alignItems: 'center',
+  },
+  countPlayText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1d4ed8',
+  },
+  countNoVideo: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#9ca3af',
+    textAlign: 'center',
+  },
   loader: { marginVertical: 20 },
   menuContainer: {
     width: '100%',
@@ -785,7 +1101,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     textAlign: 'center',
   },
-  contributionSection: {
+  formSection: {
     width: '100%',
     paddingVertical: 15,
     marginTop: 10,
@@ -794,14 +1110,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: '#e8e8e8',
   },
-  contributionTitle: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 10,
-    color: '#007AFF',
+  formLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 6,
   },
-  emailInput: {
+  formInput: {
     width: '100%',
     borderWidth: 1,
     borderColor: '#ced4da',
@@ -809,26 +1124,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: Platform.OS === 'ios' ? 14 : 10,
     fontSize: 16,
-    marginBottom: 15,
+    marginBottom: 12,
     backgroundColor: '#f8f9fa',
   },
-  consentTouchable: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-    borderRadius: 8,
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#ced4da',
+  formInputMultiline: {
+    minHeight: 80,
+    textAlignVertical: 'top',
   },
-  consentTouchableChecked: {
-    backgroundColor: '#e6ffed',
-    borderColor: '#28a745',
-  },
-  checkboxIcon: { marginRight: 10 },
-  consentText: { fontSize: 14, color: '#495057', flexShrink: 1 },
   choiceSection: {
     width: '100%',
     marginTop: 10,
