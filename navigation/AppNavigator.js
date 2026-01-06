@@ -1,6 +1,8 @@
 import React from 'react';
+import { TouchableOpacity } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // Remove TouchableOpacity and MaterialCommunityIcons imports here; they are now in CustomHeader
 // import { TouchableOpacity } from 'react-native';
@@ -20,6 +22,15 @@ const Stack = createNativeStackNavigator();
 
 export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
   const { t } = useLanguage();
+  const renderHeaderBack = (navigation) => (
+    <TouchableOpacity
+      onPress={() => navigation.goBack()}
+      style={{ paddingHorizontal: 12, paddingVertical: 6 }}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    >
+      <MaterialCommunityIcons name="chevron-left" size={30} color="#007AFF" />
+    </TouchableOpacity>
+  );
 
   return (
     <NavigationContainer>
@@ -58,22 +69,34 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
             <Stack.Screen
               name="ResultsScreen"
               component={ResultsScreen}
-              options={{ title: t('nav.resultsTitle') }}
+              options={({ navigation }) => ({
+                title: t('nav.resultsTitle'),
+                headerLeft: () => renderHeaderBack(navigation),
+              })}
             />
             <Stack.Screen
               name="OnboardingTutorial"
               component={OnboardingScreen}
-              options={{ title: t('nav.filmingGuideTitle') }}
+              options={({ navigation }) => ({
+                title: t('nav.filmingGuideTitle'),
+                headerLeft: () => renderHeaderBack(navigation),
+              })}
             />
             <Stack.Screen
               name="Settings"
               component={SettingsScreen}
-              options={{ title: t('nav.settingsTitle') }}
+              options={({ navigation }) => ({
+                title: t('nav.settingsTitle'),
+                headerLeft: () => renderHeaderBack(navigation),
+              })}
             />
             <Stack.Screen
               name="CameraTest"
               component={CameraTestScreen}
-              options={{ title: t('nav.cameraTestTitle') }}
+              options={({ navigation }) => ({
+                title: t('nav.cameraTestTitle'),
+                headerLeft: () => renderHeaderBack(navigation),
+              })}
             />
             <Stack.Screen
               name="VideoEditor"

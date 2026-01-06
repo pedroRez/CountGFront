@@ -69,6 +69,19 @@ const formatOrientationLabel = (orientationId, orientationMap, t) => {
   return `${details.label}${arrow}`;
 };
 
+const formatLinePosition = (ratio, t) => {
+  const parsed = Number(ratio);
+  if (!Number.isFinite(parsed)) {
+    return t('home.selected.linePositionNotSet');
+  }
+  return `${Math.round(parsed * 100)}%`;
+};
+
+const normalizeDurationMs = (value) => {
+  if (!Number.isFinite(value)) return null;
+  return value > 1000 ? Math.round(value) : Math.round(value * 1000);
+};
+
 const PROCESSING_STATE_KEY = '@processing_state';
 
 const HomeScreen = ({ route }) => {
@@ -165,7 +178,11 @@ const HomeScreen = ({ route }) => {
 
   useFocusEffect(
     React.useCallback(() => {
-      const { trimmedVideo, newlyRecordedVideo } = route.params || {};
+      const { trimmedVideo, newlyRecordedVideo, resetHome } = route.params || {};
+      if (resetHome) {
+        resetAllStates();
+        navigation.setParams({ resetHome: null });
+      }
       const rawVideo = trimmedVideo || newlyRecordedVideo;
       if (rawVideo?.uri) {
         resetAllStates();
@@ -174,21 +191,28 @@ const HomeScreen = ({ route }) => {
           fileName: rawVideo.fileName || rawVideo.uri.split('/').pop(),
           mimeType: rawVideo.mimeType || 'video/mp4',
           duration: rawVideo.duration ?? 0,
+          originalDurationMs:
+            rawVideo.originalDurationMs ??
+            normalizeDurationMs(rawVideo.duration),
           orientation: rawVideo.orientation || null,
-            trimStartMs: rawVideo.trimStartMs ?? null,
-            trimEndMs: rawVideo.trimEndMs ?? null,
-            linePositionRatio: rawVideo.linePositionRatio ?? null,
+          trimStartMs: rawVideo.trimStartMs ?? null,
+          trimEndMs: rawVideo.trimEndMs ?? null,
+          linePositionRatio: rawVideo.linePositionRatio ?? null,
         };
         setSelectedVideoAsset(enrichedVideo);
         if (enrichedVideo.orientation) {
           setSelectedOrientation(enrichedVideo.orientation);
         }
         setAppStatus('selected');
-        navigation.setParams({ trimmedVideo: null, newlyRecordedVideo: null });
+        navigation.setParams({
+          trimmedVideo: null,
+          newlyRecordedVideo: null,
+        });
       }
     }, [
       route.params?.trimmedVideo,
       route.params?.newlyRecordedVideo,
+      route.params?.resetHome,
       navigation,
     ])
   );
@@ -256,6 +280,19 @@ const HomeScreen = ({ route }) => {
       resetAllStates();
     }
     setIsPickerLoading(false);
+  };
+
+  const handleBackToEditor = () => {
+    if (!selectedVideoAsset?.uri) return;
+    const originalDurationMs =
+      selectedVideoAsset.originalDurationMs ??
+      normalizeDurationMs(selectedVideoAsset.duration);
+    navigation.navigate('VideoEditor', {
+      asset: {
+        ...selectedVideoAsset,
+        originalDurationMs,
+      },
+    });
   };
 
   const handleProcessingStarted = (responseData) => {
@@ -446,7 +483,35 @@ const HomeScreen = ({ route }) => {
             style={styles.loader}
           />
         );
-      case 'selected':
+      case 'selected': {
+        const trimStartMsValue = selectedVideoAsset?.trimStartMs;
+        const trimEndMsValue = selectedVideoAsset?.trimEndMs;
+        const trimStartMs =
+          trimStartMsValue === null || trimStartMsValue === undefined
+            ? null
+            : Number(trimStartMsValue);
+        const trimEndMs =
+          trimEndMsValue === null || trimEndMsValue === undefined
+            ? null
+            : Number(trimEndMsValue);
+        const hasTrimRange =
+          Number.isFinite(trimStartMs) && Number.isFinite(trimEndMs);
+        const trimStartLabel = hasTrimRange
+          ? formatDuration(trimStartMs)
+          : t('home.selected.trimNotSet');
+        const trimEndLabel = hasTrimRange
+          ? formatDuration(trimEndMs)
+          : t('home.selected.trimNotSet');
+        const orientationLabel = formatOrientationLabel(
+          selectedOrientation,
+          orientationMap,
+          t
+        );
+        const linePositionLabel = formatLinePosition(
+          selectedVideoAsset?.linePositionRatio,
+          t
+        );
+
         return (
           <View style={styles.selectionContainer}>
             <Text style={styles.selectedVideoTitle}>
@@ -552,6 +617,52 @@ const HomeScreen = ({ route }) => {
                 ))}
               </View>
             </View>
+            <View style={styles.detailsCard}>
+              <Text style={styles.detailsTitle}>
+                {t('home.selected.videoInfoTitle')}
+              </Text>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>
+                  {t('home.selected.videoNameLabel')}
+                </Text>
+                <Text style={styles.detailValue} numberOfLines={1}>
+                  {selectedVideoAsset.fileName ||
+                    selectedVideoAsset.uri.split('/').pop()}
+                </Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>
+                  {t('home.selected.trimStartLabel')}
+                </Text>
+                <Text style={styles.detailValue}>{trimStartLabel}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>
+                  {t('home.selected.trimEndLabel')}
+                </Text>
+                <Text style={styles.detailValue}>{trimEndLabel}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>
+                  {t('home.selected.orientationLabel')}
+                </Text>
+                <Text style={styles.detailValue}>{orientationLabel}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>
+                  {t('home.selected.linePositionLabel')}
+                </Text>
+                <Text style={styles.detailValue}>{linePositionLabel}</Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              onPress={handleBackToEditor}
+              style={styles.secondaryButton}
+            >
+              <Text style={styles.secondaryButtonText}>
+                {t('home.selected.backToEdit')}
+              </Text>
+            </TouchableOpacity>
             <VideoUploadSender
               videoAsset={selectedVideoAsset}
               email={userEmail}
@@ -571,6 +682,7 @@ const HomeScreen = ({ route }) => {
             </TouchableOpacity>
           </View>
         );
+      }
       case 'prediction_requested':
       case 'polling_progress':
         return (
@@ -772,6 +884,49 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   modelButtonTextSelected: { color: 'white' },
+  detailsCard: {
+    width: '100%',
+    marginTop: 10,
+    marginBottom: 10,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  detailsTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 8,
+    color: '#333',
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  detailLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+    flex: 1,
+  },
+  detailValue: {
+    fontSize: 13,
+    color: '#111827',
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'right',
+  },
+  secondaryButton: {
+    marginTop: 8,
+    paddingVertical: 10,
+  },
+  secondaryButtonText: {
+    color: '#1f2937',
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   cancelButton: { marginTop: 15, paddingVertical: 12 },
   cancelButtonText: { color: '#6c757d', fontSize: 16, fontWeight: '600' },
   processingContainerFull: {

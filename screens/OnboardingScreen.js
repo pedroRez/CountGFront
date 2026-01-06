@@ -203,7 +203,7 @@ const OnboardingScreen = ({ navigation, onComplete, isInitial = false }) => {
             </View>
           </View>
 
-        <BigButton
+          <BigButton
             title={
               isInitial
                 ? t('onboarding.buttonStart')

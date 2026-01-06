@@ -138,7 +138,8 @@ export default function VideoEditorScreen({ route, navigation }) {
   const { asset } = route.params || {};
   const { orientationMap, fetchOrientationMap } = useOrientationMap();
   const { t } = useLanguage();
-  const initialDuration = asset?.duration ?? 0;
+  const initialDuration =
+    asset?.originalDurationMs ?? asset?.duration ?? 0;
   const initialDurationSeconds =
     initialDuration > 1000 ? initialDuration / 1000 : initialDuration;
 
@@ -147,6 +148,23 @@ export default function VideoEditorScreen({ route, navigation }) {
     return Number.isFinite(parsed) ? clampRatio(parsed) : 0.5;
   })();
 
+  const initialTrimStartSeconds = Number.isFinite(asset?.trimStartMs)
+    ? asset.trimStartMs / 1000
+    : 0;
+  const initialTrimEndSeconds = Number.isFinite(asset?.trimEndMs)
+    ? asset.trimEndMs / 1000
+    : initialDurationSeconds;
+  const safeInitialStart = clamp(
+    initialTrimStartSeconds,
+    0,
+    initialDurationSeconds
+  );
+  const safeInitialEnd = clamp(
+    initialTrimEndSeconds,
+    safeInitialStart + MIN_GAP_SECONDS,
+    initialDurationSeconds
+  );
+
   const orientationStyleMap = useMemo(() => buildOrientationStyleMap(t), [t]);
   const fallbackOrientations = useMemo(
     () => buildFallbackOrientations(orientationStyleMap),
@@ -154,8 +172,8 @@ export default function VideoEditorScreen({ route, navigation }) {
   );
 
   const [durationSeconds, setDurationSeconds] = useState(initialDurationSeconds);
-  const [startTime, setStartTime] = useState(0);
-  const [endTime, setEndTime] = useState(initialDurationSeconds);
+  const [startTime, setStartTime] = useState(safeInitialStart);
+  const [endTime, setEndTime] = useState(safeInitialEnd);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedOrientationId, setSelectedOrientationId] = useState(
@@ -317,6 +335,7 @@ export default function VideoEditorScreen({ route, navigation }) {
       mimeType: asset?.mimeType || 'video/mp4',
       orientation: selectedOrientationId,
       linePositionRatio: clampRatio(Number(linePositionRatio.toFixed(2))),
+      originalDurationMs: Math.round(safeDurationSeconds * 1000),
       trimStartMs: Math.round(safeStart * 1000),
       trimEndMs: Math.round(safeEnd * 1000),
     };
