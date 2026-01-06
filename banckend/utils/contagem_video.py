@@ -21,6 +21,16 @@ MOVE_LR: str = "left_right"
 MOVE_RL: str = "right_left"
 
 
+def _get_env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
 def get_video_rotation(video_path: str) -> int:
     """Retrieve rotation metadata / Obtém metadados de rotação.
 
@@ -324,6 +334,10 @@ def contar_gado_em_video(
     total_frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = cap.get(cv2.CAP_PROP_FPS)
     _fps = fps if fps > 0 else 30.0
+    imgsz = _get_env_int("YOLO_IMG_SIZE", 512)
+    if imgsz <= 0:
+        imgsz = 512
+    logger.info(f"[CONFIG] YOLO imgsz: {imgsz}")
 
     start_frame = 0
     end_frame = max(total_frame_count - 1, 0) if total_frame_count > 0 else 0
@@ -433,7 +447,23 @@ def contar_gado_em_video(
             ):
                 break
 
-            results = model.track(frame, persist=True, verbose=False, conf=0.3)
+            try:
+                results = model.track(
+                    frame, persist=True, verbose=False, conf=0.3, imgsz=imgsz
+                )
+            except RuntimeError as exc:
+                if "not enough memory" in str(exc).lower():
+                    if progresso_manager:
+                        progresso_manager.erro(
+                            video_name,
+                            "Memoria insuficiente para processar o video. Use modelo menor (n/m) ou reduza YOLO_IMG_SIZE.",
+                        )
+                    if cap.isOpened():
+                        cap.release()
+                    if out and out.isOpened():
+                        out.release()
+                    return None
+                raise
 
             annotated_frame = frame.copy() if CREATE_ANNOTATED_VIDEO else None
             if results[0].boxes is not None and results[0].boxes.id is not None:
