@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from routes import orientation_routes, video_routes
 
@@ -25,6 +26,14 @@ app = FastAPI(
     title="CountG API",
     version="0.1.0",
     description="FastAPI backend for counting and tracking objects in video.",
+)
+
+PROCESSED_VIDEOS_DIR = os.path.abspath("videos_processados")
+os.makedirs(PROCESSED_VIDEOS_DIR, exist_ok=True)
+app.mount(
+    "/videos_processados",
+    StaticFiles(directory=PROCESSED_VIDEOS_DIR),
+    name="videos_processados",
 )
 
 # CORS configuration (allows frontend to communicate with backend)

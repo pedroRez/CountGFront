@@ -9,7 +9,7 @@ import React, {
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'countg.db';
-const db = SQLite.openDatabase(DB_NAME);
+const dbPromise = SQLite.openDatabaseAsync(DB_NAME);
 
 const CREATE_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS counts (
@@ -30,21 +30,6 @@ const CREATE_TABLE_SQL = `
   );
 `;
 
-const executeSql = (sql, params = []) =>
-  new Promise((resolve, reject) => {
-    db.transaction((tx) => {
-      tx.executeSql(
-        sql,
-        params,
-        (_, result) => resolve(result),
-        (_, error) => {
-          reject(error);
-          return false;
-        }
-      );
-    });
-  });
-
 const CountsContext = createContext({
   counts: [],
   isLoading: false,
@@ -57,23 +42,24 @@ export const CountsProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   const initDb = useCallback(async () => {
-    await executeSql(CREATE_TABLE_SQL);
+    const db = await dbPromise;
+    await db.execAsync(CREATE_TABLE_SQL);
+    return db;
   }, []);
 
   const refreshCounts = useCallback(async () => {
-    await initDb();
-    const result = await executeSql(
+    const db = await initDb();
+    const rows = await db.getAllAsync(
       'SELECT * FROM counts ORDER BY created_at DESC'
     );
-    const rows = result?.rows?._array || [];
     setCounts(rows);
     return rows;
   }, [initDb]);
 
   const addCount = useCallback(
     async (record) => {
-      await initDb();
-      const result = await executeSql(
+      const db = await initDb();
+      const result = await db.runAsync(
         `INSERT INTO counts (
           name,
           description,
@@ -109,7 +95,7 @@ export const CountsProvider = ({ children }) => {
       );
 
       await refreshCounts();
-      return result?.insertId || null;
+      return result?.lastInsertRowId ?? null;
     },
     [initDb, refreshCounts]
   );

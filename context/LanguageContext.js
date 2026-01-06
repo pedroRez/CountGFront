@@ -37,6 +37,7 @@ const translations = {
       settingsTitle: 'Configuracoes',
       cameraTestTitle: 'Teste de camera',
       processedVideoTitle: 'Video processado',
+      countsTitle: 'Contagens',
     },
     settings: {
       title: 'Configuracoes da API',
@@ -71,6 +72,7 @@ const translations = {
         galleryVideo: 'Video da galeria',
         wifiCamera: 'Camera Wi-Fi',
         tutorial: 'Tutorial',
+        counts: 'Contagens',
         comingSoonTitle: 'Em breve',
         comingSoonMessage: 'Integracao com cameras Wi-Fi.',
       },
@@ -94,8 +96,8 @@ const translations = {
         cancel: 'Cancelar / escolher outro',
         countNameLabel: 'Nome da contagem',
         countNamePlaceholder: 'Ex: Lote 3 - curral A',
-        countDescriptionLabel: 'Descricao',
-        countDescriptionPlaceholder: 'Descreva esta contagem',
+        countDescriptionLabel: 'Descricao (opcional)',
+        countDescriptionPlaceholder: 'Descreva esta contagem (opcional)',
       },
       counts: {
         title: 'Contagens',
@@ -322,6 +324,7 @@ const translations = {
       settingsTitle: 'Settings',
       cameraTestTitle: 'Camera Test',
       processedVideoTitle: 'Processed video',
+      countsTitle: 'Counts',
     },
     settings: {
       title: 'API Settings',
@@ -355,6 +358,7 @@ const translations = {
         galleryVideo: 'Gallery Video',
         wifiCamera: 'Wi-Fi Camera',
         tutorial: 'Tutorial',
+        counts: 'Counts',
         comingSoonTitle: 'Coming Soon',
         comingSoonMessage: 'Integration with Wi-Fi cameras.',
       },
@@ -378,8 +382,8 @@ const translations = {
         cancel: 'Cancel / Choose Another',
         countNameLabel: 'Count name',
         countNamePlaceholder: 'Example: Lot 3 - corral A',
-        countDescriptionLabel: 'Description',
-        countDescriptionPlaceholder: 'Describe this count',
+        countDescriptionLabel: 'Description (optional)',
+        countDescriptionPlaceholder: 'Describe this count (optional)',
       },
       counts: {
         title: 'Counts',

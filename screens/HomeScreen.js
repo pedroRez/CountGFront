@@ -94,13 +94,6 @@ const sanitizeFileName = (value) => {
     .slice(0, 24);
 };
 
-const formatDateTime = (value) => {
-  if (!value) return '';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return String(value);
-  return parsed.toLocaleString();
-};
-
 const PROCESSING_STATE_KEY = '@processing_state';
 
 const HomeScreen = ({ route }) => {
@@ -108,7 +101,7 @@ const HomeScreen = ({ route }) => {
   const { apiUrl } = useApi();
   const { orientationMap, fetchOrientationMap } = useOrientationMap();
   const { t } = useLanguage();
-  const { counts, refreshCounts, addCount } = useCounts();
+  const { addCount } = useCounts();
   const [selectedVideoAsset, setSelectedVideoAsset] = useState(null);
   const [isPickerLoading, setIsPickerLoading] = useState(false);
   const [appStatus, setAppStatus] = useState('idle');
@@ -246,12 +239,6 @@ const HomeScreen = ({ route }) => {
       countDescription,
       navigation,
     ])
-  );
-
-  useFocusEffect(
-    React.useCallback(() => {
-      refreshCounts();
-    }, [refreshCounts])
   );
 
   useEffect(() => {
@@ -565,60 +552,6 @@ const HomeScreen = ({ route }) => {
     }
   };
 
-  const renderCountsSection = () => {
-    if (!counts) return null;
-    return (
-      <View style={styles.countsSection}>
-        <Text style={styles.countsTitle}>{t('home.counts.title')}</Text>
-        {counts.length === 0 ? (
-          <Text style={styles.countsEmpty}>{t('home.counts.empty')}</Text>
-        ) : (
-          counts.map((count) => (
-            <View key={count.id} style={styles.countCard}>
-              <View style={styles.countCardHeader}>
-                <Text style={styles.countName} numberOfLines={1}>
-                  {count.name}
-                </Text>
-                <Text style={styles.countDate}>
-                  {formatDateTime(count.created_at)}
-                </Text>
-              </View>
-              {!!count.description && (
-                <Text style={styles.countDescription}>{count.description}</Text>
-              )}
-              <View style={styles.countMetaRow}>
-                <Text style={styles.countMetaLabel}>
-                  {t('home.counts.countLabel')}
-                </Text>
-                <Text style={styles.countMetaValue}>
-                  {Number.isFinite(Number(count.total_count))
-                    ? count.total_count
-                    : '-'}
-                </Text>
-              </View>
-              {count.local_video_uri ? (
-                <TouchableOpacity
-                  onPress={() =>
-                    navigation.navigate('ProcessedVideo', { count })
-                  }
-                  style={styles.countPlayButton}
-                >
-                  <Text style={styles.countPlayText}>
-                    {t('home.counts.playVideo')}
-                  </Text>
-                </TouchableOpacity>
-              ) : (
-                <Text style={styles.countNoVideo}>
-                  {t('home.counts.noVideo')}
-                </Text>
-              )}
-            </View>
-          ))
-        )}
-      </View>
-    );
-  };
-
   const renderProcessingContent = () => {
     if (!backendProgressData) {
       return (
@@ -669,20 +602,25 @@ const HomeScreen = ({ route }) => {
       case 'idle':
         return (
           <>
-            {renderCountsSection()}
             <Text style={styles.subtitle}>{t('home.subtitleIdle')}</Text>
             <View style={styles.menuContainer}>
+              <MenuButton
+                label={t('home.menu.counts')}
+                icon="counter"
+                onPress={() => navigation.navigate('Counts')}
+                index={0}
+              />
               <MenuButton
                 label={t('home.menu.recordVideo')}
                 icon="camera-outline"
                 onPress={() => navigation.navigate('RecordVideo')}
-                index={0}
+                index={1}
               />
               <MenuButton
                 label={t('home.menu.galleryVideo')}
                 icon="image-multiple-outline"
                 onPress={handlePickFromGallery}
-                index={1}
+                index={2}
               />
               <MenuButton
                 label={t('home.menu.wifiCamera')}
@@ -693,13 +631,13 @@ const HomeScreen = ({ route }) => {
                     t('home.menu.comingSoonMessage')
                   )
                 }
-                index={2}
+                index={3}
               />
               <MenuButton
                 label={t('home.menu.tutorial')}
                 icon="help-circle-outline"
                 onPress={() => navigation.navigate('OnboardingTutorial')}
-                index={3}
+                index={4}
               />
             </View>
           </>
@@ -974,90 +912,6 @@ const styles = StyleSheet.create({
     color: '#555',
     marginTop: 8,
     marginBottom: 30,
-    textAlign: 'center',
-  },
-  countsSection: {
-    width: '100%',
-    paddingHorizontal: 10,
-    marginTop: 10,
-    marginBottom: 20,
-  },
-  countsTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1f2937',
-    marginBottom: 8,
-  },
-  countsEmpty: {
-    fontSize: 14,
-    color: '#6b7280',
-    textAlign: 'center',
-    paddingVertical: 10,
-  },
-  countCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  countCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  countName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-    flex: 1,
-    marginRight: 10,
-  },
-  countDate: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  countDescription: {
-    marginTop: 8,
-    fontSize: 13,
-    color: '#4b5563',
-  },
-  countMetaRow: {
-    marginTop: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  countMetaLabel: {
-    fontSize: 13,
-    color: '#6b7280',
-  },
-  countMetaValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  countPlayButton: {
-    marginTop: 10,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#eef2ff',
-    alignItems: 'center',
-  },
-  countPlayText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1d4ed8',
-  },
-  countNoVideo: {
-    marginTop: 8,
-    fontSize: 12,
-    color: '#9ca3af',
     textAlign: 'center',
   },
   loader: { marginVertical: 20 },

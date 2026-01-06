@@ -10,6 +10,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import OnboardingScreen from '../screens/OnboardingScreen';
 import HomeScreen from '../screens/HomeScreen';
+import CountsScreen from '../screens/CountsScreen';
 import ResultsScreen from '../screens/ResultsScreen';
 import RecordVideoScreen from '../screens/RecordVideoScreen';
 import CameraTestScreen from '../screens/CameraTestScreen';
@@ -61,6 +62,14 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
               options={{
                 header: () => <CustomHeader title="KYO DAY GadoCount" />,
               }}
+            />
+            <Stack.Screen
+              name="Counts"
+              component={CountsScreen}
+              options={({ navigation }) => ({
+                title: t('nav.countsTitle'),
+                headerLeft: () => renderHeaderBack(navigation),
+              })}
             />
             <Stack.Screen
               name="RecordVideo"

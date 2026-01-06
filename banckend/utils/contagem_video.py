@@ -633,8 +633,8 @@ def contar_gado_em_video(
                 if progresso_manager:
                     progresso_manager.erro(video_name, public_url)
         else:
-            # Store the processed video locally for later access.
-            public_url = local_output_path
+            # Store the processed video locally and expose it via the static mount.
+            public_url = f"/videos_processados/{processed_fn}"
             logger.info(f"[INFO] Processed video saved at {local_output_path}.")
 
     if USE_SFTP:
