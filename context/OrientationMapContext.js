@@ -4,6 +4,13 @@ import { useApi } from './ApiContext';
 
 const OrientationMapContext = createContext();
 
+const FALLBACK_ORIENTATION_MAP = {
+  N: { label: 'Norte', arrow: '^' },
+  E: { label: 'Leste', arrow: '>' },
+  S: { label: 'Sul', arrow: 'v' },
+  W: { label: 'Oeste', arrow: '<' },
+};
+
 export const OrientationMapProvider = ({ children }) => {
   const { apiUrl } = useApi();
   const [orientationMap, setOrientationMap] = useState(null);
@@ -12,11 +19,23 @@ export const OrientationMapProvider = ({ children }) => {
   const fetchOrientationMap = useCallback(async () => {
     if (orientationMap || isLoading) return;
     setIsLoading(true);
+
+    if (!apiUrl) {
+      setOrientationMap(FALLBACK_ORIENTATION_MAP);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const response = await axios.get(`${apiUrl}/orientation-map`);
-      setOrientationMap(response.data);
+      if (response?.data && typeof response.data === 'object') {
+        setOrientationMap(response.data);
+      } else {
+        setOrientationMap(FALLBACK_ORIENTATION_MAP);
+      }
     } catch (error) {
-      console.error('Failed to load orientation map:', error);
+      console.warn('Failed to load orientation map, using fallback.', error);
+      setOrientationMap(FALLBACK_ORIENTATION_MAP);
     } finally {
       setIsLoading(false);
     }

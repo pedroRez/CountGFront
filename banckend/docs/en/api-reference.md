@@ -72,6 +72,8 @@ Optional fields:
   `"m"` (medium), `"l"` (large), or `"p"` (custom/best.pt).
 - `target_classes` (array of strings, default `null`): list of classes to count;
   counts all detected classes when `null`.
+- `trim_start_ms` (integer, optional): trim start in milliseconds.
+- `trim_end_ms` (integer, optional): trim end in milliseconds.
 
 ```json
 {
@@ -79,7 +81,9 @@ Optional fields:
   "orientation": "S",
   "model_choice": "l",
   "target_classes": ["cow"],
-  "line_position_ratio": 0.5
+  "line_position_ratio": 0.5,
+  "trim_start_ms": 0,
+  "trim_end_ms": 5000
 }
 ```
 

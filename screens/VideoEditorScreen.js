@@ -13,6 +13,7 @@ import Slider from '@react-native-community/slider'; // UI para selecao de tempo
 import { useOrientationMap } from '../context/OrientationMapContext';
 
 const MIN_GAP_SECONDS = 0.1;
+const LINE_RATIO_STEP = 0.05;
 
 const ORIENTATION_STYLE_MAP = {
   E: { lineStyle: 'vertical', arrowDirection: 'right', label: 'Esquerda para Direita' },
@@ -68,6 +69,8 @@ const FALLBACK_ORIENTATIONS = [
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
+const clampRatio = (value) => clamp(value, 0, 1);
+
 const formatTime = (seconds) => {
   if (!Number.isFinite(seconds) || seconds < 0) return '00:00';
   const total = Math.floor(seconds);
@@ -117,6 +120,11 @@ export default function VideoEditorScreen({ route, navigation }) {
   const initialDurationSeconds =
     initialDuration > 1000 ? initialDuration / 1000 : initialDuration;
 
+  const initialLineRatio = (() => {
+    const parsed = Number(asset?.linePositionRatio);
+    return Number.isFinite(parsed) ? clampRatio(parsed) : 0.5;
+  })();
+
   const [durationSeconds, setDurationSeconds] = useState(initialDurationSeconds);
   const [startTime, setStartTime] = useState(0);
   const [endTime, setEndTime] = useState(initialDurationSeconds);
@@ -125,6 +133,7 @@ export default function VideoEditorScreen({ route, navigation }) {
   const [selectedOrientationId, setSelectedOrientationId] = useState(
     asset?.orientation || FALLBACK_ORIENTATIONS[0].id
   );
+  const [linePositionRatio, setLinePositionRatio] = useState(initialLineRatio);
 
   const safeDurationSeconds = Math.max(0, durationSeconds);
   const videoRef = useRef(null);
@@ -240,8 +249,18 @@ export default function VideoEditorScreen({ route, navigation }) {
     const currentIndex = orientationOptions.findIndex(
       (option) => option.id === selectedOrientationId
     );
-    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % orientationOptions.length : 0;
+    const nextIndex =
+      currentIndex >= 0
+        ? (currentIndex + 1) % orientationOptions.length
+        : 0;
     setSelectedOrientationId(orientationOptions[nextIndex].id);
+  };
+
+  const handleLineShift = (delta) => {
+    setLinePositionRatio((prev) => {
+      const nextValue = clampRatio(Number((prev + delta).toFixed(2)));
+      return nextValue;
+    });
   };
 
   const handleConfirm = () => {
@@ -264,6 +283,7 @@ export default function VideoEditorScreen({ route, navigation }) {
       fileName: asset?.fileName || asset.uri.split('/').pop(),
       mimeType: asset?.mimeType || 'video/mp4',
       orientation: selectedOrientationId,
+      linePositionRatio: clampRatio(Number(linePositionRatio.toFixed(2))),
       trimStartMs: Math.round(safeStart * 1000),
       trimEndMs: Math.round(safeEnd * 1000),
     };
@@ -271,12 +291,32 @@ export default function VideoEditorScreen({ route, navigation }) {
     navigation.navigate('Home', { trimmedVideo: trimmedAsset });
   };
 
-  const orientationLabel = selectedOrientation?.label || selectedOrientationId || 'Nao definido';
+  const orientationLabel =
+    selectedOrientation?.label || selectedOrientationId || 'Nao definido';
   const orientationArrowText = selectedOrientation?.arrowText
     ? ` ${selectedOrientation.arrowText}`
     : '';
   const lineStyle = selectedOrientation?.lineStyle || 'vertical';
   const arrowDirection = selectedOrientation?.arrowDirection || 'right';
+  const linePositionPercent = `${linePositionRatio * 100}%`;
+  const linePositionStyle =
+    lineStyle === 'vertical'
+      ? { left: linePositionPercent, transform: [{ translateX: -1 }] }
+      : { top: linePositionPercent, transform: [{ translateY: -1 }] };
+  const arrowPositionStyle =
+    lineStyle === 'vertical'
+      ? {
+          left: linePositionPercent,
+          top: '50%',
+          transform: [{ translateX: -24 }, { translateY: -24 }],
+        }
+      : {
+          top: linePositionPercent,
+          left: '50%',
+          transform: [{ translateX: -24 }, { translateY: -24 }],
+        };
+  const decrementIcon = lineStyle === 'vertical' ? 'chevron-left' : 'chevron-up';
+  const incrementIcon = lineStyle === 'vertical' ? 'chevron-right' : 'chevron-down';
 
   return (
     <View style={styles.container}>
@@ -292,14 +332,14 @@ export default function VideoEditorScreen({ route, navigation }) {
         />
         <View pointerEvents="none" style={styles.overlay}>
           {lineStyle === 'vertical' ? (
-            <View style={styles.verticalLine} />
+            <View style={[styles.verticalLine, linePositionStyle]} />
           ) : (
-            <View style={styles.horizontalLine} />
+            <View style={[styles.horizontalLine, linePositionStyle]} />
           )}
-          <View style={styles.arrowContainer}>
+          <View style={[styles.arrowContainer, arrowPositionStyle]}>
             <MaterialCommunityIcons
               name={ARROW_ICON_MAP[arrowDirection] || ARROW_ICON_MAP.right}
-              size={48}
+              size={44}
               color="rgba(255, 230, 0, 0.85)"
             />
           </View>
@@ -340,6 +380,25 @@ export default function VideoEditorScreen({ route, navigation }) {
           <TouchableOpacity style={styles.markButton} onPress={handleMarkEnd}>
             <Text style={styles.markButtonText}>Definir fim</Text>
             <Text style={styles.markValue}>{formatTime(endTime)}</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.lineAdjustRow}>
+          <TouchableOpacity
+            style={styles.lineAdjustButton}
+            onPress={() => handleLineShift(-LINE_RATIO_STEP)}
+          >
+            <MaterialCommunityIcons name={decrementIcon} size={20} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.lineAdjustLabel}>
+            <Text style={styles.lineAdjustText}>
+              Linha: {linePositionRatio.toFixed(2)}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.lineAdjustButton}
+            onPress={() => handleLineShift(LINE_RATIO_STEP)}
+          >
+            <MaterialCommunityIcons name={incrementIcon} size={20} color="#fff" />
           </TouchableOpacity>
         </View>
         <View style={styles.orientationRow}>
@@ -437,9 +496,10 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   arrowContainer: {
+    position: 'absolute',
     backgroundColor: 'rgba(0, 0, 0, 0.25)',
     padding: 6,
-    borderRadius: 20,
+    borderRadius: 24,
   },
   controlsContainer: {
     paddingHorizontal: 16,
@@ -490,6 +550,28 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     fontSize: 12,
     marginTop: 4,
+  },
+  lineAdjustRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+  lineAdjustButton: {
+    width: 40,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#0f172a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lineAdjustLabel: {
+    paddingHorizontal: 12,
+  },
+  lineAdjustText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   orientationRow: {
     marginTop: 10,

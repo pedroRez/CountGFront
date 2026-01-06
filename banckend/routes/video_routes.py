@@ -160,6 +160,12 @@ async def predict_video_endpoint(request: VideoRequest):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid orientation code.")
 
+    trim_start_ms = request.trim_start_ms
+    trim_end_ms = request.trim_end_ms
+    if trim_start_ms is not None and trim_end_ms is not None:
+        if trim_end_ms <= trim_start_ms:
+            raise HTTPException(status_code=400, detail="Invalid trim range.")
+
     if progresso_manager.is_processing(video_name_on_server):
         logger.warning(
             f"[PREDICT AVISO] Vídeo {video_name_on_server} já está sendo processado."
@@ -190,6 +196,8 @@ async def predict_video_endpoint(request: VideoRequest):
                 orientation=request.orientation,
                 target_classes=request.target_classes,
                 line_position_ratio=request.line_position_ratio,
+                trim_start_ms=trim_start_ms,
+                trim_end_ms=trim_end_ms,
             )
 
             # Se 'resultado' não for None (ou seja, o processamento foi bem-sucedido e não foi cancelado)...

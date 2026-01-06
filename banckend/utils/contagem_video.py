@@ -189,6 +189,8 @@ def contar_gado_em_video(
     orientation: str = "S",
     target_classes: Optional[List[str]] = None,
     line_position_ratio: float = 0.5,
+    trim_start_ms: Optional[int] = None,
+    trim_end_ms: Optional[int] = None,
     status_check_interval: int = 30,
     cancel_callback: Optional[Callable[[], bool]] = None,
 ) -> Optional[Dict[str, Any]]:
@@ -217,6 +219,10 @@ def contar_gado_em_video(
             detecção. Target classes for detection.
         line_position_ratio (float): Posição relativa da linha de
             contagem. Relative position of the counting line.
+        trim_start_ms (int, opcional): Inicio do corte em milissegundos.
+            Trim start in milliseconds.
+        trim_end_ms (int, opcional): Fim do corte em milissegundos.
+            Trim end in milliseconds.
         status_check_interval (int, opcional): Intervalo em segundos para
             verificar cancelamentos. Interval in seconds to check for
             cancellation requests.
@@ -315,9 +321,35 @@ def contar_gado_em_video(
         return None
 
     rotation = get_video_rotation(local_video_path)
-    original_frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    total_frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = cap.get(cv2.CAP_PROP_FPS)
     _fps = fps if fps > 0 else 30.0
+
+    start_frame = 0
+    end_frame = max(total_frame_count - 1, 0) if total_frame_count > 0 else 0
+    if trim_start_ms is not None:
+        start_frame = int((_fps * max(trim_start_ms, 0)) / 1000)
+    if trim_end_ms is not None:
+        end_frame = int((_fps * max(trim_end_ms, 0)) / 1000)
+
+    if total_frame_count > 0:
+        start_frame = min(max(start_frame, 0), total_frame_count - 1)
+        end_frame = min(max(end_frame, start_frame), total_frame_count - 1)
+    else:
+        start_frame = max(start_frame, 0)
+        end_frame = max(end_frame, start_frame)
+
+    trimmed_frame_count = end_frame - start_frame + 1
+    if trimmed_frame_count <= 0:
+        if progresso_manager:
+            progresso_manager.erro(video_name, 'Intervalo de corte invalido.')
+        cap.release()
+        return None
+
+    if start_frame > 0:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+    original_frame_count = trimmed_frame_count
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     if rotation in (90, 270):
@@ -380,7 +412,7 @@ def contar_gado_em_video(
     frame_atual = 0
     cancelado_cache = False
     last_status_check_frame = -status_check_interval
-    while cap.isOpened():
+    while cap.isOpened() and frame_atual < original_frame_count:
         if cancel_callback:
             cancelado_cache = cancel_callback()
         elif frame_atual - last_status_check_frame >= status_check_interval:

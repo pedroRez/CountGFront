@@ -73,6 +73,26 @@ class VideoRequest(BaseModel):
         ),
     )
 
+    trim_start_ms: Optional[int] = Field(
+        default=None,
+        ge=0,
+        example=0,
+        description=(
+            "Inicio do corte em milissegundos (opcional).\n"
+            "English: Trim start in milliseconds (optional)."
+        ),
+    )
+
+    trim_end_ms: Optional[int] = Field(
+        default=None,
+        ge=0,
+        example=5000,
+        description=(
+            "Fim do corte em milissegundos (opcional).\n"
+            "English: Trim end in milliseconds (optional)."
+        ),
+    )
+
 
 # Exemplo de como usar em video_routes.py:
 # from schemas import VideoRequest

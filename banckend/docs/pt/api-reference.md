@@ -67,6 +67,8 @@ Inicia o processamento de um vídeo previamente enviado.
 
 - `model_choice` (string, padrão `l`): escolha do modelo YOLO (`n`, `m`, `l`, `p`).
 - `target_classes` (array de strings, padrão todas): classes alvo para contagem.
+- `trim_start_ms` (inteiro, opcional): inicio do corte em milissegundos.
+- `trim_end_ms` (inteiro, opcional): fim do corte em milissegundos.
 
 **Exemplo de requisição**
 ```json
@@ -75,7 +77,9 @@ Inicia o processamento de um vídeo previamente enviado.
   "orientation": "S",
   "model_choice": "l",
   "target_classes": ["cow"],
-  "line_position_ratio": 0.5
+  "line_position_ratio": 0.5,
+  "trim_start_ms": 0,
+  "trim_end_ms": 5000
 }
 ```
 

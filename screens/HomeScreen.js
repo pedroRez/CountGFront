@@ -11,6 +11,7 @@ import {
   Platform,
   TouchableOpacity,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -73,6 +74,8 @@ const MODEL_OPTIONS = [
   { id: 'l', label: 'Precise', description: 'Slower' },
 ];
 
+const PROCESSING_STATE_KEY = '@processing_state';
+
 const HomeScreen = ({ route }) => {
   const navigation = useNavigation();
   const { apiUrl } = useApi();
@@ -86,6 +89,8 @@ const HomeScreen = ({ route }) => {
   const [userConsent, setUserConsent] = useState(false);
   const [selectedOrientation, setSelectedOrientation] = useState(null);
   const [modelChoice, setModelChoice] = useState('m');
+  const [hasCheckedProcessingState, setHasCheckedProcessingState] =
+    useState(false);
 
   const pollingIntervalRef = useRef(null);
   const appStateListenerRef = useRef(AppState.currentState);
@@ -93,6 +98,39 @@ const HomeScreen = ({ route }) => {
   useEffect(() => {
     fetchOrientationMap();
   }, [fetchOrientationMap]);
+
+  useEffect(() => {
+    if (hasCheckedProcessingState) return;
+    if (!apiUrl) return;
+    if (appStatus === 'polling_progress') {
+      setHasCheckedProcessingState(true);
+      return;
+    }
+
+    const loadProcessingState = async () => {
+      try {
+        const savedState = await AsyncStorage.getItem(PROCESSING_STATE_KEY);
+        if (!savedState) {
+          setHasCheckedProcessingState(true);
+          return;
+        }
+        const parsed = JSON.parse(savedState);
+        if (parsed?.videoName) {
+          setProcessingVideoName(parsed.videoName);
+          setBackendProgressData(null);
+          setAppStatus('polling_progress');
+        } else {
+          await AsyncStorage.removeItem(PROCESSING_STATE_KEY);
+        }
+      } catch (error) {
+        console.warn('Failed to load processing state:', error);
+      } finally {
+        setHasCheckedProcessingState(true);
+      }
+    };
+
+    loadProcessingState();
+  }, [apiUrl, appStatus, hasCheckedProcessingState]);
 
   React.useLayoutEffect(() => {
     navigation.setOptions({
@@ -125,6 +163,7 @@ const HomeScreen = ({ route }) => {
           orientation: rawVideo.orientation || null,
             trimStartMs: rawVideo.trimStartMs ?? null,
             trimEndMs: rawVideo.trimEndMs ?? null,
+            linePositionRatio: rawVideo.linePositionRatio ?? null,
         };
         setSelectedVideoAsset(enrichedVideo);
         if (enrichedVideo.orientation) {
@@ -158,6 +197,9 @@ const HomeScreen = ({ route }) => {
   }, [appStatus, processingVideoName]);
 
   const resetAllStates = () => {
+    AsyncStorage.removeItem(PROCESSING_STATE_KEY).catch((error) => {
+      console.warn('Failed to clear processing state:', error);
+    });
     setSelectedVideoAsset(null);
     setProcessingVideoName(null);
     setBackendProgressData(null);
@@ -203,6 +245,12 @@ const HomeScreen = ({ route }) => {
     const videoName = responseData?.video_name || responseData?.nome_arquivo;
     if (videoName) {
       setProcessingVideoName(videoName);
+      AsyncStorage.setItem(
+        PROCESSING_STATE_KEY,
+        JSON.stringify({ videoName, startedAt: Date.now() })
+      ).catch((error) => {
+        console.warn('Failed to save processing state:', error);
+      });
       setAppStatus('polling_progress');
     } else {
       Alert.alert('Error', 'The server did not start processing correctly.');
