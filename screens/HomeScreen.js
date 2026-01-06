@@ -24,6 +24,7 @@ import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import MenuButton from '../components/MenuButton';
 import { useApi } from '../context/ApiContext';
 import { useOrientationMap } from '../context/OrientationMapContext';
+import { useLanguage } from '../context/LanguageContext';
 
 const { MediaTypeOptions } = ImagePicker;
 
@@ -60,19 +61,13 @@ const formatDuration = (millis) => {
   return str;
 };
 
-const formatOrientationLabel = (orientationId, orientationMap) => {
-  if (!orientationId) return 'Nao definido';
+const formatOrientationLabel = (orientationId, orientationMap, t) => {
+  if (!orientationId) return t('home.orientation.notDefined');
   const details = orientationMap?.[orientationId];
   if (!details) return orientationId;
   const arrow = details.arrow ? ` ${details.arrow}` : '';
   return `${details.label}${arrow}`;
 };
-
-const MODEL_OPTIONS = [
-  { id: 'n', label: 'Fast', description: 'Lower accuracy' },
-  { id: 'm', label: 'Normal', description: 'Balanced' },
-  { id: 'l', label: 'Precise', description: 'Slower' },
-];
 
 const PROCESSING_STATE_KEY = '@processing_state';
 
@@ -80,6 +75,7 @@ const HomeScreen = ({ route }) => {
   const navigation = useNavigation();
   const { apiUrl } = useApi();
   const { orientationMap, fetchOrientationMap } = useOrientationMap();
+  const { t } = useLanguage();
   const [selectedVideoAsset, setSelectedVideoAsset] = useState(null);
   const [isPickerLoading, setIsPickerLoading] = useState(false);
   const [appStatus, setAppStatus] = useState('idle');
@@ -91,6 +87,24 @@ const HomeScreen = ({ route }) => {
   const [modelChoice, setModelChoice] = useState('m');
   const [hasCheckedProcessingState, setHasCheckedProcessingState] =
     useState(false);
+
+  const modelOptions = [
+    {
+      id: 'n',
+      label: t('home.model.fast'),
+      description: t('home.model.fastDesc'),
+    },
+    {
+      id: 'm',
+      label: t('home.model.normal'),
+      description: t('home.model.normalDesc'),
+    },
+    {
+      id: 'l',
+      label: t('home.model.precise'),
+      description: t('home.model.preciseDesc'),
+    },
+  ];
 
   const pollingIntervalRef = useRef(null);
   const appStateListenerRef = useRef(AppState.currentState);
@@ -221,7 +235,10 @@ const HomeScreen = ({ route }) => {
       const permission =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Permission Required', 'Gallery access is required.');
+        Alert.alert(
+          t('common.permissionRequired'),
+          t('home.errors.galleryPermission')
+        );
         resetAllStates();
         return;
       }
@@ -235,7 +252,7 @@ const HomeScreen = ({ route }) => {
         resetAllStates();
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to load video from gallery.');
+      Alert.alert(t('common.error'), t('home.errors.galleryLoadFailed'));
       resetAllStates();
     }
     setIsPickerLoading(false);
@@ -253,7 +270,7 @@ const HomeScreen = ({ route }) => {
       });
       setAppStatus('polling_progress');
     } else {
-      Alert.alert('Error', 'The server did not start processing correctly.');
+      Alert.alert(t('common.error'), t('home.errors.processingStart'));
       setAppStatus('selected');
     }
   };
@@ -277,25 +294,30 @@ const HomeScreen = ({ route }) => {
         pollingIntervalRef.current = null;
         if (progressData.erro) {
           Alert.alert(
-            'Erro no Processamento',
-            `O servidor retornou um erro: ${progressData.erro}`
+            t('home.errors.processingErrorTitle'),
+            t('home.errors.processingErrorMessage', {
+              error: progressData.erro,
+            })
           );
           resetAllStates();
         } else if (progressData.resultado) {
-          Alert.alert('Analysis Complete!');
+          Alert.alert(t('home.alerts.analysisComplete'));
           navigation.navigate('ResultsScreen', {
             results: progressData.resultado,
           });
           setTimeout(() => resetAllStates(), 500);
         } else {
-          Alert.alert('Processing Complete', 'Invalid backend result.');
+          Alert.alert(
+            t('home.alerts.processingComplete'),
+            t('home.alerts.processingInvalidResult')
+          );
           resetAllStates();
         }
       }
     } catch (error) {
       setBackendProgressData((prev) => ({
         ...(prev || {}),
-        erro: 'Falha ao obter progresso.',
+        erro: t('home.errors.progressFetchFailed'),
       }));
     }
   };
@@ -320,9 +342,12 @@ const HomeScreen = ({ route }) => {
         await axios.get(
           `${apiUrl}/cancelar-processamento/${processingVideoName}`
         );
-        Alert.alert('Cancelled', 'Analysis cancellation request sent.');
+        Alert.alert(
+          t('home.alerts.cancelledTitle'),
+          t('home.alerts.cancelledMessage')
+        );
       } catch (error) {
-        Alert.alert('Error', 'Could not send cancellation request.');
+        Alert.alert(t('common.error'), t('home.errors.cancelRequestFailed'));
       } finally {
         resetAllStates();
       }
@@ -341,12 +366,14 @@ const HomeScreen = ({ route }) => {
     }
     if (backendProgressData.erro) {
       return (
-        <Text style={styles.errorText}>Erro: {backendProgressData.erro}</Text>
+        <Text style={styles.errorText}>
+          {t('home.progress.errorLabel', { error: backendProgressData.erro })}
+        </Text>
       );
     }
 
     let progressValue = 0;
-    let progressText = 'Preparando...';
+    let progressText = t('home.progress.preparing');
     const statusMessage = backendProgressData.tempo_restante || '';
 
     if (statusMessage.includes('%')) {
@@ -359,13 +386,15 @@ const HomeScreen = ({ route }) => {
       progressValue =
         (backendProgressData.frame_atual || 0) /
         (backendProgressData.total_frames_estimado || 1);
-      progressText = `Processando frames`;
+      progressText = t('home.progress.processingFrames');
     }
 
     return (
       <>
         <BackendProgressBar progress={progressValue} text={progressText} />
-        <Text style={styles.etaText}>Status: {statusMessage}</Text>
+        <Text style={styles.etaText}>
+          {t('home.progress.statusLabel', { status: statusMessage })}
+        </Text>
       </>
     );
   };
@@ -375,30 +404,33 @@ const HomeScreen = ({ route }) => {
       case 'idle':
         return (
           <>
-            <Text style={styles.subtitle}>Select an option to start</Text>
+            <Text style={styles.subtitle}>{t('home.subtitleIdle')}</Text>
             <View style={styles.menuContainer}>
               <MenuButton
-                label="Record Video"
+                label={t('home.menu.recordVideo')}
                 icon="camera-outline"
                 onPress={() => navigation.navigate('RecordVideo')}
                 index={0}
               />
               <MenuButton
-                label="Gallery Video"
+                label={t('home.menu.galleryVideo')}
                 icon="image-multiple-outline"
                 onPress={handlePickFromGallery}
                 index={1}
               />
               <MenuButton
-                label="Wi-Fi Camera"
+                label={t('home.menu.wifiCamera')}
                 icon="wifi-strength-4"
                 onPress={() =>
-                  Alert.alert('Coming Soon', 'Integration with Wi-Fi cameras.')
+                  Alert.alert(
+                    t('home.menu.comingSoonTitle'),
+                    t('home.menu.comingSoonMessage')
+                  )
                 }
                 index={2}
               />
               <MenuButton
-                label="Tutorial"
+                label={t('home.menu.tutorial')}
                 icon="help-circle-outline"
                 onPress={() => navigation.navigate('OnboardingTutorial')}
                 index={3}
@@ -418,7 +450,7 @@ const HomeScreen = ({ route }) => {
         return (
           <View style={styles.selectionContainer}>
             <Text style={styles.selectedVideoTitle}>
-              Video Ready for Analysis
+              {t('home.selected.title')}
             </Text>
             <Text style={styles.selectedVideoInfo} numberOfLines={1}>
               {selectedVideoAsset.fileName ||
@@ -426,14 +458,18 @@ const HomeScreen = ({ route }) => {
             </Text>
             {selectedVideoAsset.duration != null && (
               <Text style={styles.videoInfoText}>
-                Duration: {formatDuration(selectedVideoAsset.duration)}
+                {t('home.selected.durationLabel', {
+                  duration: formatDuration(selectedVideoAsset.duration),
+                })}
               </Text>
             )}
             <View style={styles.contributionSection}>
-              <Text style={styles.contributionTitle}>Help train our AI!</Text>
+              <Text style={styles.contributionTitle}>
+                {t('home.selected.helpTitle')}
+              </Text>
               <TextInput
                 style={styles.emailInput}
-                placeholder="Your email (optional)"
+                placeholder={t('home.selected.emailPlaceholder')}
                 value={userEmail}
                 onChangeText={setUserEmail}
                 keyboardType="email-address"
@@ -458,16 +494,22 @@ const HomeScreen = ({ route }) => {
                   style={styles.checkboxIcon}
                 />
                 <Text style={styles.consentText}>
-                  I agree to use this video for training
+                  {t('home.selected.consentText')}
                 </Text>
               </TouchableOpacity>
             </View>
             <View style={styles.choiceSection}>
-              <Text style={styles.choiceTitle}>Movement Orientation</Text>
+              <Text style={styles.choiceTitle}>
+                {t('home.selected.orientationTitle')}
+              </Text>
               {orientationMap ? (
                 <View style={styles.orientationSummary}>
                   <Text style={styles.orientationSummaryText}>
-                    {formatOrientationLabel(selectedOrientation, orientationMap)}
+                    {formatOrientationLabel(
+                      selectedOrientation,
+                      orientationMap,
+                      t
+                    )}
                   </Text>
                 </View>
               ) : (
@@ -475,9 +517,11 @@ const HomeScreen = ({ route }) => {
               )}
             </View>
             <View style={styles.choiceSection}>
-              <Text style={styles.choiceTitle}>Processing Level</Text>
+              <Text style={styles.choiceTitle}>
+                {t('home.selected.processingLevelTitle')}
+              </Text>
               <View style={styles.modelButtonsContainer}>
-                {MODEL_OPTIONS.map((opt) => (
+                {modelOptions.map((opt) => (
                   <TouchableOpacity
                     key={opt.id}
                     style={[
@@ -522,7 +566,7 @@ const HomeScreen = ({ route }) => {
               style={styles.cancelButton}
             >
               <Text style={styles.cancelButtonText}>
-                Cancel / Choose Another
+                {t('home.selected.cancel')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -531,10 +575,12 @@ const HomeScreen = ({ route }) => {
       case 'polling_progress':
         return (
           <View style={styles.processingContainerFull}>
-            <Text style={styles.statusTitle}>Analyzing video on server...</Text>
+            <Text style={styles.statusTitle}>
+              {t('home.processing.title')}
+            </Text>
             {renderProcessingContent()}
             <BigButton
-              title="Cancel Analysis"
+              title={t('home.processing.cancel')}
               onPress={handleCancelProcessing}
               buttonStyle={styles.cancelAnalysisButton}
             />

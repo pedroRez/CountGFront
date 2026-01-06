@@ -1,9 +1,18 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Switch, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  Switch,
+  Alert,
+  TouchableOpacity,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
 import { useApi } from '../context/ApiContext'; // Import our custom hook
 import BigButton from '../components/BigButton';
+import { useLanguage } from '../context/LanguageContext';
 
 const SettingsScreen = () => {
   // Retrieve values and functions from our global context
@@ -14,6 +23,7 @@ const SettingsScreen = () => {
     setIsCustomUrlEnabled,
     DEFAULT_API_URL,
   } = useApi();
+  const { language, setLanguage, t } = useLanguage();
 
   // Local state for the text field, initialized with the context URL
   const [textInputUrl, setTextInputUrl] = useState(
@@ -25,33 +35,39 @@ const SettingsScreen = () => {
     const urlToTest = isCustomUrlEnabled ? textInputUrl : DEFAULT_API_URL;
     if (!urlToTest || !urlToTest.startsWith('http')) {
       Alert.alert(
-        'Invalid URL',
-        'Please enter a valid URL starting with http:// or https://'
+        t('settings.invalidUrlTitle'),
+        t('settings.invalidUrlMessage')
       );
       return;
     }
 
     setIsTesting(true);
-    Alert.alert('Testing...', `Trying to connect to ${urlToTest}`);
+    Alert.alert(
+      t('settings.testingTitle'),
+      t('settings.testingMessage', { url: urlToTest })
+    );
 
     try {
       // Attempt a GET request to the API root
       const response = await axios.get(urlToTest, { timeout: 10000 }); // 10-second timeout
       if (response.status === 200) {
         Alert.alert(
-          'Success!',
-          `Connection to ${urlToTest} successful.\nServer status: ${response.data.status || 'OK'}`
+          t('settings.successTitle'),
+          t('settings.successMessage', {
+            url: urlToTest,
+            status: response.data.status || 'OK',
+          })
         );
       } else {
         Alert.alert(
-          'Connection Failed',
-          `The server responded with status: ${response.status}`
+          t('settings.connectionFailedTitle'),
+          t('settings.connectionFailedMessage', { status: response.status })
         );
       }
     } catch (error) {
       Alert.alert(
-        'Connection Error',
-        `Could not connect to the server. Check the URL and your connection.\n\nDetails: ${error.message}`
+        t('settings.connectionErrorTitle'),
+        t('settings.connectionErrorMessage', { details: error.message })
       );
     } finally {
       setIsTesting(false);
@@ -77,19 +93,23 @@ const SettingsScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>API Settings</Text>
+        <Text style={styles.title}>{t('settings.title')}</Text>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Default Server</Text>
+          <Text style={styles.sectionTitle}>
+            {t('settings.defaultServerTitle')}
+          </Text>
           <Text style={styles.infoText}>
-            The default server configured in the app is:
+            {t('settings.defaultServerDescription')}
           </Text>
           <Text style={styles.urlText}>{DEFAULT_API_URL}</Text>
         </View>
 
         <View style={styles.section}>
           <View style={styles.switchContainer}>
-            <Text style={styles.sectionTitle}>Use Custom Server</Text>
+            <Text style={styles.sectionTitle}>
+              {t('settings.useCustomServer')}
+            </Text>
             <Switch
               trackColor={{ false: '#767577', true: '#81b0ff' }}
               thumbColor={isCustomUrlEnabled ? '#007AFF' : '#f4f3f4'}
@@ -109,10 +129,46 @@ const SettingsScreen = () => {
         </View>
 
         <BigButton
-          title={isTesting ? 'Testing...' : 'Test Connection'}
+          title={isTesting ? t('settings.testing') : t('settings.testConnection')}
           onPress={handleTestConnection}
           disabled={isTesting}
         />
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            {t('settings.languageTitle')}
+          </Text>
+          <Text style={styles.infoText}>
+            {t('settings.languageDescription')}
+          </Text>
+          <View style={styles.languageOptions}>
+            {[
+              { id: 'pt', label: t('settings.languagePortuguese') },
+              { id: 'en', label: t('settings.languageEnglish') },
+            ].map((option) => {
+              const isSelected = language === option.id;
+              return (
+                <TouchableOpacity
+                  key={option.id}
+                  style={[
+                    styles.languageOption,
+                    isSelected && styles.languageOptionSelected,
+                  ]}
+                  onPress={() => setLanguage(option.id)}
+                >
+                  <Text
+                    style={[
+                      styles.languageOptionText,
+                      isSelected && styles.languageOptionTextSelected,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -146,6 +202,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  languageOptions: {
+    flexDirection: 'row',
+    marginTop: 12,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+  },
+  languageOption: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+  },
+  languageOptionSelected: {
+    backgroundColor: '#007AFF',
+  },
+  languageOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  languageOptionTextSelected: {
+    color: '#fff',
   },
   input: {
     borderWidth: 1,

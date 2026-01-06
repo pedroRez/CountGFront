@@ -14,10 +14,13 @@ import CameraTestScreen from '../screens/CameraTestScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import VideoEditorScreen from '../screens/VideoEditorScreen';
 import CustomHeader from '../components/CustomHeader'; // <<< Import our new header
+import { useLanguage } from '../context/LanguageContext';
 
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
+  const { t } = useLanguage();
+
   return (
     <NavigationContainer>
       <Stack.Navigator
@@ -55,22 +58,22 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
             <Stack.Screen
               name="ResultsScreen"
               component={ResultsScreen}
-              options={{ title: 'Analysis Results' }}
+              options={{ title: t('nav.resultsTitle') }}
             />
             <Stack.Screen
               name="OnboardingTutorial"
               component={OnboardingScreen}
-              options={{ title: 'Filming Guide' }}
+              options={{ title: t('nav.filmingGuideTitle') }}
             />
             <Stack.Screen
               name="Settings"
               component={SettingsScreen}
-              options={{ title: 'Settings' }}
+              options={{ title: t('nav.settingsTitle') }}
             />
             <Stack.Screen
               name="CameraTest"
               component={CameraTestScreen}
-              options={{ title: 'Camera Test' }}
+              options={{ title: t('nav.cameraTestTitle') }}
             />
             <Stack.Screen
               name="VideoEditor"

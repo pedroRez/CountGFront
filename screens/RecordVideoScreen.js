@@ -12,6 +12,7 @@ import * as ExpoCameraModule from 'expo-camera';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
+import { useLanguage } from '../context/LanguageContext';
 
 // Function to format time
 const formatSecondsToMMSS = (totalSeconds) => {
@@ -23,34 +24,35 @@ const formatSecondsToMMSS = (totalSeconds) => {
 };
 
 // --- NEW ORIENTATION GUIDE CONFIGURATION ---
-const GUIDE_ORIENTATIONS = [
+const buildGuideOrientations = (t) => [
   {
     id: 'E',
-    label: 'Left → Right',
+    label: t('common.orientation.leftToRight'),
     lineStyle: 'vertical',
     arrowIcon: 'arrow-right-bold-outline',
   },
   {
     id: 'W',
-    label: 'Right ← Left',
+    label: t('common.orientation.rightToLeft'),
     lineStyle: 'vertical',
     arrowIcon: 'arrow-left-bold-outline',
   },
   {
     id: 'S',
-    label: 'Top ↓ Bottom',
+    label: t('common.orientation.topToBottom'),
     lineStyle: 'horizontal',
     arrowIcon: 'arrow-down-bold-outline',
   },
   {
     id: 'N',
-    label: 'Bottom ↑ Top',
+    label: t('common.orientation.bottomToTop'),
     lineStyle: 'horizontal',
     arrowIcon: 'arrow-up-bold-outline',
   },
 ];
 
 export default function RecordVideoScreen({ navigation }) {
+  const { t } = useLanguage();
   // --- Component state ---
   const [hasPermission, setHasPermission] = useState(null);
   const [cameraType, setCameraType] = useState('back');
@@ -59,6 +61,8 @@ export default function RecordVideoScreen({ navigation }) {
   const [isCameraReady, setIsCameraReady] = useState(false);
   // --- New state for guide orientation ---
   const [guideOrientationIndex, setGuideOrientationIndex] = useState(0);
+
+  const guideOrientations = buildGuideOrientations(t);
 
   const cameraRef = useRef(null);
   const recordingTimerRef = useRef(null);
@@ -103,7 +107,7 @@ export default function RecordVideoScreen({ navigation }) {
   const toggleGuideOrientation = () => {
     if (!isRecording) {
       setGuideOrientationIndex(
-        (prevIndex) => (prevIndex + 1) % GUIDE_ORIENTATIONS.length
+        (prevIndex) => (prevIndex + 1) % guideOrientations.length
       );
     }
   };
@@ -117,13 +121,13 @@ export default function RecordVideoScreen({ navigation }) {
     }
 
     if (!isCameraReady || !cameraRef.current) {
-      Alert.alert('Wait', 'The camera is not ready yet.');
+      Alert.alert(t('common.wait'), t('common.cameraNotReady'));
       return;
     }
     if (!hasPermission) {
       Alert.alert(
-        'Permission Required',
-        'Camera and microphone access is required.'
+        t('common.permissionRequired'),
+        t('common.cameraMicRequired')
       );
       return;
     }
@@ -135,7 +139,7 @@ export default function RecordVideoScreen({ navigation }) {
       const recordOptions = { quality: '720p', mute: true };
       const data = await cameraRef.current.recordAsync(recordOptions);
 
-      const currentOrientation = GUIDE_ORIENTATIONS[guideOrientationIndex];
+      const currentOrientation = guideOrientations[guideOrientationIndex];
       const recordedVideoAsset = {
         uri: data.uri,
         fileName: data.uri.split('/').pop(),
@@ -152,13 +156,13 @@ export default function RecordVideoScreen({ navigation }) {
         )
       ) {
         Alert.alert(
-          'Recording Too Short',
-          'Please try recording for at least a few seconds.'
+          t('record.recordingTooShortTitle'),
+          t('record.recordingTooShortMessage')
         );
       } else {
         Alert.alert(
-          'Recording Error',
-          `Could not record the video: ${error.message}`
+          t('record.recordingErrorTitle'),
+          t('record.recordingErrorMessage', { error: error.message })
         );
       }
     } finally {
@@ -171,7 +175,9 @@ export default function RecordVideoScreen({ navigation }) {
     return (
       <View style={styles.centered}>
         <CustomActivityIndicator size="large" color="#FFF" />
-        <Text style={styles.infoText}>Requesting permissions...</Text>
+        <Text style={styles.infoText}>
+          {t('record.loadingPermissions')}
+        </Text>
       </View>
     );
   }
@@ -179,20 +185,20 @@ export default function RecordVideoScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.centered}>
         <Text style={styles.infoText}>
-          Camera and microphone access is required.
+          {t('record.permissionDenied')}
         </Text>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backButton}
         >
-          <Text style={styles.backButtonText}>Back</Text>
+          <Text style={styles.backButtonText}>{t('common.back')}</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
   }
 
   // Get the current guide configuration based on the state index
-  const currentGuide = GUIDE_ORIENTATIONS[guideOrientationIndex];
+  const currentGuide = guideOrientations[guideOrientationIndex];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -280,7 +286,7 @@ export default function RecordVideoScreen({ navigation }) {
               { color: isRecording ? '#666' : 'white' },
             ]}
           >
-            Switch
+            {t('record.switchCamera')}
           </Text>
         </TouchableOpacity>
       </View>

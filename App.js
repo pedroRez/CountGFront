@@ -7,6 +7,7 @@ import AppNavigator from './navigation/AppNavigator';
 import CustomActivityIndicator from './components/CustomActivityIndicator';
 import { ApiProvider, useApi } from './context/ApiContext';
 import { OrientationMapProvider } from './context/OrientationMapContext';
+import { LanguageProvider } from './context/LanguageContext';
 
 const APP_LAUNCHED_KEY = 'appAlreadyLaunched';
 
@@ -102,11 +103,13 @@ const AppContent = () => {
 // The main App component now simply provides the context
 export default function App() {
   return (
-    <ApiProvider>
-      <OrientationMapProvider>
-        <AppContent />
-      </OrientationMapProvider>
-    </ApiProvider>
+    <LanguageProvider>
+      <ApiProvider>
+        <OrientationMapProvider>
+          <AppContent />
+        </OrientationMapProvider>
+      </ApiProvider>
+    </LanguageProvider>
   );
 }
 

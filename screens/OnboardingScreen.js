@@ -10,12 +10,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BigButton from '../components/BigButton'; // Ajuste o caminho se o seu BigButton estiver em outro lugar
+import { useLanguage } from '../context/LanguageContext';
 
 // Props:
 // - navigation: Navigation object (automatically provided by React Navigation)
 // - onComplete: Callback function (passed from App.js via AppNavigator for the initial onboarding)
 // - isInitial: Boolean (passed from AppNavigator, true if this is the initial onboarding)
 const OnboardingScreen = ({ navigation, onComplete, isInitial = false }) => {
+  const { t } = useLanguage();
   const { width } = useWindowDimensions();
   const imageWidth = width * 0.85; // Largura das imagens/diagramas na tela
 
@@ -43,22 +45,18 @@ const OnboardingScreen = ({ navigation, onComplete, isInitial = false }) => {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContentContainer}>
         <View style={styles.container}>
-          <Text style={styles.mainTitle}>
-            Quick Guide: Filming Your Cattle!
-          </Text>
+          <Text style={styles.mainTitle}>{t('onboarding.mainTitle')}</Text>
           <Text style={styles.mainSubtitle}>
-            Follow these tips to ensure accurate and efficient counting with our
-            app.
+            {t('onboarding.mainSubtitle')}
           </Text>
 
           {/* Section 1: Camera Positioning */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>
-              📸 1. Ideal Camera Positioning
+              {t('onboarding.section1.title')}
             </Text>
             <Text style={styles.sectionText}>
-              Position the camera for a clear top-down view of the cattle
-              passage.
+              {t('onboarding.section1.text')}
             </Text>
 
             {/* SUBSTITUA O TEXTO ABAIXO PELA SUA IMAGEM/DIAGRAMA REAL */}
@@ -74,39 +72,42 @@ const OnboardingScreen = ({ navigation, onComplete, isInitial = false }) => {
             <View style={styles.point}>
               <Text style={styles.pointEmoji}>⬆️</Text>
               <Text style={styles.pointText}>
-                <Text style={styles.bold}>Top-Down View:</Text> Place the camera
-                directly ABOVE the gate or corridor. The view should be straight
-                down as much as possible.
+                <Text style={styles.bold}>
+                  {t('onboarding.section1.point1.label')}
+                </Text>
+                {t('onboarding.section1.point1.text')}
               </Text>
             </View>
             <View style={styles.point}>
               <Text style={styles.pointEmoji}>🎯</Text>
               <Text style={styles.pointText}>
-                <Text style={styles.bold}>Full Coverage:</Text> Ensure the
-                camera captures the entire width of the passage where the cattle
-                will cross. No animal should leave the field of view.
+                <Text style={styles.bold}>
+                  {t('onboarding.section1.point2.label')}
+                </Text>
+                {t('onboarding.section1.point2.text')}
               </Text>
             </View>
             <View style={styles.point}>
               <Text style={styles.pointEmoji}>🚫</Text>
               <Text style={styles.pointText}>
-                <Text style={styles.bold}>Stable Camera:</Text> Use a mount,
-                tripod, or secure the camera firmly. Shaky videos reduce
-                accuracy!
+                <Text style={styles.bold}>
+                  {t('onboarding.section1.point3.label')}
+                </Text>
+                {t('onboarding.section1.point3.text')}
               </Text>
             </View>
             <Text style={styles.tipText}>
-              <Text style={styles.bold}>Height Tip:</Text> For a standard gate
-              around 3 meters wide, a camera height between 2 and 3 meters
-              usually provides good framing with most phones. Test to find the
-              ideal setup for your equipment and gate.
+              <Text style={styles.bold}>
+                {t('onboarding.section1.tip.label')}
+              </Text>
+              {t('onboarding.section1.tip.text')}
             </Text>
           </View>
 
           {/* Section 2: Filming Tips */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>
-              🎬 2. Tips for Effective Filming
+              {t('onboarding.section2.title')}
             </Text>
 
             {/* SUBSTITUA O TEXTO ABAIXO PELA SUA IMAGEM/DIAGRAMA REAL */}
@@ -122,40 +123,46 @@ const OnboardingScreen = ({ navigation, onComplete, isInitial = false }) => {
             <View style={styles.point}>
               <Text style={styles.pointEmoji}>➡️</Text>
               <Text style={styles.pointText}>
-                <Text style={styles.bold}>Full Passage:</Text> Film each animal
-                fully crossing the visible area, from entry until it leaves the
-                camera frame.
+                <Text style={styles.bold}>
+                  {t('onboarding.section2.point1.label')}
+                </Text>
+                {t('onboarding.section2.point1.text')}
               </Text>
             </View>
             <View style={styles.point}>
               <Text style={styles.pointEmoji}>☀️</Text>
               <Text style={styles.pointText}>
-                <Text style={styles.bold}>Good Lighting:</Text> Film with good,
-                even natural light. Avoid the sun directly in the lens, strong
-                shadows over the animals, or excessive darkness.
+                <Text style={styles.bold}>
+                  {t('onboarding.section2.point2.label')}
+                </Text>
+                {t('onboarding.section2.point2.text')}
               </Text>
             </View>
             <View style={styles.point}>
               <Text style={styles.pointEmoji}>⏱️</Text>
               <Text style={styles.pointText}>
-                <Text style={styles.bold}>Focus on the Right Moment:</Text>
-                Record only the period when the cattle are passing. Avoid
-                unnecessarily long videos before or after the event.
+                <Text style={styles.bold}>
+                  {t('onboarding.section2.point3.label')}
+                </Text>
+                {t('onboarding.section2.point3.text')}
               </Text>
             </View>
             <View style={styles.point}>
               <Text style={styles.pointEmoji}>✨</Text>
               <Text style={styles.pointText}>
-                <Text style={styles.bold}>Video Quality:</Text> Use a good
-                quality (e.g., HD 720p or Full HD 1080p). Very large files (4K
-                for long periods) may take longer to upload and process.
+                <Text style={styles.bold}>
+                  {t('onboarding.section2.point4.label')}
+                </Text>
+                {t('onboarding.section2.point4.text')}
               </Text>
             </View>
           </View>
 
           {/* Section 3: How Counting Works */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}> How the Counting Works</Text>
+            <Text style={styles.sectionTitle}>
+              {t('onboarding.section3.title')}
+            </Text>
 
             {/* SUBSTITUA O TEXTO ABAIXO PELA SUA IMAGEM/DIAGRAMA REAL */}
             <Image
@@ -170,31 +177,38 @@ const OnboardingScreen = ({ navigation, onComplete, isInitial = false }) => {
             <View style={styles.point}>
               <Text style={styles.pointEmoji}>↔️</Text>
               <Text style={styles.pointText}>
-                <Text style={styles.bold}>Virtual Counting Line:</Text> Our
-                system uses a reference line in your video to detect when an
-                animal crosses.
+                <Text style={styles.bold}>
+                  {t('onboarding.section3.point1.label')}
+                </Text>
+                {t('onboarding.section3.point1.text')}
               </Text>
             </View>
             <View style={styles.point}>
               <Text style={styles.pointEmoji}>↕️</Text>
               <Text style={styles.pointText}>
-                <Text style={styles.bold}>Movement Direction:</Text> It is
-                important that the cattle move primarily in one direction (e.g.,
-                left to right or top to bottom on the screen) when crossing the
-                line. The app may ask for this direction or use a default.
+                <Text style={styles.bold}>
+                  {t('onboarding.section3.point2.label')}
+                </Text>
+                {t('onboarding.section3.point2.text')}
               </Text>
             </View>
             <View style={styles.point}>
               <Text style={styles.pointEmoji}>✅</Text>
               <Text style={styles.pointText}>
-                <Text style={styles.bold}>Single Count:</Text> Each animal
-                crossing the line in the configured direction is counted once.
+                <Text style={styles.bold}>
+                  {t('onboarding.section3.point3.label')}
+                </Text>
+                {t('onboarding.section3.point3.text')}
               </Text>
             </View>
           </View>
 
-          <BigButton
-            title={isInitial ? "Got it, let's start!" : 'Back'} // Dynamic button text
+        <BigButton
+            title={
+              isInitial
+                ? t('onboarding.buttonStart')
+                : t('onboarding.buttonBack')
+            } // Dynamic button text
             onPress={handleButtonPress}
             buttonStyle={styles.completeButton}
             textStyle={styles.completeButtonText}

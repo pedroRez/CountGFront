@@ -3,6 +3,7 @@ import { View, Alert, StyleSheet } from 'react-native';
 import axios from 'axios';
 import BigButton from './BigButton';
 import { useApi } from '../context/ApiContext';
+import { useLanguage } from '../context/LanguageContext';
 
 const InternalProgressBar = ({ progress }) => (
   <View style={styles.progressBarContainer}>
@@ -24,22 +25,28 @@ export default function VideoUploadSender({
   onUploadError,
 }) {
   const { apiUrl } = useApi();
+  const { t } = useLanguage();
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [statusText, setStatusText] = useState('Process Video');
+  const [status, setStatus] = useState({
+    key: 'upload.processVideo',
+    params: {},
+  });
+
+  const statusText = t(status.key, status.params);
 
   const handleProcessRequest = async () => {
     const assetUri = videoAsset?.uri || videoAsset?.localUri;
     const finalOrientation = orientation || videoAsset?.orientation;
     if (!assetUri || !finalOrientation || !modelChoice) {
       Alert.alert(
-        'Missing Data',
-        'Please select a video, orientation, and processing level.'
+        t('upload.missingDataTitle'),
+        t('upload.missingDataMessage')
       );
       return;
     }
     if (!apiUrl) {
-      Alert.alert('Configuration Error', 'The API URL was not found.');
+      Alert.alert(t('upload.configErrorTitle'), t('upload.configErrorMessage'));
       return;
     }
 
@@ -59,7 +66,7 @@ export default function VideoUploadSender({
 
     setIsUploading(true);
     setUploadProgress(0);
-    setStatusText('Uploading... 0%');
+    setStatus({ key: 'upload.uploadingWithPercent', params: { percent: 0 } });
 
     try {
       const responseData = await new Promise((resolve, reject) => {
@@ -81,7 +88,10 @@ export default function VideoUploadSender({
           const clampedProgress = Math.min(percent, 1.0);
 
           setUploadProgress(clampedProgress);
-          setStatusText(`Uploading... ${Math.round(clampedProgress * 100)}%`);
+          setStatus({
+            key: 'upload.uploadingWithPercent',
+            params: { percent: Math.round(clampedProgress * 100) },
+          });
         };
 
         xhr.onload = () => {
@@ -102,7 +112,7 @@ export default function VideoUploadSender({
         xhr.send(formData);
       });
 
-      setStatusText('Upload complete. Starting analysis...');
+      setStatus({ key: 'upload.uploadComplete', params: {} });
 
       const trimStartMs = Number.isFinite(videoAsset?.trimStartMs)
         ? Math.max(0, Math.round(videoAsset.trimStartMs))
@@ -141,12 +151,12 @@ export default function VideoUploadSender({
       const errorMsg =
         error.response?.data?.detail ||
         error.message ||
-        'Failed to start video processing.';
-      Alert.alert('Processing Error', errorMsg);
+        t('upload.processingErrorFallback');
+      Alert.alert(t('upload.processingErrorTitle'), errorMsg);
       if (onUploadError) onUploadError(error);
     } finally {
       setIsUploading(false);
-      setStatusText('Process Video');
+      setStatus({ key: 'upload.processVideo', params: {} });
     }
   };
 

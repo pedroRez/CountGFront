@@ -11,16 +11,33 @@ import { Video, ResizeMode } from 'expo-av';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider'; // UI para selecao de tempo
 import { useOrientationMap } from '../context/OrientationMapContext';
+import { useLanguage } from '../context/LanguageContext';
 
 const MIN_GAP_SECONDS = 0.1;
 const LINE_RATIO_STEP = 0.05;
 
-const ORIENTATION_STYLE_MAP = {
-  E: { lineStyle: 'vertical', arrowDirection: 'right', label: 'Esquerda para Direita' },
-  W: { lineStyle: 'vertical', arrowDirection: 'left', label: 'Direita para Esquerda' },
-  S: { lineStyle: 'horizontal', arrowDirection: 'down', label: 'Cima para Baixo' },
-  N: { lineStyle: 'horizontal', arrowDirection: 'up', label: 'Baixo para Cima' },
-};
+const buildOrientationStyleMap = (t) => ({
+  E: {
+    lineStyle: 'vertical',
+    arrowDirection: 'right',
+    label: t('common.orientation.leftToRight'),
+  },
+  W: {
+    lineStyle: 'vertical',
+    arrowDirection: 'left',
+    label: t('common.orientation.rightToLeft'),
+  },
+  S: {
+    lineStyle: 'horizontal',
+    arrowDirection: 'down',
+    label: t('common.orientation.topToBottom'),
+  },
+  N: {
+    lineStyle: 'horizontal',
+    arrowDirection: 'up',
+    label: t('common.orientation.bottomToTop'),
+  },
+});
 
 const ARROW_TEXT_MAP = {
   right: '->',
@@ -36,34 +53,34 @@ const ARROW_ICON_MAP = {
   down: 'arrow-down-bold-outline',
 };
 
-const FALLBACK_ORIENTATIONS = [
+const buildFallbackOrientations = (orientationStyleMap) => [
   {
     id: 'E',
-    label: ORIENTATION_STYLE_MAP.E.label,
+    label: orientationStyleMap.E.label,
     arrowText: ARROW_TEXT_MAP.right,
-    lineStyle: ORIENTATION_STYLE_MAP.E.lineStyle,
-    arrowDirection: ORIENTATION_STYLE_MAP.E.arrowDirection,
+    lineStyle: orientationStyleMap.E.lineStyle,
+    arrowDirection: orientationStyleMap.E.arrowDirection,
   },
   {
     id: 'W',
-    label: ORIENTATION_STYLE_MAP.W.label,
+    label: orientationStyleMap.W.label,
     arrowText: ARROW_TEXT_MAP.left,
-    lineStyle: ORIENTATION_STYLE_MAP.W.lineStyle,
-    arrowDirection: ORIENTATION_STYLE_MAP.W.arrowDirection,
+    lineStyle: orientationStyleMap.W.lineStyle,
+    arrowDirection: orientationStyleMap.W.arrowDirection,
   },
   {
     id: 'S',
-    label: ORIENTATION_STYLE_MAP.S.label,
+    label: orientationStyleMap.S.label,
     arrowText: ARROW_TEXT_MAP.down,
-    lineStyle: ORIENTATION_STYLE_MAP.S.lineStyle,
-    arrowDirection: ORIENTATION_STYLE_MAP.S.arrowDirection,
+    lineStyle: orientationStyleMap.S.lineStyle,
+    arrowDirection: orientationStyleMap.S.arrowDirection,
   },
   {
     id: 'N',
-    label: ORIENTATION_STYLE_MAP.N.label,
+    label: orientationStyleMap.N.label,
     arrowText: ARROW_TEXT_MAP.up,
-    lineStyle: ORIENTATION_STYLE_MAP.N.lineStyle,
-    arrowDirection: ORIENTATION_STYLE_MAP.N.arrowDirection,
+    lineStyle: orientationStyleMap.N.lineStyle,
+    arrowDirection: orientationStyleMap.N.arrowDirection,
   },
 ];
 
@@ -82,18 +99,22 @@ const formatTime = (seconds) => {
   return `${pad(minutes)}:${pad(secs)}`;
 };
 
-const buildOrientationOptions = (orientationMap) => {
+const buildOrientationOptions = (
+  orientationMap,
+  fallbackOrientations,
+  styleMap
+) => {
   if (!orientationMap || typeof orientationMap !== 'object') {
-    return FALLBACK_ORIENTATIONS;
+    return fallbackOrientations;
   }
 
   const entries = Object.entries(orientationMap);
   if (entries.length === 0) {
-    return FALLBACK_ORIENTATIONS;
+    return fallbackOrientations;
   }
 
   return entries.map(([id, data]) => {
-    const style = ORIENTATION_STYLE_MAP[id] || {
+    const style = styleMap[id] || {
       lineStyle: 'vertical',
       arrowDirection: 'right',
       label: id,
@@ -116,6 +137,7 @@ const buildOrientationOptions = (orientationMap) => {
 export default function VideoEditorScreen({ route, navigation }) {
   const { asset } = route.params || {};
   const { orientationMap, fetchOrientationMap } = useOrientationMap();
+  const { t } = useLanguage();
   const initialDuration = asset?.duration ?? 0;
   const initialDurationSeconds =
     initialDuration > 1000 ? initialDuration / 1000 : initialDuration;
@@ -125,13 +147,19 @@ export default function VideoEditorScreen({ route, navigation }) {
     return Number.isFinite(parsed) ? clampRatio(parsed) : 0.5;
   })();
 
+  const orientationStyleMap = useMemo(() => buildOrientationStyleMap(t), [t]);
+  const fallbackOrientations = useMemo(
+    () => buildFallbackOrientations(orientationStyleMap),
+    [orientationStyleMap]
+  );
+
   const [durationSeconds, setDurationSeconds] = useState(initialDurationSeconds);
   const [startTime, setStartTime] = useState(0);
   const [endTime, setEndTime] = useState(initialDurationSeconds);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedOrientationId, setSelectedOrientationId] = useState(
-    asset?.orientation || FALLBACK_ORIENTATIONS[0].id
+    asset?.orientation || fallbackOrientations[0].id
   );
   const [linePositionRatio, setLinePositionRatio] = useState(initialLineRatio);
 
@@ -143,8 +171,13 @@ export default function VideoEditorScreen({ route, navigation }) {
   }, [fetchOrientationMap]);
 
   const orientationOptions = useMemo(
-    () => buildOrientationOptions(orientationMap),
-    [orientationMap]
+    () =>
+      buildOrientationOptions(
+        orientationMap,
+        fallbackOrientations,
+        orientationStyleMap
+      ),
+    [orientationMap, fallbackOrientations, orientationStyleMap]
   );
 
   useEffect(() => {
@@ -265,7 +298,7 @@ export default function VideoEditorScreen({ route, navigation }) {
 
   const handleConfirm = () => {
     if (!asset?.uri) {
-      Alert.alert('Erro', 'Video nao encontrado.');
+      Alert.alert(t('common.error'), t('videoEditor.videoNotFoundMessage'));
       return;
     }
 
@@ -273,7 +306,7 @@ export default function VideoEditorScreen({ route, navigation }) {
     const safeEnd = clamp(endTime, safeStart + MIN_GAP_SECONDS, safeDurationSeconds);
     const durationSecondsValue = safeEnd - safeStart;
     if (durationSecondsValue <= 0) {
-      Alert.alert('Erro', 'Intervalo de corte invalido.');
+      Alert.alert(t('common.error'), t('videoEditor.invalidTrimMessage'));
       return;
     }
 
@@ -292,7 +325,9 @@ export default function VideoEditorScreen({ route, navigation }) {
   };
 
   const orientationLabel =
-    selectedOrientation?.label || selectedOrientationId || 'Nao definido';
+    selectedOrientation?.label ||
+    selectedOrientationId ||
+    t('videoEditor.orientationNotDefined');
   const orientationArrowText = selectedOrientation?.arrowText
     ? ` ${selectedOrientation.arrowText}`
     : '';
@@ -348,7 +383,10 @@ export default function VideoEditorScreen({ route, navigation }) {
 
       <View style={styles.controlsContainer}>
         <Text style={styles.timeText}>
-          Atual: {formatTime(currentTime)} / {formatTime(safeDurationSeconds)}
+          {t('videoEditor.timeLabel', {
+            current: formatTime(currentTime),
+            total: formatTime(safeDurationSeconds),
+          })}
         </Text>
         <View style={styles.playbackRow}>
           <TouchableOpacity
@@ -356,29 +394,37 @@ export default function VideoEditorScreen({ route, navigation }) {
             onPress={handleTogglePlayback}
           >
             <Text style={styles.controlButtonText}>
-              {isPlaying ? 'Pausar' : 'Reproduzir'}
+              {isPlaying ? t('videoEditor.pause') : t('videoEditor.play')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.controlButton}
             onPress={handleSeekToStart}
           >
-            <Text style={styles.controlButtonText}>Ir inicio</Text>
+            <Text style={styles.controlButtonText}>
+              {t('videoEditor.seekStart')}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.controlButton}
             onPress={handleSeekToEnd}
           >
-            <Text style={styles.controlButtonText}>Ir fim</Text>
+            <Text style={styles.controlButtonText}>
+              {t('videoEditor.seekEnd')}
+            </Text>
           </TouchableOpacity>
         </View>
         <View style={styles.markRow}>
           <TouchableOpacity style={styles.markButton} onPress={handleMarkStart}>
-            <Text style={styles.markButtonText}>Definir inicio</Text>
+            <Text style={styles.markButtonText}>
+              {t('videoEditor.markStart')}
+            </Text>
             <Text style={styles.markValue}>{formatTime(startTime)}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.markButton} onPress={handleMarkEnd}>
-            <Text style={styles.markButtonText}>Definir fim</Text>
+            <Text style={styles.markButtonText}>
+              {t('videoEditor.markEnd')}
+            </Text>
             <Text style={styles.markValue}>{formatTime(endTime)}</Text>
           </TouchableOpacity>
         </View>
@@ -391,7 +437,9 @@ export default function VideoEditorScreen({ route, navigation }) {
           </TouchableOpacity>
           <View style={styles.lineAdjustLabel}>
             <Text style={styles.lineAdjustText}>
-              Linha: {linePositionRatio.toFixed(2)}
+              {t('videoEditor.lineLabel', {
+                value: linePositionRatio.toFixed(2),
+              })}
             </Text>
           </View>
           <TouchableOpacity
@@ -420,7 +468,9 @@ export default function VideoEditorScreen({ route, navigation }) {
       </View>
 
       <View style={styles.sliderContainer}>
-        <Text style={styles.sliderLabel}>Inicio: {formatTime(startTime)}</Text>
+        <Text style={styles.sliderLabel}>
+          {t('videoEditor.sliderStart', { value: formatTime(startTime) })}
+        </Text>
         <Slider
           style={styles.slider}
           minimumValue={0}
@@ -429,7 +479,9 @@ export default function VideoEditorScreen({ route, navigation }) {
           onValueChange={handleStartChange}
           tapToSeek
         />
-        <Text style={styles.sliderLabel}>Fim: {formatTime(endTime)}</Text>
+        <Text style={styles.sliderLabel}>
+          {t('videoEditor.sliderEnd', { value: formatTime(endTime) })}
+        </Text>
         <Slider
           style={styles.slider}
           minimumValue={0}
@@ -443,7 +495,7 @@ export default function VideoEditorScreen({ route, navigation }) {
       {/* Future placeholder for direction selection */}
       <View style={styles.placeholder}>
         <Text style={styles.placeholderText}>
-          Direction selector will appear here
+          {t('videoEditor.placeholderDirection')}
         </Text>
       </View>
 
@@ -452,13 +504,13 @@ export default function VideoEditorScreen({ route, navigation }) {
           style={[styles.button, styles.cancelButton]}
           onPress={handleCancel}
         >
-          <Text style={styles.buttonText}>Cancelar</Text>
+          <Text style={styles.buttonText}>{t('videoEditor.cancel')}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.button, styles.confirmButton]}
           onPress={handleConfirm}
         >
-          <Text style={styles.buttonText}>Confirmar</Text>
+          <Text style={styles.buttonText}>{t('videoEditor.confirm')}</Text>
         </TouchableOpacity>
       </View>
     </View>

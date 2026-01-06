@@ -2,33 +2,39 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BigButton from '../components/BigButton';
+import { useLanguage } from '../context/LanguageContext';
 
 const ResultsScreen = ({ route, navigation }) => {
+  const { t } = useLanguage();
   const { results } = route.params; // Receive results from navigation
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Analysis Result</Text>
+        <Text style={styles.title}>{t('results.title')}</Text>
 
         <View style={styles.resultsCard}>
-          <Text style={styles.resultLabel}>Original Video:</Text>
+          <Text style={styles.resultLabel}>{t('results.originalVideo')}</Text>
           <Text style={styles.resultValue}>{results.video}</Text>
 
-          <Text style={styles.resultLabel}>Processed Video (Name):</Text>
+          <Text style={styles.resultLabel}>{t('results.processedVideo')}</Text>
           <Text style={styles.resultValue}>{results.video_processado}</Text>
 
-          <Text style={styles.resultLabel}>Total Frames:</Text>
+          <Text style={styles.resultLabel}>{t('results.totalFrames')}</Text>
           <Text style={styles.resultValue}>{results.total_frames}</Text>
 
           <View style={styles.totalCountContainer}>
-            <Text style={styles.totalCountLabel}>Total Cattle Counted:</Text>
+            <Text style={styles.totalCountLabel}>
+              {t('results.totalCount')}
+            </Text>
             <Text style={styles.totalCountValue}>{results.total_count}</Text>
           </View>
 
           {results.por_classe && Object.keys(results.por_classe).length > 0 && (
             <View>
-              <Text style={styles.resultLabel}>Details by Class:</Text>
+              <Text style={styles.resultLabel}>
+                {t('results.detailsByClass')}
+              </Text>
               {Object.entries(results.por_classe).map(([classe, contagem]) => (
                 <Text key={classe} style={styles.resultValue}>
                   {' '}
@@ -40,7 +46,7 @@ const ResultsScreen = ({ route, navigation }) => {
         </View>
 
         <BigButton
-          title="Submit New Video"
+          title={t('results.submitNewVideo')}
           onPress={() => navigation.popToTop()} // Return to the stack's initial screen
           buttonStyle={styles.newAnalysisButton}
         />

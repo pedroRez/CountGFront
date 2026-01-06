@@ -4,8 +4,10 @@ import CustomActivityIndicator from '../components/CustomActivityIndicator';
 // Import the full module to use .CameraView and .Camera
 import * as ExpoCameraModule from 'expo-camera';
 import * as MediaLibrary from 'expo-media-library';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function CameraTestScreen({ navigation }) {
+  const { t } = useLanguage();
   const [hasAllPermissions, setHasAllPermissions] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false); // New state to track when the camera is ready
@@ -30,8 +32,8 @@ export default function CameraTestScreen({ navigation }) {
 
       if (!granted) {
         Alert.alert(
-          'Incomplete Permissions',
-          'For this test, all permissions (camera, audio, gallery) are required.'
+          t('cameraTest.alert.incompletePermissionsTitle'),
+          t('cameraTest.alert.incompletePermissionsMessage')
         );
       }
     })();
@@ -40,7 +42,7 @@ export default function CameraTestScreen({ navigation }) {
   const handleRecordButtonPress = async () => {
     // Check if the camera is ready and not currently recording
     if (!isCameraReady || !cameraRef.current) {
-      Alert.alert('Wait', 'The camera is not ready yet.');
+      Alert.alert(t('common.wait'), t('common.cameraNotReady'));
       return;
     }
 
@@ -62,13 +64,13 @@ export default function CameraTestScreen({ navigation }) {
         console.log('[TEST] Recording finished successfully! URI:', data.uri);
 
         Alert.alert(
-          'Success!',
-          'Video recorded. Attempting to save to gallery...'
+          t('cameraTest.alert.successTitle'),
+          t('cameraTest.alert.successMessage')
         );
         await MediaLibrary.saveToLibraryAsync(data.uri);
         Alert.alert(
-          'Saved!',
-          'The test video was saved to your gallery successfully.'
+          t('cameraTest.alert.savedTitle'),
+          t('cameraTest.alert.savedMessage')
         );
         navigation.goBack();
       } catch (error) {
@@ -81,15 +83,17 @@ export default function CameraTestScreen({ navigation }) {
           error.message.includes(
             'Recording was stopped before any data could be produced'
           )
-        ) {
+          ) {
           Alert.alert(
-            'Recording Too Short',
-            'The video was stopped too quickly. Try recording longer.'
+            t('cameraTest.alert.recordingTooShortTitle'),
+            t('cameraTest.alert.recordingTooShortMessage')
           );
         } else {
           Alert.alert(
-            'Recording Error in Test',
-            `An error occurred: ${error.message}`
+            t('cameraTest.alert.recordingErrorTitle'),
+            t('cameraTest.alert.recordingErrorMessage', {
+              error: error.message,
+            })
           );
         }
       } finally {
@@ -103,14 +107,14 @@ export default function CameraTestScreen({ navigation }) {
     return (
       <View style={styles.centered}>
         <CustomActivityIndicator size="large" color="#FFF" />
-        <Text style={styles.text}>Requesting permissions...</Text>
+        <Text style={styles.text}>{t('cameraTest.loadingPermissions')}</Text>
       </View>
     );
   }
   if (hasAllPermissions === false) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.text}>Required permissions denied.</Text>
+        <Text style={styles.text}>{t('cameraTest.permissionsDenied')}</Text>
       </View>
     );
   }
@@ -137,10 +141,10 @@ export default function CameraTestScreen({ navigation }) {
         >
           <Text style={styles.text}>
             {!isCameraReady
-              ? 'Please wait...'
+              ? t('cameraTest.buttonPleaseWait')
               : isRecording
-                ? 'Stop Recording'
-                : 'Start Test'}
+                ? t('cameraTest.buttonStopRecording')
+                : t('cameraTest.buttonStartTest')}
           </Text>
         </TouchableOpacity>
       </View>
