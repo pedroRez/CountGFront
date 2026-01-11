@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,15 +6,24 @@ import {
   TouchableOpacity,
   Dimensions,
   Alert,
+  Pressable,
+  PanResponder,
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Slider from '@react-native-community/slider'; // UI para selecao de tempo
 import { useOrientationMap } from '../context/OrientationMapContext';
 import { useLanguage } from '../context/LanguageContext';
 
 const MIN_GAP_SECONDS = 0.1;
 const LINE_RATIO_STEP = 0.05;
+const DOUBLE_TAP_DELAY_MS = 260;
+const SEEK_STEP_SECONDS = 10;
+const VIDEO_FRAME_PADDING = 12;
+const SCRUB_KNOB_SIZE = 14;
+const SCRUB_LINE_INSET = 10;
+const SCRUB_MARKER_WIDTH = 2;
+const SCRUB_RESET_VELOCITY = 1.2;
+const SCRUB_RESET_MIN_DISTANCE = 24;
 
 const buildOrientationStyleMap = (t) => ({
   E: {
@@ -164,6 +173,20 @@ export default function VideoEditorScreen({ route, navigation }) {
     safeInitialStart + MIN_GAP_SECONDS,
     initialDurationSeconds
   );
+  const initialAspectRatio = (() => {
+    const width = Number(asset?.width);
+    const height = Number(asset?.height);
+    if (
+      Number.isFinite(width) &&
+      Number.isFinite(height) &&
+      width > 0 &&
+      height > 0
+    ) {
+      return width / height;
+    }
+    const screen = Dimensions.get('window');
+    return screen.width >= screen.height ? 16 / 9 : 9 / 16;
+  })();
 
   const orientationStyleMap = useMemo(() => buildOrientationStyleMap(t), [t]);
   const fallbackOrientations = useMemo(
@@ -180,13 +203,30 @@ export default function VideoEditorScreen({ route, navigation }) {
     asset?.orientation || fallbackOrientations[0].id
   );
   const [linePositionRatio, setLinePositionRatio] = useState(initialLineRatio);
+  const [videoAspectRatio, setVideoAspectRatio] = useState(initialAspectRatio);
+  const [videoContainerSize, setVideoContainerSize] = useState({
+    width: 0,
+    height: 0,
+  });
+  const [videoWidth, setVideoWidth] = useState(0);
+  const [scrubBarWidth, setScrubBarWidth] = useState(0);
 
   const safeDurationSeconds = Math.max(0, durationSeconds);
   const videoRef = useRef(null);
+  const tapTimeoutRef = useRef(null);
+  const lastTapRef = useRef(0);
 
   useEffect(() => {
     fetchOrientationMap();
   }, [fetchOrientationMap]);
+
+  useEffect(() => {
+    return () => {
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const orientationOptions = useMemo(
     () =>
@@ -236,16 +276,6 @@ export default function VideoEditorScreen({ route, navigation }) {
     );
   }, [safeDurationSeconds]);
 
-  const handleStartChange = (value) => {
-    const maxStart = Math.max(0, endTime - MIN_GAP_SECONDS);
-    setStartTime(clamp(value, 0, maxStart));
-  };
-
-  const handleEndChange = (value) => {
-    const minEnd = Math.min(safeDurationSeconds, startTime + MIN_GAP_SECONDS);
-    setEndTime(clamp(value, minEnd, safeDurationSeconds));
-  };
-
   const handleCancel = () => {
     navigation.goBack();
   };
@@ -261,15 +291,26 @@ export default function VideoEditorScreen({ route, navigation }) {
     }
   };
 
-  const handleSeekToStart = async () => {
-    if (!videoRef.current) return;
-    await videoRef.current.setPositionAsync(Math.max(startTime, 0) * 1000);
-  };
+  const seekToSeconds = useCallback(
+    async (nextSeconds) => {
+      if (!videoRef.current || safeDurationSeconds <= 0) return;
+      const clampedSeconds = clamp(nextSeconds, 0, safeDurationSeconds);
+      setCurrentTime(clampedSeconds);
+      await videoRef.current.setPositionAsync(clampedSeconds * 1000);
+    },
+    [safeDurationSeconds]
+  );
 
-  const handleSeekToEnd = async () => {
-    if (!videoRef.current) return;
-    await videoRef.current.setPositionAsync(Math.max(endTime, 0) * 1000);
-  };
+  const handleSeekBy = useCallback(
+    async (deltaSeconds) => {
+      if (!videoRef.current || safeDurationSeconds <= 0) return;
+      const status = await videoRef.current.getStatusAsync();
+      if (!status.isLoaded) return;
+      const currentSeconds = status.positionMillis / 1000;
+      await seekToSeconds(currentSeconds + deltaSeconds);
+    },
+    [safeDurationSeconds, seekToSeconds]
+  );
 
   const handleMarkStart = () => {
     const nextStart = clamp(currentTime, 0, safeDurationSeconds);
@@ -314,6 +355,113 @@ export default function VideoEditorScreen({ route, navigation }) {
     });
   };
 
+  const handleVideoContainerLayout = (event) => {
+    const { width, height } = event.nativeEvent.layout;
+    const safeWidth = Math.max(0, width - VIDEO_FRAME_PADDING * 2);
+    const safeHeight = Math.max(0, height - VIDEO_FRAME_PADDING * 2);
+    setVideoContainerSize((prev) => {
+      if (prev.width === safeWidth && prev.height === safeHeight) return prev;
+      return { width: safeWidth, height: safeHeight };
+    });
+  };
+
+  const handleVideoLayout = (event) => {
+    setVideoWidth(event.nativeEvent.layout.width);
+  };
+
+  const handleReadyForDisplay = (event) => {
+    const naturalSize =
+      event?.naturalSize || event?.nativeEvent?.naturalSize || {};
+    const width = Number(naturalSize.width);
+    const height = Number(naturalSize.height);
+    if (
+      Number.isFinite(width) &&
+      Number.isFinite(height) &&
+      width > 0 &&
+      height > 0
+    ) {
+      setVideoAspectRatio(width / height);
+    }
+  };
+
+  const handleScrubBarLayout = (event) => {
+    setScrubBarWidth(event.nativeEvent.layout.width);
+  };
+
+  const handleVideoPress = (event) => {
+    const now = Date.now();
+    const elapsed = now - lastTapRef.current;
+    const locationX = event?.nativeEvent?.locationX ?? 0;
+
+    if (elapsed < DOUBLE_TAP_DELAY_MS) {
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current);
+        tapTimeoutRef.current = null;
+      }
+      lastTapRef.current = 0;
+      const isRightSide = videoWidth ? locationX > videoWidth / 2 : true;
+      const delta = isRightSide ? SEEK_STEP_SECONDS : -SEEK_STEP_SECONDS;
+      void handleSeekBy(delta);
+      return;
+    }
+
+    lastTapRef.current = now;
+    tapTimeoutRef.current = setTimeout(() => {
+      void handleTogglePlayback();
+      tapTimeoutRef.current = null;
+      lastTapRef.current = 0;
+    }, DOUBLE_TAP_DELAY_MS);
+  };
+
+  const handleScrubTouch = useCallback(
+    (locationX) => {
+      if (!scrubBarWidth || safeDurationSeconds <= 0) return;
+      const range = Math.max(
+        1,
+        scrubBarWidth - SCRUB_KNOB_SIZE - SCRUB_LINE_INSET * 2
+      );
+      const nextRatio = clampRatio(
+        (locationX - SCRUB_LINE_INSET - SCRUB_KNOB_SIZE / 2) / range
+      );
+      const nextSeconds = nextRatio * safeDurationSeconds;
+      void seekToSeconds(nextSeconds);
+    },
+    [scrubBarWidth, safeDurationSeconds, seekToSeconds]
+  );
+
+  const handleScrubRelease = useCallback(
+    (gestureState) => {
+      if (
+        Math.abs(gestureState.vx) >= SCRUB_RESET_VELOCITY &&
+        Math.abs(gestureState.dx) >= SCRUB_RESET_MIN_DISTANCE
+      ) {
+        void seekToSeconds(0);
+      }
+    },
+    [seekToSeconds]
+  );
+
+  const scrubPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (event) => {
+          handleScrubTouch(event.nativeEvent.locationX);
+        },
+        onPanResponderMove: (event) => {
+          handleScrubTouch(event.nativeEvent.locationX);
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          handleScrubRelease(gestureState);
+        },
+        onPanResponderTerminate: (_, gestureState) => {
+          handleScrubRelease(gestureState);
+        },
+      }),
+    [handleScrubRelease, handleScrubTouch]
+  );
+
   const handleConfirm = () => {
     if (!asset?.uri) {
       Alert.alert(t('common.error'), t('videoEditor.videoNotFoundMessage'));
@@ -343,6 +491,26 @@ export default function VideoEditorScreen({ route, navigation }) {
     navigation.navigate('Home', { trimmedVideo: trimmedAsset });
   };
 
+  const videoFrameStyle = useMemo(() => {
+    if (
+      !videoContainerSize.width ||
+      !videoContainerSize.height ||
+      !videoAspectRatio
+    ) {
+      return null;
+    }
+    const containerRatio =
+      videoContainerSize.width / videoContainerSize.height;
+    if (videoAspectRatio >= containerRatio) {
+      const width = videoContainerSize.width;
+      const height = width / videoAspectRatio;
+      return { width, height };
+    }
+    const height = videoContainerSize.height;
+    const width = height * videoAspectRatio;
+    return { width, height };
+  }, [videoAspectRatio, videoContainerSize]);
+
   const orientationLabel =
     selectedOrientation?.label ||
     selectedOrientationId ||
@@ -371,33 +539,65 @@ export default function VideoEditorScreen({ route, navigation }) {
         };
   const decrementIcon = lineStyle === 'vertical' ? 'chevron-left' : 'chevron-up';
   const incrementIcon = lineStyle === 'vertical' ? 'chevron-right' : 'chevron-down';
+  const scrubRatio = safeDurationSeconds
+    ? clampRatio(currentTime / safeDurationSeconds)
+    : 0;
+  const startRatio = safeDurationSeconds
+    ? clampRatio(startTime / safeDurationSeconds)
+    : 0;
+  const endRatio = safeDurationSeconds
+    ? clampRatio(endTime / safeDurationSeconds)
+    : 0;
+  const scrubRange = Math.max(
+    0,
+    scrubBarWidth - SCRUB_KNOB_SIZE - SCRUB_LINE_INSET * 2
+  );
+  const scrubKnobLeft = scrubRange
+    ? scrubRatio * scrubRange + SCRUB_LINE_INSET
+    : SCRUB_LINE_INSET;
+  const markerBase =
+    SCRUB_LINE_INSET + SCRUB_KNOB_SIZE / 2 - SCRUB_MARKER_WIDTH / 2;
+  const startMarkerLeft = markerBase + startRatio * scrubRange;
+  const endMarkerLeft = markerBase + endRatio * scrubRange;
 
   return (
     <View style={styles.container}>
-      <View style={styles.videoWrapper}>
-        <Video
-          ref={videoRef}
-          source={{ uri: asset?.uri }}
-          style={styles.editor}
-          resizeMode={ResizeMode.CONTAIN}
-          shouldPlay={false}
-          onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-          progressUpdateIntervalMillis={200}
-        />
-        <View pointerEvents="none" style={styles.overlay}>
-          {lineStyle === 'vertical' ? (
-            <View style={[styles.verticalLine, linePositionStyle]} />
-          ) : (
-            <View style={[styles.horizontalLine, linePositionStyle]} />
-          )}
-          <View style={[styles.arrowContainer, arrowPositionStyle]}>
-            <MaterialCommunityIcons
-              name={ARROW_ICON_MAP[arrowDirection] || ARROW_ICON_MAP.right}
-              size={44}
-              color="rgba(255, 230, 0, 0.85)"
-            />
+      <View style={styles.videoWrapper} onLayout={handleVideoContainerLayout}>
+        <Pressable
+          style={[styles.videoFrame, videoFrameStyle]}
+          onPress={handleVideoPress}
+          onLayout={handleVideoLayout}
+        >
+          <Video
+            ref={videoRef}
+            source={{ uri: asset?.uri }}
+            style={styles.editor}
+            resizeMode={ResizeMode.CONTAIN}
+            shouldPlay={false}
+            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+            onReadyForDisplay={handleReadyForDisplay}
+            progressUpdateIntervalMillis={200}
+          />
+          <View pointerEvents="none" style={styles.overlay}>
+            {lineStyle === 'vertical' ? (
+              <View style={[styles.verticalLine, linePositionStyle]} />
+            ) : (
+              <View style={[styles.horizontalLine, linePositionStyle]} />
+            )}
+            <View style={[styles.arrowContainer, arrowPositionStyle]}>
+              <MaterialCommunityIcons
+                name={ARROW_ICON_MAP[arrowDirection] || ARROW_ICON_MAP.right}
+                size={44}
+                color="rgba(255, 230, 0, 0.85)"
+              />
+            </View>
+            {!isPlaying && (
+              <View style={styles.playOverlay}>
+                <MaterialCommunityIcons name="play" size={36} color="#fff" />
+              </View>
+            )}
           </View>
-        </View>
+        </Pressable>
       </View>
 
       <View style={styles.controlsContainer}>
@@ -407,31 +607,29 @@ export default function VideoEditorScreen({ route, navigation }) {
             total: formatTime(safeDurationSeconds),
           })}
         </Text>
-        <View style={styles.playbackRow}>
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPress={handleTogglePlayback}
+        <View style={styles.scrubRow}>
+          <View
+            style={styles.scrubBar}
+            onLayout={handleScrubBarLayout}
+            {...scrubPanResponder.panHandlers}
           >
-            <Text style={styles.controlButtonText}>
-              {isPlaying ? t('videoEditor.pause') : t('videoEditor.play')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPress={handleSeekToStart}
-          >
-            <Text style={styles.controlButtonText}>
-              {t('videoEditor.seekStart')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPress={handleSeekToEnd}
-          >
-            <Text style={styles.controlButtonText}>
-              {t('videoEditor.seekEnd')}
-            </Text>
-          </TouchableOpacity>
+            <View style={styles.scrubLine} />
+            <View
+              style={[
+                styles.scrubMarker,
+                styles.scrubMarkerStart,
+                { left: startMarkerLeft },
+              ]}
+            />
+            <View
+              style={[
+                styles.scrubMarker,
+                styles.scrubMarkerEnd,
+                { left: endMarkerLeft },
+              ]}
+            />
+            <View style={[styles.scrubKnob, { left: scrubKnobLeft }]} />
+          </View>
         </View>
         <View style={styles.markRow}>
           <TouchableOpacity style={styles.markButton} onPress={handleMarkStart}>
@@ -486,38 +684,6 @@ export default function VideoEditorScreen({ route, navigation }) {
         </View>
       </View>
 
-      <View style={styles.sliderContainer}>
-        <Text style={styles.sliderLabel}>
-          {t('videoEditor.sliderStart', { value: formatTime(startTime) })}
-        </Text>
-        <Slider
-          style={styles.slider}
-          minimumValue={0}
-          maximumValue={safeDurationSeconds}
-          value={startTime}
-          onValueChange={handleStartChange}
-          tapToSeek
-        />
-        <Text style={styles.sliderLabel}>
-          {t('videoEditor.sliderEnd', { value: formatTime(endTime) })}
-        </Text>
-        <Slider
-          style={styles.slider}
-          minimumValue={0}
-          maximumValue={safeDurationSeconds}
-          value={endTime}
-          onValueChange={handleEndChange}
-          tapToSeek
-        />
-      </View>
-
-      {/* Future placeholder for direction selection */}
-      <View style={styles.placeholder}>
-        <Text style={styles.placeholderText}>
-          {t('videoEditor.placeholderDirection')}
-        </Text>
-      </View>
-
       <View style={styles.buttonRow}>
         <TouchableOpacity
           style={[styles.button, styles.cancelButton]}
@@ -543,9 +709,23 @@ const styles = StyleSheet.create({
   },
   videoWrapper: {
     flex: 1,
+    padding: VIDEO_FRAME_PADDING,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoFrame: {
+    width: '100%',
+    height: '100%',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#050505',
   },
   editor: {
     flex: 1,
+    width: '100%',
+    height: '100%',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -572,6 +752,17 @@ const styles = StyleSheet.create({
     padding: 6,
     borderRadius: 24,
   },
+  playOverlay: {
+    position: 'absolute',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   controlsContainer: {
     paddingHorizontal: 16,
     paddingTop: 12,
@@ -582,23 +773,47 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontSize: 14,
   },
-  playbackRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  scrubRow: {
     marginBottom: 10,
   },
-  controlButton: {
-    flex: 1,
-    backgroundColor: '#1f2937',
-    paddingVertical: 10,
-    marginHorizontal: 4,
-    borderRadius: 8,
-    alignItems: 'center',
+  scrubBar: {
+    height: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
   },
-  controlButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+  scrubLine: {
+    position: 'absolute',
+    left: SCRUB_LINE_INSET,
+    right: SCRUB_LINE_INSET,
+    height: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.35)',
+    top: '50%',
+    transform: [{ translateY: -1 }],
+  },
+  scrubKnob: {
+    position: 'absolute',
+    width: SCRUB_KNOB_SIZE,
+    height: SCRUB_KNOB_SIZE,
+    borderRadius: SCRUB_KNOB_SIZE / 2,
+    backgroundColor: '#fff',
+    top: '50%',
+    transform: [{ translateY: -SCRUB_KNOB_SIZE / 2 }],
+  },
+  scrubMarker: {
+    position: 'absolute',
+    width: SCRUB_MARKER_WIDTH,
+    top: 6,
+    bottom: 6,
+    borderRadius: 1,
+  },
+  scrubMarkerStart: {
+    backgroundColor: '#22c55e',
+  },
+  scrubMarkerEnd: {
+    backgroundColor: '#ef4444',
   },
   markRow: {
     flexDirection: 'row',
@@ -663,25 +878,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '600',
-  },
-  sliderContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  slider: {
-    width: Dimensions.get('window').width - 32,
-    height: 40,
-  },
-  sliderLabel: {
-    color: '#fff',
-    textAlign: 'center',
-  },
-  placeholder: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  placeholderText: {
-    color: '#888',
   },
   buttonRow: {
     flexDirection: 'row',

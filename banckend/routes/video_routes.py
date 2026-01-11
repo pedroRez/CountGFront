@@ -2,7 +2,6 @@ import logging
 import os
 import re
 import shutil
-import threading
 import uuid
 from typing import List, Optional
 
@@ -12,6 +11,7 @@ from fastapi.responses import JSONResponse
 from schemas import VideoRequest
 from utils.contagem_video import contar_gado_em_video, get_line_and_direction_config
 from utils.gerenciador_progresso import ProgressoManager
+from utils.task_queue import TaskQueue
 
 router = APIRouter()
 DATA_DIR = os.getenv("RENDER_DATA_DIR", "data")
@@ -19,14 +19,55 @@ UPLOAD_FOLDER = os.path.join(DATA_DIR, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 progresso_manager = ProgressoManager()
-processos_em_andamento = {}
 
 logger = logging.getLogger(__name__)
+
+
+def _get_env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+VIDEO_QUEUE_WORKERS = _get_env_int("VIDEO_QUEUE_WORKERS", 1)
+video_queue = TaskQueue(name="video-processing", max_workers=VIDEO_QUEUE_WORKERS)
 
 # Configurações de upload
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
 MAX_FILE_SIZE_MB = 500
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+
+
+def _process_video_job(video_name: str, request_payload: dict) -> None:
+    try:
+        status = progresso_manager.status(video_name)
+        if status and status.get("cancelado"):
+            logger.info("[QUEUE] Skipping canceled job: %s", video_name)
+            return
+        resultado = contar_gado_em_video(
+            video_path=os.path.join(UPLOAD_FOLDER, video_name),
+            video_name=video_name,
+            progresso_manager=progresso_manager,
+            model_choice=request_payload.get("model_choice"),
+            orientation=request_payload.get("orientation"),
+            target_classes=request_payload.get("target_classes"),
+            line_position_ratio=request_payload.get("line_position_ratio"),
+            trim_start_ms=request_payload.get("trim_start_ms"),
+            trim_end_ms=request_payload.get("trim_end_ms"),
+        )
+        if resultado is not None:
+            logger.info("[QUEUE] Job finished for: %s", video_name)
+            progresso_manager.finalizar(video_name, resultado)
+        else:
+            logger.info("[QUEUE] Job returned no result for: %s", video_name)
+    except Exception as exc:
+        logger.exception("[QUEUE] Job failed for %s: %s", video_name, exc)
+        progresso_manager.erro(video_name, f"Erro critico na fila: {str(exc)}")
+        raise
 
 
 @router.post("/upload-video/")
@@ -180,59 +221,29 @@ async def predict_video_endpoint(request: VideoRequest):
 
     progresso_manager.iniciar(video_name_on_server)
 
-    # --- FUNÇÃO DA THREAD CORRIGIDA ---
-    def processamento_em_thread():
-        try:
-            logger.info(
-                f"[THREAD] Iniciando a chamada para contar_gado_em_video para: {video_name_on_server}"
-            )
+    request_payload = {
+        "model_choice": request.model_choice,
+        "orientation": request.orientation,
+        "target_classes": request.target_classes,
+        "line_position_ratio": request.line_position_ratio,
+        "trim_start_ms": trim_start_ms,
+        "trim_end_ms": trim_end_ms,
+    }
 
-            # Chama a função de contagem e armazena o resultado retornado
-            resultado = contar_gado_em_video(
-                video_path=os.path.join(UPLOAD_FOLDER, video_name_on_server),
-                video_name=video_name_on_server,
-                progresso_manager=progresso_manager,
-                model_choice=request.model_choice,
-                orientation=request.orientation,
-                target_classes=request.target_classes,
-                line_position_ratio=request.line_position_ratio,
-                trim_start_ms=trim_start_ms,
-                trim_end_ms=trim_end_ms,
-            )
-
-            # Se 'resultado' não for None (ou seja, o processamento foi bem-sucedido e não foi cancelado)...
-            if resultado is not None:
-                # ...chama .finalizar() para atualizar o banco de dados com os resultados.
-                logger.info(
-                    "[THREAD] contagem_video returned a result. Finalizing progress in the database..."
-                )
-                progresso_manager.finalizar(video_name_on_server, resultado)
-            else:
-                # Se resultado for None, o erro ou cancelamento já foi tratado dentro de contar_gado_em_video
-                # e o status no banco de dados já foi atualizado para finalizado=True.
-                logger.info(
-                    "[THREAD] contagem_video returned None. Status should already be error or canceled."
-                )
-
-        except Exception as e:
-            logger.exception(
-                f"[THREAD ERRO FATAL] Um erro inesperado ocorreu na thread para {video_name_on_server}: {e}"
-            )
-            progresso_manager.erro(
-                video_name_on_server, f"Erro crítico na thread: {str(e)}"
-            )
-        finally:
-            # Remover referência à thread após o término para liberar memória
-            processos_em_andamento.pop(video_name_on_server, None)
-
-    thread = threading.Thread(target=processamento_em_thread, daemon=True)
-    thread.start()
-    processos_em_andamento[video_name_on_server] = thread
+    job, _ = video_queue.enqueue(
+        video_name_on_server, _process_video_job, video_name_on_server, request_payload
+    )
+    queue_position = video_queue.position(video_name_on_server)
+    queue_status = job.status
+    queue_size = video_queue.queued_count()
 
     return {
         "status": "iniciado",
         "message": f"Processamento para '{video_name_on_server}' iniciado.",
         "video_name": video_name_on_server,
+        "queue_position": queue_position,
+        "queue_status": queue_status,
+        "queue_size": queue_size,
     }
 
 
@@ -262,7 +273,13 @@ async def progresso_endpoint(video_name: str):
         Example:
             >>> curl http://localhost:8000/progresso/video.mp4
     """
-    return progresso_manager.status(video_name)
+    status = progresso_manager.status(video_name)
+    job = video_queue.get(video_name)
+    if job:
+        status["queue_position"] = video_queue.position(video_name)
+        status["queue_status"] = job.status
+        status["queue_size"] = video_queue.queued_count()
+    return status
 
 
 @router.get("/cancelar-processamento/{video_name}")
@@ -291,7 +308,9 @@ async def cancelar_endpoint(video_name: str):
         Example:
             >>> curl http://localhost:8000/cancelar-processamento/video.mp4
     """
-    if progresso_manager.cancelar(video_name):
+    queue_cancelled = video_queue.cancel(video_name)
+    db_cancelled = progresso_manager.cancelar(video_name)
+    if db_cancelled or queue_cancelled:
         return {"message": f"Solicitação de cancelamento para {video_name} enviada."}
     return {
         "message": f"Não foi possível cancelar ou o processo para {video_name} não está ativo."
