@@ -925,14 +925,13 @@ const HomeScreen = ({ route }) => {
           const safeDownloadProgress = Number.isFinite(downloadProgress)
             ? downloadProgress
             : 0;
-          const combinedProgress = 0.5 + safeDownloadProgress * 0.5;
           return (
             <View style={styles.processingContainerFull}>
               <Text style={styles.statusTitle}>
                 {t('home.processing.downloadingTitle')}
               </Text>
               <BackendProgressBar
-                progress={combinedProgress}
+                progress={safeDownloadProgress}
                 text={t('home.processing.downloading')}
               />
             </View>

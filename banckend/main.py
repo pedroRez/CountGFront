@@ -28,8 +28,13 @@ app = FastAPI(
     description="FastAPI backend for counting and tracking objects in video.",
 )
 
-BASE_DIR = os.path.dirname(__file__)
-PROCESSED_VIDEOS_DIR = os.path.abspath(os.path.join(BASE_DIR, "videos_processados"))
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+PROCESSED_VIDEOS_DIR = os.getenv("PROCESSED_VIDEOS_DIR")
+if PROCESSED_VIDEOS_DIR:
+    PROCESSED_VIDEOS_DIR = os.path.abspath(PROCESSED_VIDEOS_DIR)
+else:
+    PROCESSED_VIDEOS_DIR = os.path.abspath(os.path.join(BASE_DIR, "videos_processados"))
+logger.info("[CONFIG] Processed videos dir: %s", PROCESSED_VIDEOS_DIR)
 os.makedirs(PROCESSED_VIDEOS_DIR, exist_ok=True)
 app.mount(
     "/videos_processados",

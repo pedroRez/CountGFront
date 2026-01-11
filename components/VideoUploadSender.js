@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Alert, StyleSheet } from 'react-native';
 import axios from 'axios';
 import BigButton from './BigButton';
@@ -30,6 +30,7 @@ export default function VideoUploadSender({
   const { t } = useLanguage();
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const finalizeTimerRef = useRef(null);
   const [status, setStatus] = useState({
     key: 'upload.processVideo',
     params: {},
@@ -37,7 +38,20 @@ export default function VideoUploadSender({
 
   const statusText = t(status.key, status.params);
 
+  useEffect(() => {
+    return () => {
+      if (finalizeTimerRef.current) {
+        clearInterval(finalizeTimerRef.current);
+        finalizeTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const handleProcessRequest = async () => {
+    if (finalizeTimerRef.current) {
+      clearInterval(finalizeTimerRef.current);
+      finalizeTimerRef.current = null;
+    }
     const assetUri = videoAsset?.uri || videoAsset?.localUri;
     const finalOrientation = orientation || videoAsset?.orientation;
     const trimmedCountName = (countName || '').trim();
@@ -83,29 +97,49 @@ export default function VideoUploadSender({
         const xhr = new XMLHttpRequest();
         xhr.open('POST', `${apiUrl}/upload-video/`);
         xhr.timeout = 600000;
+        const maxUploadProgress = 0.95;
+        const startFinalizing = () => {
+          if (finalizeTimerRef.current) return;
+          finalizeTimerRef.current = setInterval(() => {
+            setUploadProgress((prev) => {
+              const next = Math.min(prev + 0.005, 0.99);
+              setStatus({
+                key: 'upload.uploadingWithPercent',
+                params: { percent: Math.round(next * 100) },
+              });
+              if (next >= 0.99 && finalizeTimerRef.current) {
+                clearInterval(finalizeTimerRef.current);
+                finalizeTimerRef.current = null;
+              }
+              return next;
+            });
+          }, 300);
+        };
 
         xhr.upload.onprogress = (event) => {
-          if (event.loaded >= event.total) {
-            xhr.upload.onprogress = null;
-            return;
-          }
-
           console.log(
             `[UPLOAD PROGRESS] Event received: loaded=${event.loaded}, total=${event.total}`
           );
 
           const percent = event.total ? event.loaded / event.total : 0;
-          const clampedProgress = Math.min(percent, 1.0);
-          const combinedProgress = clampedProgress * 0.5;
+          const clampedProgress = Math.min(percent, 1.0) * maxUploadProgress;
 
-          setUploadProgress(combinedProgress);
+          setUploadProgress(clampedProgress);
           setStatus({
             key: 'upload.uploadingWithPercent',
-            params: { percent: Math.round(combinedProgress * 100) },
+            params: { percent: Math.round(clampedProgress * 100) },
           });
         };
 
+        xhr.upload.onload = () => {
+          startFinalizing();
+        };
+
         xhr.onload = () => {
+          if (finalizeTimerRef.current) {
+            clearInterval(finalizeTimerRef.current);
+            finalizeTimerRef.current = null;
+          }
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               resolve(JSON.parse(xhr.responseText));
@@ -123,14 +157,13 @@ export default function VideoUploadSender({
         xhr.send(formData);
       });
 
-      setUploadProgress(0.5);
-      setStatus({ key: 'upload.uploadComplete', params: {} });
-
-      const trimStartMs = Number.isFinite(videoAsset?.trimStartMs)
-        ? Math.max(0, Math.round(videoAsset.trimStartMs))
+      const trimStartValue = Number(videoAsset?.trimStartMs);
+      const trimEndValue = Number(videoAsset?.trimEndMs);
+      const trimStartMs = Number.isFinite(trimStartValue)
+        ? Math.max(0, Math.round(trimStartValue))
         : null;
-      const trimEndMs = Number.isFinite(videoAsset?.trimEndMs)
-        ? Math.max(0, Math.round(videoAsset.trimEndMs))
+      const trimEndMs = Number.isFinite(trimEndValue)
+        ? Math.max(0, Math.round(trimEndValue))
         : null;
       const hasTrimRange =
         Number.isFinite(trimStartMs) &&
@@ -155,6 +188,9 @@ export default function VideoUploadSender({
         `${apiUrl}/predict-video/`,
         predictPayload
       );
+
+      setUploadProgress(1);
+      setStatus({ key: 'upload.uploadComplete', params: {} });
 
       if (onProcessingStarted) {
         onProcessingStarted(predictResponse.data);

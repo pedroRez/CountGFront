@@ -13,7 +13,7 @@ from ultralytics import YOLO
 logger = logging.getLogger(__name__)
 
 # --- Constantes para Clareza ---
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 LINE_HORIZONTAL: str = "horizontal"
 LINE_VERTICAL: str = "vertical"
 MOVE_TB: str = "top_bottom"
@@ -30,6 +30,15 @@ def _get_env_int(name: str, default: int) -> int:
         return int(value)
     except ValueError:
         return default
+
+
+def _resolve_output_dir(use_sftp: bool) -> str:
+    env_name = "PROCESSED_VIDEOS_TEMP_DIR" if use_sftp else "PROCESSED_VIDEOS_DIR"
+    env_value = os.getenv(env_name)
+    if env_value:
+        return os.path.abspath(env_value)
+    dir_name = "videos_processados_temp" if use_sftp else "videos_processados"
+    return os.path.join(BASE_DIR, dir_name)
 
 
 def get_video_rotation(video_path: str) -> int:
@@ -270,7 +279,7 @@ def contar_gado_em_video(
             )
             USE_SFTP = False
     CREATE_ANNOTATED_VIDEO = (
-        os.getenv("CREATE_ANNOTATED_VIDEO", "false").lower() == "true"
+        os.getenv("CREATE_ANNOTATED_VIDEO", "true").lower() == "true"
     )
 
     logger.info(f"[CONFIG] Modo SFTP Ativado: {USE_SFTP}")
@@ -354,6 +363,14 @@ def contar_gado_em_video(
         start_frame = max(start_frame, 0)
         end_frame = max(end_frame, start_frame)
 
+    logger.info(
+        "[CONFIG] Trim range ms: start=%s end=%s -> frames %s-%s",
+        trim_start_ms,
+        trim_end_ms,
+        start_frame,
+        end_frame,
+    )
+
     trimmed_frame_count = end_frame - start_frame + 1
     if trimmed_frame_count <= 0:
         if progresso_manager:
@@ -402,11 +419,9 @@ def contar_gado_em_video(
     local_output_path = ""
     processed_fn = ""
     if CREATE_ANNOTATED_VIDEO:
-        output_dir_name = (
-            "videos_processados_temp" if USE_SFTP else "videos_processados"
-        )
-        output_dir_local = os.path.join(BASE_DIR, output_dir_name)
+        output_dir_local = _resolve_output_dir(USE_SFTP)
         os.makedirs(output_dir_local, exist_ok=True)
+        logger.info("[CONFIG] Output dir: %s", output_dir_local)
         base_name, vid_ext = os.path.splitext(video_name)
         processed_fn = f"processed_{base_name}{vid_ext}"
         local_output_path = os.path.join(output_dir_local, processed_fn)
