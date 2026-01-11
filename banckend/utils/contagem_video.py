@@ -638,6 +638,11 @@ def contar_gado_em_video(
             # Store the processed video locally and expose it via the static mount.
             public_url = f"/videos_processados/{processed_fn}"
             logger.info(f"[INFO] Processed video saved at {local_output_path}.")
+            if not os.path.exists(local_output_path):
+                logger.error(
+                    "[INFO] Processed video missing at %s", local_output_path
+                )
+                public_url = None
 
     if USE_SFTP:
         if CREATE_ANNOTATED_VIDEO and os.path.exists(local_output_path):
