@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useOrientationMap } from '../context/OrientationMapContext';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -147,6 +148,7 @@ export default function VideoEditorScreen({ route, navigation }) {
   const { asset } = route.params || {};
   const { orientationMap, fetchOrientationMap } = useOrientationMap();
   const { t } = useLanguage();
+  const insets = useSafeAreaInsets();
   const initialDuration =
     asset?.originalDurationMs ?? asset?.duration ?? 0;
   const initialDurationSeconds =
@@ -560,8 +562,13 @@ export default function VideoEditorScreen({ route, navigation }) {
   const startMarkerLeft = markerBase + startRatio * scrubRange;
   const endMarkerLeft = markerBase + endRatio * scrubRange;
 
+  const buttonRowStyle = useMemo(
+    () => ({ paddingBottom: Math.max(16, insets.bottom + 12) }),
+    [insets.bottom]
+  );
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.videoWrapper} onLayout={handleVideoContainerLayout}>
         <Pressable
           style={[styles.videoFrame, videoFrameStyle]}
@@ -645,35 +652,43 @@ export default function VideoEditorScreen({ route, navigation }) {
             <Text style={styles.markValue}>{formatTime(endTime)}</Text>
           </TouchableOpacity>
         </View>
-        <View style={styles.lineAdjustRow}>
-          <TouchableOpacity
-            style={styles.lineAdjustButton}
-            onPress={() => handleLineShift(-LINE_RATIO_STEP)}
-          >
-            <MaterialCommunityIcons name={decrementIcon} size={20} color="#fff" />
-          </TouchableOpacity>
-          <View style={styles.lineAdjustLabel}>
-            <Text style={styles.lineAdjustText}>
-              {t('videoEditor.lineLabel', {
-                value: linePositionRatio.toFixed(2),
-              })}
-            </Text>
+        <View style={styles.adjustmentsRow}>
+          <View style={styles.lineAdjustGroup}>
+            <TouchableOpacity
+              style={styles.lineAdjustButton}
+              onPress={() => handleLineShift(-LINE_RATIO_STEP)}
+            >
+              <MaterialCommunityIcons
+                name={decrementIcon}
+                size={22}
+                color="#fff"
+              />
+            </TouchableOpacity>
+            <View style={styles.lineAdjustLabel}>
+              <Text style={styles.lineAdjustText}>
+                {t('videoEditor.lineLabel', {
+                  value: linePositionRatio.toFixed(2),
+                })}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.lineAdjustButton}
+              onPress={() => handleLineShift(LINE_RATIO_STEP)}
+            >
+              <MaterialCommunityIcons
+                name={incrementIcon}
+                size={22}
+                color="#fff"
+              />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={styles.lineAdjustButton}
-            onPress={() => handleLineShift(LINE_RATIO_STEP)}
-          >
-            <MaterialCommunityIcons name={incrementIcon} size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.orientationRow}>
           <TouchableOpacity
             style={styles.orientationButton}
             onPress={handleCycleOrientation}
           >
             <MaterialCommunityIcons
               name="axis-arrow"
-              size={18}
+              size={20}
               color="#fff"
               style={styles.orientationIcon}
             />
@@ -684,7 +699,7 @@ export default function VideoEditorScreen({ route, navigation }) {
         </View>
       </View>
 
-      <View style={styles.buttonRow}>
+      <View style={[styles.buttonRow, buttonRowStyle]}>
         <TouchableOpacity
           style={[styles.button, styles.cancelButton]}
           onPress={handleCancel}
@@ -698,7 +713,7 @@ export default function VideoEditorScreen({ route, navigation }) {
           <Text style={styles.buttonText}>{t('videoEditor.confirm')}</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -837,46 +852,50 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
-  lineAdjustRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-  },
   lineAdjustButton: {
-    width: 40,
-    height: 36,
-    borderRadius: 8,
+    width: 48,
+    height: 44,
+    borderRadius: 10,
     backgroundColor: '#0f172a',
     alignItems: 'center',
     justifyContent: 'center',
   },
   lineAdjustLabel: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
   },
   lineAdjustText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
-  orientationRow: {
-    marginTop: 10,
+  adjustmentsRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 10,
+  },
+  lineAdjustGroup: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginRight: 10,
   },
   orientationButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#0f172a',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    minHeight: 44,
   },
   orientationIcon: {
     marginRight: 8,
   },
   orientationButtonText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
   buttonRow: {
