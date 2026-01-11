@@ -279,7 +279,7 @@ export default function VideoEditorScreen({ route, navigation }) {
   }, [safeDurationSeconds]);
 
   const handleCancel = () => {
-    navigation.goBack();
+    navigation.navigate('Home', { resetHome: true });
   };
 
   const handleTogglePlayback = async () => {
