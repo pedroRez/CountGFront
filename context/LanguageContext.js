@@ -112,6 +112,8 @@ const translations = {
         title: 'Analisando video no servidor...',
         cancel: 'Cancelar analise',
         savingTitle: 'Salvando video processado...',
+        downloadingTitle: 'Baixando video processado...',
+        downloading: 'Baixando',
         saveErrorTitle: 'Erro ao salvar video',
         saveErrorMessage:
           'Nao foi possivel salvar o video processado no celular.',
@@ -401,6 +403,8 @@ const translations = {
         title: 'Analyzing video on server...',
         cancel: 'Cancel Analysis',
         savingTitle: 'Saving processed video...',
+        downloadingTitle: 'Downloading processed video...',
+        downloading: 'Downloading',
         saveErrorTitle: 'Save error',
         saveErrorMessage:
           'Could not save the processed video on this device.',

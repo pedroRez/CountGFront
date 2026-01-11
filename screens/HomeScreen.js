@@ -115,6 +115,7 @@ const HomeScreen = ({ route }) => {
     useState(false);
   const [processingMeta, setProcessingMeta] = useState(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(null);
 
   const modelOptions = [
     {
@@ -277,6 +278,7 @@ const HomeScreen = ({ route }) => {
     setModelChoice('m');
     setProcessingMeta(null);
     setIsFinalizing(false);
+    setDownloadProgress(null);
   };
 
   const handlePickFromGallery = async () => {
@@ -350,7 +352,26 @@ const HomeScreen = ({ route }) => {
     const safeName = sanitizeFileName(nameForFile);
     const fileName = `countg_${safeName}_${timestamp}.mp4`;
     const targetUri = `${FileSystem.documentDirectory}${fileName}`;
-    const downloadResult = await FileSystem.downloadAsync(resolvedUrl, targetUri);
+    setDownloadProgress(0);
+    let downloadResult;
+    try {
+      const downloadResumable = FileSystem.createDownloadResumable(
+        resolvedUrl,
+        targetUri,
+        {},
+        (progress) => {
+          const total = progress.totalBytesExpectedToWrite;
+          if (total > 0) {
+            setDownloadProgress(progress.totalBytesWritten / total);
+          }
+        }
+      );
+      downloadResult = await downloadResumable.downloadAsync();
+      setDownloadProgress(1);
+    } catch (error) {
+      setDownloadProgress(null);
+      throw error;
+    }
 
     let savedUri = downloadResult.uri;
     let savedToGallery = false;
@@ -431,6 +452,7 @@ const HomeScreen = ({ route }) => {
 
     if (processedUrl) {
       try {
+        setDownloadProgress(0);
         savedVideoInfo = await downloadProcessedVideo(
           processedUrl,
           meta.countName
@@ -899,18 +921,23 @@ const HomeScreen = ({ route }) => {
           </View>
         );
       case 'saving_result':
-        return (
-          <View style={styles.processingContainerFull}>
-            <Text style={styles.statusTitle}>
-              {t('home.processing.savingTitle')}
-            </Text>
-            <CustomActivityIndicator
-              size="large"
-              color="#007AFF"
-              style={{ marginVertical: 20 }}
-            />
-          </View>
-        );
+        {
+          const safeDownloadProgress = Number.isFinite(downloadProgress)
+            ? downloadProgress
+            : 0;
+          const combinedProgress = 0.5 + safeDownloadProgress * 0.5;
+          return (
+            <View style={styles.processingContainerFull}>
+              <Text style={styles.statusTitle}>
+                {t('home.processing.downloadingTitle')}
+              </Text>
+              <BackendProgressBar
+                progress={combinedProgress}
+                text={t('home.processing.downloading')}
+              />
+            </View>
+          );
+        }
       default:
         return null;
     }

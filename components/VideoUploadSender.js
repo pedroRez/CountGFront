@@ -96,11 +96,12 @@ export default function VideoUploadSender({
 
           const percent = event.total ? event.loaded / event.total : 0;
           const clampedProgress = Math.min(percent, 1.0);
+          const combinedProgress = clampedProgress * 0.5;
 
-          setUploadProgress(clampedProgress);
+          setUploadProgress(combinedProgress);
           setStatus({
             key: 'upload.uploadingWithPercent',
-            params: { percent: Math.round(clampedProgress * 100) },
+            params: { percent: Math.round(combinedProgress * 100) },
           });
         };
 
@@ -122,6 +123,7 @@ export default function VideoUploadSender({
         xhr.send(formData);
       });
 
+      setUploadProgress(0.5);
       setStatus({ key: 'upload.uploadComplete', params: {} });
 
       const trimStartMs = Number.isFinite(videoAsset?.trimStartMs)
