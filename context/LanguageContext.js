@@ -119,6 +119,9 @@ const translations = {
       progress: {
         preparing: 'Preparando...',
         processingFrames: 'Processando frames',
+        inQueue: 'Na fila',
+        inQueuePosition: 'Na fila (posicao {{position}})',
+        inQueuePositionOf: 'Na fila (posicao {{position}} de {{total}})',
         statusLabel: 'Status: {{status}}',
         errorLabel: 'Erro: {{error}}',
       },
@@ -405,6 +408,9 @@ const translations = {
       progress: {
         preparing: 'Preparing...',
         processingFrames: 'Processing frames',
+        inQueue: 'In queue',
+        inQueuePosition: 'In queue (position {{position}})',
+        inQueuePositionOf: 'In queue (position {{position}} of {{total}})',
         statusLabel: 'Status: {{status}}',
         errorLabel: 'Error: {{error}}',
       },

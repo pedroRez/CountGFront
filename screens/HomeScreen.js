@@ -391,6 +391,18 @@ const HomeScreen = ({ route }) => {
       const meta = buildProcessingMeta();
       setProcessingVideoName(videoName);
       setProcessingMeta(meta);
+      const queueStatus = responseData?.queue_status;
+      const queuePosition = responseData?.queue_position;
+      const queueSize = responseData?.queue_size;
+      const hasQueuePosition =
+        Number.isFinite(queuePosition) && queuePosition > 0;
+      if (queueStatus === 'queued' || hasQueuePosition) {
+        setBackendProgressData({
+          queue_status: queueStatus,
+          queue_position: queuePosition,
+          queue_size: queueSize,
+        });
+      }
       AsyncStorage.setItem(
         PROCESSING_STATE_KEY,
         JSON.stringify({ videoName, startedAt: Date.now(), meta })
@@ -573,8 +585,36 @@ const HomeScreen = ({ route }) => {
     let progressValue = 0;
     let progressText = t('home.progress.preparing');
     const statusMessage = backendProgressData.tempo_restante || '';
+    const queuePosition = Number.isFinite(backendProgressData.queue_position)
+      ? backendProgressData.queue_position
+      : null;
+    const queueSize = Number.isFinite(backendProgressData.queue_size)
+      ? backendProgressData.queue_size
+      : null;
+    const queueStatus = backendProgressData.queue_status;
+    const isQueued =
+      queueStatus === 'queued' ||
+      (Number.isFinite(queuePosition) && queuePosition > 0);
 
-    if (statusMessage.includes('%')) {
+    if (isQueued) {
+      progressValue = 0;
+      if (
+        Number.isFinite(queuePosition) &&
+        Number.isFinite(queueSize) &&
+        queueSize > 0
+      ) {
+        progressText = t('home.progress.inQueuePositionOf', {
+          position: queuePosition,
+          total: queueSize,
+        });
+      } else if (Number.isFinite(queuePosition)) {
+        progressText = t('home.progress.inQueuePosition', {
+          position: queuePosition,
+        });
+      } else {
+        progressText = t('home.progress.inQueue');
+      }
+    } else if (statusMessage.includes('%')) {
       const percentageMatch = statusMessage.match(/(\d+)/);
       if (percentageMatch) {
         progressValue = parseInt(percentageMatch[0], 10) / 100;
@@ -591,7 +631,10 @@ const HomeScreen = ({ route }) => {
       <>
         <BackendProgressBar progress={progressValue} text={progressText} />
         <Text style={styles.etaText}>
-          {t('home.progress.statusLabel', { status: statusMessage })}
+          {t('home.progress.statusLabel', {
+            status:
+              statusMessage || (isQueued ? t('home.progress.inQueue') : ''),
+          })}
         </Text>
       </>
     );
