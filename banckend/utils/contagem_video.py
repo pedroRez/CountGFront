@@ -13,6 +13,7 @@ from ultralytics import YOLO
 logger = logging.getLogger(__name__)
 
 # --- Constantes para Clareza ---
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 LINE_HORIZONTAL: str = "horizontal"
 LINE_VERTICAL: str = "vertical"
 MOVE_TB: str = "top_bottom"
@@ -401,9 +402,10 @@ def contar_gado_em_video(
     local_output_path = ""
     processed_fn = ""
     if CREATE_ANNOTATED_VIDEO:
-        output_dir_local = (
+        output_dir_name = (
             "videos_processados_temp" if USE_SFTP else "videos_processados"
         )
+        output_dir_local = os.path.join(BASE_DIR, output_dir_name)
         os.makedirs(output_dir_local, exist_ok=True)
         base_name, vid_ext = os.path.splitext(video_name)
         processed_fn = f"processed_{base_name}{vid_ext}"

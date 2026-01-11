@@ -12,6 +12,7 @@ import {
 import { Video, ResizeMode } from 'expo-av';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useOrientationMap } from '../context/OrientationMapContext';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -230,6 +231,31 @@ export default function VideoEditorScreen({ route, navigation }) {
     };
   }, []);
 
+  const stopPlayback = useCallback(async () => {
+    if (!videoRef.current) return;
+    try {
+      const status = await videoRef.current.getStatusAsync();
+      if (status?.isLoaded && status.isPlaying) {
+        await videoRef.current.pauseAsync();
+      }
+    } catch (error) {
+      // Best effort to avoid audio leakage when leaving the screen.
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        if (tapTimeoutRef.current) {
+          clearTimeout(tapTimeoutRef.current);
+          tapTimeoutRef.current = null;
+        }
+        lastTapRef.current = 0;
+        void stopPlayback();
+      };
+    }, [stopPlayback])
+  );
+
   const orientationOptions = useMemo(
     () =>
       buildOrientationOptions(
@@ -279,6 +305,7 @@ export default function VideoEditorScreen({ route, navigation }) {
   }, [safeDurationSeconds]);
 
   const handleCancel = () => {
+    void stopPlayback();
     navigation.navigate('Home', { resetHome: true });
   };
 

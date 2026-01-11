@@ -31,6 +31,7 @@ export const OrientationMapProvider = ({ children }) => {
   const { apiUrl } = useApi();
   const { language } = useLanguage();
   const [orientationMap, setOrientationMap] = useState(null);
+  const [remoteOrientationMap, setRemoteOrientationMap] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isFallback, setIsFallback] = useState(false);
 
@@ -39,18 +40,39 @@ export const OrientationMapProvider = ({ children }) => {
     [language]
   );
 
+  const mergeOrientationMap = useCallback((remoteMap, fallback) => {
+    if (!remoteMap || typeof remoteMap !== 'object') return fallback;
+    const keys = new Set([
+      ...Object.keys(fallback || {}),
+      ...Object.keys(remoteMap || {}),
+    ]);
+    const merged = {};
+    keys.forEach((key) => {
+      const remoteEntry = remoteMap?.[key] || {};
+      const fallbackEntry = fallback?.[key] || {};
+      merged[key] = {
+        label: fallbackEntry.label || remoteEntry.label || key,
+        arrow: remoteEntry.arrow || fallbackEntry.arrow || '',
+      };
+    });
+    return merged;
+  }, []);
+
   useEffect(() => {
-    if (isFallback) {
-      setOrientationMap(fallbackMap);
+    if (remoteOrientationMap) {
+      setOrientationMap(mergeOrientationMap(remoteOrientationMap, fallbackMap));
+      setIsFallback(false);
+      return;
     }
-  }, [fallbackMap, isFallback]);
+    setOrientationMap(fallbackMap);
+  }, [fallbackMap, mergeOrientationMap, remoteOrientationMap]);
 
   const fetchOrientationMap = useCallback(async () => {
-    if (orientationMap || isLoading) return;
+    if (remoteOrientationMap || isLoading) return;
     setIsLoading(true);
 
     if (!apiUrl) {
-      setOrientationMap(fallbackMap);
+      setRemoteOrientationMap(null);
       setIsFallback(true);
       setIsLoading(false);
       return;
@@ -59,20 +81,20 @@ export const OrientationMapProvider = ({ children }) => {
     try {
       const response = await axios.get(`${apiUrl}/orientation-map`);
       if (response?.data && typeof response.data === 'object') {
-        setOrientationMap(response.data);
+        setRemoteOrientationMap(response.data);
         setIsFallback(false);
       } else {
-        setOrientationMap(fallbackMap);
+        setRemoteOrientationMap(null);
         setIsFallback(true);
       }
     } catch (error) {
       console.warn('Failed to load orientation map, using fallback.', error);
-      setOrientationMap(fallbackMap);
+      setRemoteOrientationMap(null);
       setIsFallback(true);
     } finally {
       setIsLoading(false);
     }
-  }, [apiUrl, orientationMap, isLoading, fallbackMap]);
+  }, [apiUrl, remoteOrientationMap, isLoading, fallbackMap]);
 
   return (
     <OrientationMapContext.Provider
