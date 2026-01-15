@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Image,
   useWindowDimensions,
   Platform,
+  InteractionManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BigButton from '../components/BigButton'; // Ajuste o caminho se o seu BigButton estiver em outro lugar
@@ -20,6 +21,30 @@ const OnboardingScreen = ({ navigation, onComplete, isInitial = false }) => {
   const { t } = useLanguage();
   const { width } = useWindowDimensions();
   const imageWidth = width * 0.85; // Largura das imagens/diagramas na tela
+  const [shouldRenderImages, setShouldRenderImages] = useState(false);
+
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setShouldRenderImages(true);
+    });
+    return () => handle.cancel();
+  }, []);
+
+  const renderIllustration = (source, sizeStyle) => {
+    if (!shouldRenderImages) {
+      return (
+        <View style={[styles.image, styles.imagePlaceholder, sizeStyle]} />
+      );
+    }
+    return (
+      <Image
+        source={source}
+        style={[styles.image, sizeStyle]}
+        resizeMode="contain"
+        resizeMethod="resize"
+      />
+    );
+  };
 
   const handleButtonPress = () => {
     if (isInitial && typeof onComplete === 'function') {
@@ -43,7 +68,10 @@ const OnboardingScreen = ({ navigation, onComplete, isInitial = false }) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scrollContentContainer}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContentContainer}
+      >
         <View style={styles.container}>
           <Text style={styles.mainTitle}>{t('onboarding.mainTitle')}</Text>
           <Text style={styles.mainSubtitle}>
@@ -60,14 +88,10 @@ const OnboardingScreen = ({ navigation, onComplete, isInitial = false }) => {
             </Text>
 
             {/* SUBSTITUA O TEXTO ABAIXO PELA SUA IMAGEM/DIAGRAMA REAL */}
-            <Image
-              source={require('../assets/images/camera_positioning.png')} // Crie esta imagem!
-              style={[
-                styles.image,
-                { width: imageWidth, height: imageWidth * 0.6 },
-              ]} // Ajuste a altura conforme sua imagem
-              resizeMode="contain"
-            />
+            {renderIllustration(
+              require('../assets/images/camera_positioning.png'),
+              { width: imageWidth, height: imageWidth * 0.6 }
+            )}
 
             <View style={styles.point}>
               <Text style={styles.pointEmoji}>⬆️</Text>
@@ -111,14 +135,10 @@ const OnboardingScreen = ({ navigation, onComplete, isInitial = false }) => {
             </Text>
 
             {/* SUBSTITUA O TEXTO ABAIXO PELA SUA IMAGEM/DIAGRAMA REAL */}
-            <Image
-              source={require('../assets/images/filming_tips.png')} // Crie esta imagem!
-              style={[
-                styles.image,
-                { width: imageWidth, height: imageWidth * 0.5 },
-              ]}
-              resizeMode="contain"
-            />
+            {renderIllustration(require('../assets/images/filming_tips.png'), {
+              width: imageWidth,
+              height: imageWidth * 0.5,
+            })}
 
             <View style={styles.point}>
               <Text style={styles.pointEmoji}>➡️</Text>
@@ -165,14 +185,10 @@ const OnboardingScreen = ({ navigation, onComplete, isInitial = false }) => {
             </Text>
 
             {/* SUBSTITUA O TEXTO ABAIXO PELA SUA IMAGEM/DIAGRAMA REAL */}
-            <Image
-              source={require('../assets/images/counting_line.png')} // Crie esta imagem!
-              style={[
-                styles.image,
-                { width: imageWidth, height: imageWidth * 0.4 },
-              ]}
-              resizeMode="contain"
-            />
+            {renderIllustration(
+              require('../assets/images/counting_line.png'),
+              { width: imageWidth, height: imageWidth * 0.4 }
+            )}
 
             <View style={styles.point}>
               <Text style={styles.pointEmoji}>↔️</Text>
@@ -227,6 +243,9 @@ const styles = StyleSheet.create({
   scrollContentContainer: {
     paddingBottom: 30,
   },
+  scrollView: {
+    flex: 1,
+  },
   container: {
     paddingHorizontal: Platform.OS === 'ios' ? 20 : 15, // Ajuste de padding para iOS e Android
     paddingTop: 20,
@@ -268,22 +287,8 @@ const styles = StyleSheet.create({
     color: '#34495e', // Azul acinzentado
     marginBottom: 15,
   },
-  imagePlaceholderContainer: {
-    // Novo container para o placeholder
-    width: '100%',
-    aspectRatio: 16 / 9, // Common ratio; adjust according to your images
-    backgroundColor: '#e9ecef',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8,
-    marginBottom: 15,
-    padding: 10,
-  },
   imagePlaceholder: {
-    // Estilo do texto placeholder
-    textAlign: 'center',
-    color: '#6c757d',
-    fontSize: 14,
+    backgroundColor: '#e9ecef',
   },
   image: {
     // Estilo para quando você adicionar a imagem real

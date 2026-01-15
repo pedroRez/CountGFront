@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { View, StyleSheet, Alert, AppState } from 'react-native';
+import { View, StyleSheet, AppState, InteractionManager } from 'react-native';
 import axios from 'axios';
 import AppNavigator from './navigation/AppNavigator';
 import CustomActivityIndicator from './components/CustomActivityIndicator';
@@ -54,23 +54,38 @@ const AppContent = () => {
     };
 
     checkIfFirstLaunch();
+  }, []);
 
-    // Logic for the wake-up call
-    wakeUpServer();
+  useEffect(() => {
+    if (isFirstLaunch === null) return;
+
+    let interactionHandle = null;
+    const scheduleWake = () => {
+      if (isFirstLaunch) return;
+      interactionHandle = InteractionManager.runAfterInteractions(() => {
+        wakeUpServer();
+      });
+    };
+
+    scheduleWake();
+
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (
         appState.current.match(/inactive|background/) &&
         nextAppState === 'active'
       ) {
-        wakeUpServer();
+        scheduleWake();
       }
       appState.current = nextAppState;
     });
 
     return () => {
       subscription.remove();
+      if (interactionHandle) {
+        interactionHandle.cancel();
+      }
     };
-  }, [apiUrl]); // Added apiUrl as a dependency to wake the server if the URL changes
+  }, [apiUrl, isFirstLaunch]);
 
   const handleOnboardingComplete = async () => {
     try {

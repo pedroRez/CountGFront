@@ -217,8 +217,14 @@ const translations = {
     },
     upload: {
       processVideo: 'Processar video',
+      uploading: 'Enviando...',
       uploadingWithPercent: 'Enviando... {{percent}}%',
       uploadComplete: 'Upload concluido. Iniciando analise...',
+      savingOnServer: 'Salvando no servidor...',
+      waitingForConnection: 'Aguardando conexao para enviar',
+      noInternetTitle: 'Sem internet',
+      noInternetMessage:
+        'Sem conexao no momento. Quando a internet voltar, o video sera enviado para processamento.',
       missingDataTitle: 'Dados faltando',
       missingDataMessage:
         'Selecione um video, uma orientacao e um nivel de processamento.',
@@ -507,8 +513,14 @@ const translations = {
     },
     upload: {
       processVideo: 'Process Video',
+      uploading: 'Uploading...',
       uploadingWithPercent: 'Uploading... {{percent}}%',
       uploadComplete: 'Upload complete. Starting analysis...',
+      savingOnServer: 'Saving on the server...',
+      waitingForConnection: 'Waiting for connection to send',
+      noInternetTitle: 'No internet',
+      noInternetMessage:
+        'No connection right now. When the internet returns, the video will be sent for processing.',
       missingDataTitle: 'Missing Data',
       missingDataMessage:
         'Please select a video, orientation, and processing level.',

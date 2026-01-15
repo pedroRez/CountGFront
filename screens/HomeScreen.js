@@ -137,6 +137,7 @@ const HomeScreen = ({ route }) => {
 
   const pollingIntervalRef = useRef(null);
   const appStateListenerRef = useRef(AppState.currentState);
+  const isFinalizingRef = useRef(false);
 
   useEffect(() => {
     fetchOrientationMap();
@@ -278,6 +279,7 @@ const HomeScreen = ({ route }) => {
     setModelChoice('m');
     setProcessingMeta(null);
     setIsFinalizing(false);
+    isFinalizingRef.current = false;
     setDownloadProgress(null);
   };
 
@@ -409,6 +411,7 @@ const HomeScreen = ({ route }) => {
   const handleProcessingStarted = (responseData) => {
     const videoName = responseData?.video_name || responseData?.nome_arquivo;
     if (videoName) {
+      isFinalizingRef.current = false;
       const meta = buildProcessingMeta();
       setProcessingVideoName(videoName);
       setProcessingMeta(meta);
@@ -442,7 +445,8 @@ const HomeScreen = ({ route }) => {
   };
 
   const handleProcessingComplete = async (result) => {
-    if (isFinalizing) return;
+    if (isFinalizingRef.current || isFinalizing) return;
+    isFinalizingRef.current = true;
     setIsFinalizing(true);
     setAppStatus('saving_result');
 
