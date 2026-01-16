@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,31 +8,85 @@ import {
   Alert,
   TouchableOpacity,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
 import { useApi } from '../context/ApiContext'; // Import our custom hook
 import BigButton from '../components/BigButton';
 import { useLanguage } from '../context/LanguageContext';
 
+const DEV_MODE_KEY = '@dev_mode_enabled';
+const DEV_MODE_TAPS = 10;
+
 const SettingsScreen = () => {
   // Retrieve values and functions from our global context
   const {
-    apiUrl,
-    setApiUrl,
     isCustomUrlEnabled,
     setIsCustomUrlEnabled,
+    customUrls,
+    addCustomServer,
+    removeCustomServer,
     DEFAULT_API_URL,
   } = useApi();
   const { language, setLanguage, t } = useLanguage();
 
-  // Local state for the text field, initialized with the context URL
-  const [textInputUrl, setTextInputUrl] = useState(
-    isCustomUrlEnabled ? apiUrl : ''
-  );
+  const [textInputUrl, setTextInputUrl] = useState('');
   const [isTesting, setIsTesting] = useState(false);
+  const [isDevMode, setIsDevMode] = useState(false);
+  const [tapCount, setTapCount] = useState(0);
+
+  useEffect(() => {
+    const loadDevMode = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(DEV_MODE_KEY);
+        if (saved === 'true') {
+          setIsDevMode(true);
+        }
+      } catch (error) {
+        console.warn('Failed to load dev mode flag:', error);
+      }
+    };
+    loadDevMode();
+  }, []);
+
+  const normalizeUrl = (value) => value.trim().replace(/\/+$/, '');
+  const isValidUrl = (value) => /^https?:\/\//i.test(value);
+
+  const activateDevMode = async () => {
+    setIsDevMode(true);
+    setTapCount(0);
+    try {
+      await AsyncStorage.setItem(DEV_MODE_KEY, 'true');
+    } catch (error) {
+      console.warn('Failed to save dev mode flag:', error);
+    }
+    Alert.alert(
+      t('settings.developerModeTitle'),
+      t('settings.developerModeMessage')
+    );
+  };
+
+  const handleLanguageTitlePress = () => {
+    if (isDevMode) return;
+    setTapCount((prev) => {
+      const nextCount = prev + 1;
+      if (nextCount >= DEV_MODE_TAPS) {
+        activateDevMode();
+        return 0;
+      }
+      return nextCount;
+    });
+  };
 
   const handleTestConnection = async () => {
-    const urlToTest = isCustomUrlEnabled ? textInputUrl : DEFAULT_API_URL;
+    if (isCustomUrlEnabled && customUrls.length === 0) {
+      Alert.alert(
+        t('settings.noCustomServersTitle'),
+        t('settings.noCustomServersMessage')
+      );
+      return;
+    }
+    const urlToTest = isCustomUrlEnabled ? customUrls[0] : DEFAULT_API_URL;
     if (!urlToTest || !urlToTest.startsWith('http')) {
       Alert.alert(
         t('settings.invalidUrlTitle'),
@@ -75,19 +129,41 @@ const SettingsScreen = () => {
   };
 
   const handleToggleSwitch = (value) => {
-    setIsCustomUrlEnabled(value);
-    // If enabling the custom URL, save whatever is in the text field
-    if (value) {
-      setApiUrl(textInputUrl);
+    if (value && customUrls.length === 0) {
+      Alert.alert(
+        t('settings.noCustomServersTitle'),
+        t('settings.noCustomServersMessage')
+      );
+      return;
     }
+    setIsCustomUrlEnabled(value);
   };
 
-  const handleUrlChange = (text) => {
-    setTextInputUrl(text);
-    // If the custom URL is enabled, update the context in real time
-    if (isCustomUrlEnabled) {
-      setApiUrl(text);
+  const handleAddServer = () => {
+    const normalized = normalizeUrl(textInputUrl);
+    if (!normalized || !isValidUrl(normalized)) {
+      Alert.alert(
+        t('settings.invalidUrlTitle'),
+        t('settings.invalidUrlMessage')
+      );
+      return;
     }
+    const exists = customUrls.some(
+      (url) => url.toLowerCase() === normalized.toLowerCase()
+    );
+    if (exists) {
+      Alert.alert(
+        t('settings.serverExistsTitle'),
+        t('settings.serverExistsMessage')
+      );
+      return;
+    }
+    addCustomServer(normalized);
+    setTextInputUrl('');
+  };
+
+  const handleRemoveServer = (index) => {
+    removeCustomServer(index);
   };
 
   return (
@@ -96,48 +172,11 @@ const SettingsScreen = () => {
         <Text style={styles.title}>{t('settings.title')}</Text>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            {t('settings.defaultServerTitle')}
-          </Text>
-          <Text style={styles.infoText}>
-            {t('settings.defaultServerDescription')}
-          </Text>
-          <Text style={styles.urlText}>{DEFAULT_API_URL}</Text>
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.switchContainer}>
+          <TouchableOpacity onPress={handleLanguageTitlePress}>
             <Text style={styles.sectionTitle}>
-              {t('settings.useCustomServer')}
+              {t('settings.languageTitle')}
             </Text>
-            <Switch
-              trackColor={{ false: '#767577', true: '#81b0ff' }}
-              thumbColor={isCustomUrlEnabled ? '#007AFF' : '#f4f3f4'}
-              onValueChange={handleToggleSwitch}
-              value={isCustomUrlEnabled}
-            />
-          </View>
-          <TextInput
-            style={[styles.input, !isCustomUrlEnabled && styles.inputDisabled]}
-            placeholder="http://192.168.X.XX:8000"
-            value={textInputUrl}
-            onChangeText={handleUrlChange}
-            editable={isCustomUrlEnabled} // Only editable if the switch is on
-            autoCapitalize="none"
-            keyboardType="url"
-          />
-        </View>
-
-        <BigButton
-          title={isTesting ? t('settings.testing') : t('settings.testConnection')}
-          onPress={handleTestConnection}
-          disabled={isTesting}
-        />
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            {t('settings.languageTitle')}
-          </Text>
+          </TouchableOpacity>
           <Text style={styles.infoText}>
             {t('settings.languageDescription')}
           </Text>
@@ -169,6 +208,92 @@ const SettingsScreen = () => {
             })}
           </View>
         </View>
+
+        {isDevMode && (
+          <>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                {t('settings.defaultServerTitle')}
+              </Text>
+              <Text style={styles.infoText}>
+                {t('settings.defaultServerDescription')}
+              </Text>
+              <Text style={styles.urlText}>{DEFAULT_API_URL}</Text>
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.switchContainer}>
+                <Text style={styles.sectionTitle}>
+                  {t('settings.useCustomServer')}
+                </Text>
+                <Switch
+                  trackColor={{ false: '#767577', true: '#81b0ff' }}
+                  thumbColor={isCustomUrlEnabled ? '#007AFF' : '#f4f3f4'}
+                  onValueChange={handleToggleSwitch}
+                  value={isCustomUrlEnabled}
+                  disabled={customUrls.length === 0}
+                />
+              </View>
+              <Text style={styles.infoText}>
+                {t('settings.customServersDescription')}
+              </Text>
+              <View style={styles.serverInputRow}>
+                <TextInput
+                  style={styles.input}
+                  placeholder={t('settings.serverPlaceholder')}
+                  value={textInputUrl}
+                  onChangeText={setTextInputUrl}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                />
+                <TouchableOpacity
+                  style={styles.addButton}
+                  onPress={handleAddServer}
+                >
+                  <Text style={styles.addButtonText}>
+                    {t('settings.addServer')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {customUrls.length === 0 ? (
+                <Text style={styles.infoText}>
+                  {t('settings.noCustomServers')}
+                </Text>
+              ) : (
+                <View style={styles.serverList}>
+                  {customUrls.map((url, index) => (
+                    <View key={`${url}-${index}`} style={styles.serverRow}>
+                      <Text style={styles.serverUrl} numberOfLines={1}>
+                        {url}
+                      </Text>
+                      {index === 0 && (
+                        <Text style={styles.defaultBadge}>
+                          {t('settings.defaultBadge')}
+                        </Text>
+                      )}
+                      <TouchableOpacity
+                        style={styles.removeButton}
+                        onPress={() => handleRemoveServer(index)}
+                      >
+                        <Text style={styles.removeButtonText}>
+                          {t('settings.removeServer')}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <BigButton
+              title={
+                isTesting ? t('settings.testing') : t('settings.testConnection')
+              }
+              onPress={handleTestConnection}
+              disabled={isTesting}
+            />
+          </>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -229,15 +354,58 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   input: {
+    flex: 1,
     borderWidth: 1,
     borderColor: '#ccc',
     borderRadius: 8,
     padding: 10,
     fontSize: 16,
-    marginTop: 10,
     backgroundColor: '#fff',
   },
-  inputDisabled: { backgroundColor: '#e9ecef', color: '#6c757d' },
+  serverInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  addButton: {
+    marginLeft: 8,
+    backgroundColor: '#007AFF',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  addButtonText: { color: '#fff', fontWeight: '600', fontSize: 12 },
+  serverList: { marginTop: 12 },
+  serverRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  serverUrl: { flex: 1, fontSize: 13, color: '#111827' },
+  defaultBadge: {
+    marginLeft: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: '#e0f2fe',
+    color: '#0369a1',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  removeButton: {
+    marginLeft: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: '#fee2e2',
+  },
+  removeButtonText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#b91c1c',
+  },
 });
 
 export default SettingsScreen;

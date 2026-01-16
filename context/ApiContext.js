@@ -6,6 +6,22 @@ import { ActivityIndicator, View, StyleSheet } from 'react-native';
 const DEFAULT_API_URL =
   process.env.EXPO_PUBLIC_API_URL || 'https://pedrorezp3-countg.hf.space/';
 const STORAGE_KEY = '@api_settings';
+const normalizeUrl = (value) => {
+  if (!value || typeof value !== 'string') return '';
+  return value.trim().replace(/\/+$/, '');
+};
+const normalizeUrlList = (values) => {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set();
+  const normalized = [];
+  values.forEach((item) => {
+    const url = normalizeUrl(item);
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    normalized.push(url);
+  });
+  return normalized;
+};
 
 // Create the context
 export const ApiContext = createContext();
@@ -14,6 +30,7 @@ export const ApiContext = createContext();
 export const ApiProvider = ({ children }) => {
   const [apiUrl, setApiUrl] = useState(DEFAULT_API_URL);
   const [isCustomUrlEnabled, setIsCustomUrlEnabled] = useState(false);
+  const [customUrls, setCustomUrls] = useState([]);
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
 
   // Load saved settings when the app starts
@@ -22,9 +39,16 @@ export const ApiProvider = ({ children }) => {
       try {
         const savedSettings = await AsyncStorage.getItem(STORAGE_KEY);
         if (savedSettings !== null) {
-          const { customUrl, enabled } = JSON.parse(savedSettings);
+          const parsed = JSON.parse(savedSettings);
+          const legacyUrl = parsed?.customUrl;
+          const urls = normalizeUrlList(parsed?.customUrls || []);
+          const mergedUrls = legacyUrl
+            ? normalizeUrlList([legacyUrl, ...urls])
+            : urls;
+          const enabled = Boolean(parsed?.enabled) && mergedUrls.length > 0;
+          setCustomUrls(mergedUrls);
           setIsCustomUrlEnabled(enabled);
-          setApiUrl(enabled && customUrl ? customUrl : DEFAULT_API_URL);
+          setApiUrl(enabled ? mergedUrls[0] : DEFAULT_API_URL);
         }
       } catch (e) {
         console.error('Failed to load API settings:', e);
@@ -44,18 +68,37 @@ export const ApiProvider = ({ children }) => {
     }
   };
 
-  const updateApiUrl = (newUrl) => {
-    setApiUrl(newUrl);
-    // Save the current configuration
-    saveSettings({ customUrl: newUrl, enabled: isCustomUrlEnabled });
+  const applySettings = (nextUrls, enabled) => {
+    const normalizedUrls = normalizeUrlList(nextUrls);
+    const shouldEnable = Boolean(enabled) && normalizedUrls.length > 0;
+    setCustomUrls(normalizedUrls);
+    setIsCustomUrlEnabled(shouldEnable);
+    setApiUrl(shouldEnable ? normalizedUrls[0] : DEFAULT_API_URL);
+    saveSettings({ customUrls: normalizedUrls, enabled: shouldEnable });
   };
 
-  const updateIsCustomUrlEnabled = (enabled, currentCustomUrl) => {
-    setIsCustomUrlEnabled(enabled);
-    const newUrl =
-      enabled && currentCustomUrl ? currentCustomUrl : DEFAULT_API_URL;
-    setApiUrl(newUrl);
-    saveSettings({ customUrl: currentCustomUrl, enabled: enabled });
+  const updateApiUrl = (newUrl) => {
+    const normalized = normalizeUrl(newUrl);
+    if (!normalized) return;
+    const nextUrls = [normalized, ...customUrls.filter((item) => item !== normalized)];
+    applySettings(nextUrls, isCustomUrlEnabled);
+  };
+
+  const updateIsCustomUrlEnabled = (enabled) => {
+    applySettings(customUrls, enabled);
+  };
+
+  const addCustomServer = (newUrl) => {
+    const normalized = normalizeUrl(newUrl);
+    if (!normalized) return false;
+    const nextUrls = [normalized, ...customUrls.filter((item) => item !== normalized)];
+    applySettings(nextUrls, isCustomUrlEnabled);
+    return true;
+  };
+
+  const removeCustomServer = (indexToRemove) => {
+    const nextUrls = customUrls.filter((_, index) => index !== indexToRemove);
+    applySettings(nextUrls, isCustomUrlEnabled);
   };
 
   const value = {
@@ -63,6 +106,9 @@ export const ApiProvider = ({ children }) => {
     setApiUrl: updateApiUrl,
     isCustomUrlEnabled,
     setIsCustomUrlEnabled: updateIsCustomUrlEnabled,
+    customUrls,
+    addCustomServer,
+    removeCustomServer,
     isLoading: isSettingsLoading,
     DEFAULT_API_URL,
   };
