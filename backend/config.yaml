@@ -1,0 +1,7 @@
+path: ./dataset
+
+train: images/train
+val: images/train  # ou images/val, se você tiver separado
+
+names:
+  0: cattle  # ou 'vaca' ou o que foi usado no treinamento

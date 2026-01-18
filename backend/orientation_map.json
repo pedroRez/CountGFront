@@ -1,0 +1,6 @@
+{
+  "N": {"label": "North", "arrow": "\u2191"},
+  "E": {"label": "East", "arrow": "\u2192"},
+  "S": {"label": "South", "arrow": "\u2193"},
+  "W": {"label": "West", "arrow": "\u2190"}
+}

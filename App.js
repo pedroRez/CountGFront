@@ -1,39 +1,42 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { View, StyleSheet, Alert, AppState } from 'react-native';
+import { View, StyleSheet, AppState, InteractionManager } from 'react-native';
 import axios from 'axios';
 import AppNavigator from './navigation/AppNavigator';
 import CustomActivityIndicator from './components/CustomActivityIndicator';
-import { ApiProvider, useApi } from './context/ApiContext'; // Importa nosso provedor e hook
+import { ApiProvider, useApi } from './context/ApiContext';
+import { OrientationMapProvider } from './context/OrientationMapContext';
+import { LanguageProvider } from './context/LanguageContext';
+import { CountsProvider } from './context/CountsContext';
 
 const APP_LAUNCHED_KEY = 'appAlreadyLaunched';
 
-// Este componente agora contém a lógica principal do seu app
-// e está "dentro" do ApiProvider, então ele pode usar o hook useApi()
+// This component now contains the main app logic
+// and lives "inside" the ApiProvider, allowing it to use the useApi() hook
 const AppContent = () => {
   const [isFirstLaunch, setIsFirstLaunch] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const appState = useRef(AppState.currentState);
-  
-  // Pega a URL da API do nosso contexto global
+
+  // Retrieve the API URL from our global context
   const { apiUrl } = useApi();
 
-  // Função para "acordar" o servidor, agora usando a URL do contexto
+  // Function to "wake" the server, now using the context URL
   const wakeUpServer = async () => {
     if (!apiUrl) {
-      console.log("App.js: Nenhuma URL de API definida, pulando 'wake-up call'.");
+      console.log('App.js: No API URL defined, skipping wake-up call.');
       return;
     }
-    console.log(`App.js: Enviando requisição 'wake-up' para ${apiUrl}...`);
+    console.log(`App.js: Sending wake-up request to ${apiUrl}...`);
     try {
       await axios.get(apiUrl, { timeout: 25000 });
-      console.log("App.js: Servidor respondeu ao 'wake-up call'.");
+      console.log('App.js: Server responded to wake-up call.');
     } catch (error) {
       if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-        console.warn("App.js: 'Wake-up call' para o servidor demorou a responder (timeout).");
+        console.warn('App.js: Server wake-up call timed out.');
       } else {
-        console.error("App.js: Erro no 'wake-up call':", error.message);
+        console.error('App.js: Error during wake-up call:', error.message);
       }
     }
   };
@@ -51,27 +54,45 @@ const AppContent = () => {
     };
 
     checkIfFirstLaunch();
-    
-    // Lógica para o 'wake-up call'
-    wakeUpServer();
-    const subscription = AppState.addEventListener('change', nextAppState => {
-      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+  }, []);
+
+  useEffect(() => {
+    if (isFirstLaunch === null) return;
+
+    let interactionHandle = null;
+    const scheduleWake = () => {
+      if (isFirstLaunch) return;
+      interactionHandle = InteractionManager.runAfterInteractions(() => {
         wakeUpServer();
+      });
+    };
+
+    scheduleWake();
+
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        scheduleWake();
       }
       appState.current = nextAppState;
     });
 
     return () => {
       subscription.remove();
+      if (interactionHandle) {
+        interactionHandle.cancel();
+      }
     };
-  }, [apiUrl]); // Adicionado apiUrl como dependência para acordar o servidor se a URL mudar
+  }, [apiUrl, isFirstLaunch]);
 
   const handleOnboardingComplete = async () => {
     try {
       await AsyncStorage.setItem(APP_LAUNCHED_KEY, 'true');
-      setIsFirstLaunch(false); 
+      setIsFirstLaunch(false);
     } catch (error) {
-      console.error("Erro ao salvar 'appAlreadyLaunched':", error);
+      console.error("Error saving 'appAlreadyLaunched':", error);
       setIsFirstLaunch(false);
     }
   };
@@ -93,25 +114,46 @@ const AppContent = () => {
       />
     </>
   );
-}
+};
 
-// O componente principal App agora apenas fornece o contexto
+// The main App component now simply provides the context
 export default function App() {
   return (
-    <ApiProvider>
-      <AppContent />
-    </ApiProvider>
+    <LanguageProvider>
+      <ApiProvider>
+        <CountsProvider>
+          <OrientationMapProvider>
+            <AppContent />
+          </OrientationMapProvider>
+        </CountsProvider>
+      </ApiProvider>
+    </LanguageProvider>
   );
 }
 
-// Sua função de reset para desenvolvimento
-export const developerResetFirstLaunch = async () => { /* ... */ };
+/**
+ * Manually resets the first-run flag for the application.
+ *
+ * **Development function** – do not use in production.
+ * Removes `APP_LAUNCHED_KEY` from AsyncStorage and clears saved API
+ * settings so the app can run onboarding again.
+ */
+export const developerResetFirstLaunch = async () => {
+  try {
+    await AsyncStorage.removeItem(APP_LAUNCHED_KEY);
+    // Optional: also reset API settings
+    await AsyncStorage.removeItem('@api_settings');
+    console.log('developerResetFirstLaunch: APP_LAUNCHED_KEY removed.');
+  } catch (error) {
+    console.error('developerResetFirstLaunch: failed to remove key', error);
+  }
+};
 
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF', 
+    backgroundColor: '#FFFFFF',
   },
 });

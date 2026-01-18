@@ -2,43 +2,57 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BigButton from '../components/BigButton';
+import { useLanguage } from '../context/LanguageContext';
 
 const ResultsScreen = ({ route, navigation }) => {
-  const { results } = route.params; // Recebe os resultados da navegação
+  const { t } = useLanguage();
+  const { results } = route.params; // Receive results from navigation
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Resultado da Análise</Text>
+        <Text style={styles.title}>{t('results.title')}</Text>
 
         <View style={styles.resultsCard}>
-          <Text style={styles.resultLabel}>Vídeo Original:</Text>
+          <Text style={styles.resultLabel}>{t('results.originalVideo')}</Text>
           <Text style={styles.resultValue}>{results.video}</Text>
 
-          <Text style={styles.resultLabel}>Vídeo Processado (Nome):</Text>
+          <Text style={styles.resultLabel}>{t('results.processedVideo')}</Text>
           <Text style={styles.resultValue}>{results.video_processado}</Text>
-          
-          <Text style={styles.resultLabel}>Total de Frames:</Text>
+
+          <Text style={styles.resultLabel}>{t('results.totalFrames')}</Text>
           <Text style={styles.resultValue}>{results.total_frames}</Text>
 
           <View style={styles.totalCountContainer}>
-            <Text style={styles.totalCountLabel}>Total de Gado Contado:</Text>
+            <Text style={styles.totalCountLabel}>
+              {t('results.totalCount')}
+            </Text>
             <Text style={styles.totalCountValue}>{results.total_count}</Text>
           </View>
 
           {results.por_classe && Object.keys(results.por_classe).length > 0 && (
             <View>
-              <Text style={styles.resultLabel}>Detalhes por Classe:</Text>
+              <Text style={styles.resultLabel}>
+                {t('results.detailsByClass')}
+              </Text>
               {Object.entries(results.por_classe).map(([classe, contagem]) => (
-                <Text key={classe} style={styles.resultValue}>  • {classe}: {contagem}</Text>
+                <Text key={classe} style={styles.resultValue}>
+                  {' '}
+                  • {classe}: {contagem}
+                </Text>
               ))}
             </View>
           )}
         </View>
 
         <BigButton
-          title="Enviar Novo Vídeo"
-          onPress={() => navigation.popToTop()} // Volta para a tela inicial da stack
+          title={t('results.submitNewVideo')}
+          onPress={() =>
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Home', params: { resetHome: true } }],
+            })
+          } // Return to Home and reset state
           buttonStyle={styles.newAnalysisButton}
         />
       </ScrollView>
@@ -105,9 +119,9 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   newAnalysisButton: {
-    backgroundColor: '#007AFF', // Azul
+    backgroundColor: '#007AFF', // Blue
     width: '90%',
-  }
+  },
 });
 
 export default ResultsScreen;

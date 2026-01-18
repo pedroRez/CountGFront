@@ -1,24 +1,34 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-// Este componente recebe o título como uma 'propriedade'
+// This component receives the title as a prop
 const CustomHeader = ({ title }) => {
   const navigation = useNavigation();
 
   return (
-    // Usamos uma View como container principal com um padding no topo.
-    // Isso cria o espaçamento que precisamos em relação à barra de status.
+    // Use a View as the main container with top padding to offset the status bar
     <View style={styles.container}>
-      {/* View vazia à esquerda para ajudar a centralizar o título */}
+      {/* Empty view on the left to help center the title */}
       <View style={styles.sideComponent} />
 
-      {/* Título da Tela */}
-      <Text style={styles.title} numberOfLines={1}>{title}</Text>
+      {/* Screen title */}
+      <Text style={styles.title} numberOfLines={1}>
+        {title}
+      </Text>
 
-      {/* Botão de Configurações à direita */}
-      <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.sideComponent}>
+      {/* Settings button on the right */}
+      <TouchableOpacity
+        onPress={() => navigation.navigate('Settings')}
+        style={styles.sideComponent}
+      >
         <MaterialCommunityIcons name="cog-outline" size={28} color="#007AFF" />
       </TouchableOpacity>
     </View>
@@ -27,14 +37,14 @@ const CustomHeader = ({ title }) => {
 
 const styles = StyleSheet.create({
   container: {
-    // O padding no topo empurra todo o conteúdo para baixo
+    // Top padding pushes the content below the status bar
     paddingTop: Platform.OS === 'android' ? 40 : 50,
     paddingBottom: 10,
     paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#F8F8F8', // Cor de fundo do cabeçalho
+    backgroundColor: '#F8F8F8', // Header background color
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
@@ -43,13 +53,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1c1c1e',
     textAlign: 'center',
-    flex: 1, // Permite que o título ocupe o espaço central
+    flex: 1, // Allows the title to take the center space
   },
   sideComponent: {
-    width: 40, // Largura fixa para os componentes laterais
+    width: 40, // Fixed width for side components
     alignItems: 'center',
-    justifyContent: 'center'
-  }
+    justifyContent: 'center',
+  },
 });
 
 export default CustomHeader;

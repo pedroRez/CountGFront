@@ -1,18 +1,30 @@
 import React from 'react';
 import { Text, Pressable, StyleSheet, View } from 'react-native';
-// Se for usar ícones do Expo:
+// If using icons from Expo:
 // import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-const BigButton = ({ title, onPress, buttonStyle, textStyle, iconName, iconFamily, iconSize = 22, iconColor = 'white' }) => {
-  // const IconComponent = iconFamily; // Ex: MaterialCommunityIcons
+const BigButton = ({
+  title,
+  onPress,
+  buttonStyle,
+  textStyle,
+  iconName,
+  iconFamily,
+  iconSize = 22,
+  iconColor = 'white',
+  disabled = false,
+}) => {
+  // const IconComponent = iconFamily; // e.g., MaterialCommunityIcons
 
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       style={({ pressed }) => [
         styles.button,
         buttonStyle,
-        pressed && styles.buttonPressed,
+        disabled && styles.buttonDisabled,
+        pressed && !disabled && styles.buttonPressed,
       ]}
     >
       {/* {IconComponent && iconName && (
@@ -28,7 +40,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#007AFF', // Cor primária
+    backgroundColor: '#007AFF', // Primary color
     paddingVertical: 16,
     paddingHorizontal: 25,
     borderRadius: 12,
@@ -42,7 +54,10 @@ const styles = StyleSheet.create({
   },
   buttonPressed: {
     opacity: 0.8,
-    transform: [{ scale: 0.98 }]
+    transform: [{ scale: 0.98 }],
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
   icon: {
     marginRight: 10,
@@ -50,7 +65,7 @@ const styles = StyleSheet.create({
   text: {
     color: 'white',
     fontSize: 18,
-    fontWeight: '600', // Um pouco menos "bold" que 'bold'
+    fontWeight: '600', // Slightly lighter than 'bold'
     textAlign: 'center',
   },
 });

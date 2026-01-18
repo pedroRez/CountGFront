@@ -2,31 +2,56 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 
-// Lê a URL padrão do arquivo .env
-const DEFAULT_API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://pedrorezp3-countg.hf.space/';
+// Read the default URL from the .env file
+const DEFAULT_API_URL =
+  process.env.EXPO_PUBLIC_API_URL || 'https://pedrorezp3-countg.hf.space/';
 const STORAGE_KEY = '@api_settings';
+const normalizeUrl = (value) => {
+  if (!value || typeof value !== 'string') return '';
+  return value.trim().replace(/\/+$/, '');
+};
+const normalizeUrlList = (values) => {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set();
+  const normalized = [];
+  values.forEach((item) => {
+    const url = normalizeUrl(item);
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    normalized.push(url);
+  });
+  return normalized;
+};
 
-// Cria o contexto
+// Create the context
 export const ApiContext = createContext();
 
-// Cria o "Provedor" do contexto, que gerenciará o estado
+// Create the context provider that manages state
 export const ApiProvider = ({ children }) => {
   const [apiUrl, setApiUrl] = useState(DEFAULT_API_URL);
   const [isCustomUrlEnabled, setIsCustomUrlEnabled] = useState(false);
+  const [customUrls, setCustomUrls] = useState([]);
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
 
-  // Carrega as configurações salvas ao iniciar o app
+  // Load saved settings when the app starts
   useEffect(() => {
     const loadSettings = async () => {
       try {
         const savedSettings = await AsyncStorage.getItem(STORAGE_KEY);
         if (savedSettings !== null) {
-          const { customUrl, enabled } = JSON.parse(savedSettings);
+          const parsed = JSON.parse(savedSettings);
+          const legacyUrl = parsed?.customUrl;
+          const urls = normalizeUrlList(parsed?.customUrls || []);
+          const mergedUrls = legacyUrl
+            ? normalizeUrlList([legacyUrl, ...urls])
+            : urls;
+          const enabled = Boolean(parsed?.enabled) && mergedUrls.length > 0;
+          setCustomUrls(mergedUrls);
           setIsCustomUrlEnabled(enabled);
-          setApiUrl(enabled && customUrl ? customUrl : DEFAULT_API_URL);
+          setApiUrl(enabled ? mergedUrls[0] : DEFAULT_API_URL);
         }
       } catch (e) {
-        console.error("Falha ao carregar configurações da API:", e);
+        console.error('Failed to load API settings:', e);
         setApiUrl(DEFAULT_API_URL);
       } finally {
         setIsSettingsLoading(false);
@@ -39,33 +64,56 @@ export const ApiProvider = ({ children }) => {
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     } catch (e) {
-      console.error("Falha ao salvar configurações da API:", e);
+      console.error('Failed to save API settings:', e);
     }
   };
 
-  const updateApiUrl = (newUrl) => {
-    setApiUrl(newUrl);
-    // Salva a configuração atual
-    saveSettings({ customUrl: newUrl, enabled: isCustomUrlEnabled });
+  const applySettings = (nextUrls, enabled) => {
+    const normalizedUrls = normalizeUrlList(nextUrls);
+    const shouldEnable = Boolean(enabled) && normalizedUrls.length > 0;
+    setCustomUrls(normalizedUrls);
+    setIsCustomUrlEnabled(shouldEnable);
+    setApiUrl(shouldEnable ? normalizedUrls[0] : DEFAULT_API_URL);
+    saveSettings({ customUrls: normalizedUrls, enabled: shouldEnable });
   };
 
-  const updateIsCustomUrlEnabled = (enabled, currentCustomUrl) => {
-    setIsCustomUrlEnabled(enabled);
-    const newUrl = enabled && currentCustomUrl ? currentCustomUrl : DEFAULT_API_URL;
-    setApiUrl(newUrl);
-    saveSettings({ customUrl: currentCustomUrl, enabled: enabled });
+  const updateApiUrl = (newUrl) => {
+    const normalized = normalizeUrl(newUrl);
+    if (!normalized) return;
+    const nextUrls = [normalized, ...customUrls.filter((item) => item !== normalized)];
+    applySettings(nextUrls, isCustomUrlEnabled);
   };
-  
+
+  const updateIsCustomUrlEnabled = (enabled) => {
+    applySettings(customUrls, enabled);
+  };
+
+  const addCustomServer = (newUrl) => {
+    const normalized = normalizeUrl(newUrl);
+    if (!normalized) return false;
+    const nextUrls = [normalized, ...customUrls.filter((item) => item !== normalized)];
+    applySettings(nextUrls, isCustomUrlEnabled);
+    return true;
+  };
+
+  const removeCustomServer = (indexToRemove) => {
+    const nextUrls = customUrls.filter((_, index) => index !== indexToRemove);
+    applySettings(nextUrls, isCustomUrlEnabled);
+  };
+
   const value = {
     apiUrl,
     setApiUrl: updateApiUrl,
     isCustomUrlEnabled,
     setIsCustomUrlEnabled: updateIsCustomUrlEnabled,
+    customUrls,
+    addCustomServer,
+    removeCustomServer,
     isLoading: isSettingsLoading,
     DEFAULT_API_URL,
   };
 
-  // Mostra um loader enquanto as configurações da API são carregadas do AsyncStorage
+  // Show a loader while the API settings are loaded from AsyncStorage
   if (isSettingsLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -77,13 +125,13 @@ export const ApiProvider = ({ children }) => {
   return <ApiContext.Provider value={value}>{children}</ApiContext.Provider>;
 };
 
-// Hook customizado para facilitar o uso do contexto
+// Custom hook to simplify context usage
 export const useApi = () => useContext(ApiContext);
 
 const styles = StyleSheet.create({
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    }
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 });
