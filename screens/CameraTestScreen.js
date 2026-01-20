@@ -5,6 +5,7 @@ import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import * as ExpoCameraModule from 'expo-camera';
 import * as MediaLibrary from 'expo-media-library';
 import { useLanguage } from '../context/LanguageContext';
+import { useCameraPermissions } from '../hooks/useCameraPermissions';
 
 export default function CameraTestScreen({ navigation }) {
   const { t } = useLanguage();
@@ -12,22 +13,25 @@ export default function CameraTestScreen({ navigation }) {
   const [isRecording, setIsRecording] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false); // New state to track when the camera is ready
   const cameraRef = useRef(null);
+  const { hasPermission: hasCameraPermissions, isRequesting } =
+    useCameraPermissions();
 
   useEffect(() => {
     (async () => {
-      console.log('[TEST] Requesting permissions...');
-      // Request all required permissions
-      const { status: cameraStatus } =
-        await ExpoCameraModule.Camera.requestCameraPermissionsAsync();
-      const { status: audioStatus } =
-        await ExpoCameraModule.Camera.requestMicrophonePermissionsAsync();
+      if (hasCameraPermissions === null) return;
+      if (!hasCameraPermissions) {
+        setHasAllPermissions(false);
+        Alert.alert(
+          t('cameraTest.alert.incompletePermissionsTitle'),
+          t('cameraTest.alert.incompletePermissionsMessage')
+        );
+        return;
+      }
+
       const { status: mediaStatus } =
         await MediaLibrary.requestPermissionsAsync();
 
-      const granted =
-        cameraStatus === 'granted' &&
-        audioStatus === 'granted' &&
-        mediaStatus === 'granted';
+      const granted = mediaStatus === 'granted';
       setHasAllPermissions(granted);
 
       if (!granted) {
@@ -37,7 +41,7 @@ export default function CameraTestScreen({ navigation }) {
         );
       }
     })();
-  }, []);
+  }, [hasCameraPermissions, t]);
 
   const handleRecordButtonPress = async () => {
     // Check if the camera is ready and not currently recording
@@ -103,7 +107,7 @@ export default function CameraTestScreen({ navigation }) {
     }
   };
 
-  if (hasAllPermissions === null) {
+  if (hasAllPermissions === null || isRequesting) {
     return (
       <View style={styles.centered}>
         <CustomActivityIndicator size="large" color="#FFF" />
