@@ -6,7 +6,30 @@ import { useLanguage } from '../context/LanguageContext';
 
 const ResultsScreen = ({ route, navigation }) => {
   const { t } = useLanguage();
-  const { results } = route.params; // Receive results from navigation
+  const results = route?.params?.results; // Receive results from navigation
+
+  if (!results) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <Text style={styles.title}>{t('common.error')}</Text>
+          <Text style={styles.resultValue}>
+            {t('home.alerts.processingInvalidResult')}
+          </Text>
+          <BigButton
+            title={t('results.submitNewVideo')}
+            onPress={() =>
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Home', params: { resetHome: true } }],
+              })
+            }
+            buttonStyle={styles.newAnalysisButton}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -37,8 +60,7 @@ const ResultsScreen = ({ route, navigation }) => {
               </Text>
               {Object.entries(results.por_classe).map(([classe, contagem]) => (
                 <Text key={classe} style={styles.resultValue}>
-                  {' '}
-                  • {classe}: {contagem}
+                  - {classe}: {contagem}
                 </Text>
               ))}
             </View>

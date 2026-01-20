@@ -2,10 +2,6 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 
-// Read the default URL from the .env file
-const DEFAULT_API_URL =
-  process.env.EXPO_PUBLIC_API_URL || 'https://pedrorezp3-countg.hf.space/';
-const STORAGE_KEY = '@api_settings';
 const normalizeUrl = (value) => {
   if (!value || typeof value !== 'string') return '';
   return value.trim().replace(/\/+$/, '');
@@ -22,6 +18,11 @@ const normalizeUrlList = (values) => {
   });
   return normalized;
 };
+// Read the default URL from the .env file and normalize it.
+const DEFAULT_API_URL = normalizeUrl(
+  process.env.EXPO_PUBLIC_API_URL || 'https://pedrorezp3-countg.hf.space'
+);
+const STORAGE_KEY = '@api_settings';
 
 // Create the context
 export const ApiContext = createContext();

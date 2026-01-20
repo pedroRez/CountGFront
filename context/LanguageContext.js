@@ -23,7 +23,7 @@ const translations = {
       status: 'Status',
       permissionRequired: 'Permissao necessaria',
       cameraNotReady: 'A camera ainda nao esta pronta.',
-      cameraMicRequired: 'E necessario acesso a camera e ao microfone.',
+      cameraMicRequired: 'E necessario acesso a camera.',
       orientation: {
         leftToRight: 'Esquerda -> Direita',
         rightToLeft: 'Direita -> Esquerda',
@@ -171,7 +171,7 @@ const translations = {
     },
     record: {
       loadingPermissions: 'Solicitando permissoes...',
-      permissionDenied: 'E necessario acesso a camera e ao microfone.',
+      permissionDenied: 'E necessario acesso a camera.',
       recordingTooShortTitle: 'Gravacao muito curta',
       recordingTooShortMessage:
         'Tente gravar por pelo menos alguns segundos.',
@@ -192,7 +192,7 @@ const translations = {
       alert: {
         incompletePermissionsTitle: 'Permissoes incompletas',
         incompletePermissionsMessage:
-          'Para este teste, todas as permissoes (camera, audio, galeria) sao necessarias.',
+          'Para este teste, as permissoes de camera e galeria sao necessarias.',
         successTitle: 'Sucesso!',
         successMessage:
           'Video gravado. Tentando salvar na galeria...',
@@ -335,7 +335,7 @@ const translations = {
       status: 'Status',
       permissionRequired: 'Permission Required',
       cameraNotReady: 'The camera is not ready yet.',
-      cameraMicRequired: 'Camera and microphone access is required.',
+      cameraMicRequired: 'Camera access is required.',
       orientation: {
         leftToRight: 'Left -> Right',
         rightToLeft: 'Right -> Left',
@@ -482,7 +482,7 @@ const translations = {
     },
     record: {
       loadingPermissions: 'Requesting permissions...',
-      permissionDenied: 'Camera and microphone access is required.',
+      permissionDenied: 'Camera access is required.',
       recordingTooShortTitle: 'Recording Too Short',
       recordingTooShortMessage:
         'Please try recording for at least a few seconds.',
@@ -503,7 +503,7 @@ const translations = {
       alert: {
         incompletePermissionsTitle: 'Incomplete Permissions',
         incompletePermissionsMessage:
-          'For this test, all permissions (camera, audio, gallery) are required.',
+          'For this test, camera and gallery permissions are required.',
         successTitle: 'Success!',
         successMessage: 'Video recorded. Attempting to save to gallery...',
         savedTitle: 'Saved!',

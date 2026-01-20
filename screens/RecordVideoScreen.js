@@ -55,7 +55,9 @@ const buildGuideOrientations = (t) => [
 export default function RecordVideoScreen({ navigation }) {
   const { t } = useLanguage();
   // --- Component state ---
-  const { hasPermission, isRequesting } = useCameraPermissions();
+  const { hasPermission, isRequesting } = useCameraPermissions({
+    includeMicrophone: false,
+  });
   const [cameraType, setCameraType] = useState('back');
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -129,8 +131,7 @@ export default function RecordVideoScreen({ navigation }) {
     startRecordingTimer();
 
     try {
-      const recordOptions = { quality: '720p', mute: true };
-      const data = await cameraRef.current.recordAsync(recordOptions);
+      const data = await cameraRef.current.recordAsync();
 
       const currentOrientation = guideOrientations[guideOrientationIndex];
       const recordedVideoAsset = {
@@ -195,14 +196,17 @@ export default function RecordVideoScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ExpoCameraModule.CameraView
-        style={styles.cameraPreview}
-        ref={cameraRef}
-        type={cameraType}
-        mode="video"
-        onCameraReady={() => setIsCameraReady(true)}
-      >
-        <View style={styles.overlayContainer}>
+      <View style={styles.cameraWrapper}>
+        <ExpoCameraModule.CameraView
+          style={styles.cameraPreview}
+          ref={cameraRef}
+          facing={cameraType}
+          mode="video"
+          mute={true}
+          videoQuality="720p"
+          onCameraReady={() => setIsCameraReady(true)}
+        />
+        <View pointerEvents="none" style={styles.overlayContainer}>
           {isRecording && (
             <View style={styles.timerContainer}>
               <View style={styles.recordingIndicator} />
@@ -227,7 +231,7 @@ export default function RecordVideoScreen({ navigation }) {
             />
           </View>
         </View>
-      </ExpoCameraModule.CameraView>
+      </View>
 
       <View style={styles.controlsContainer}>
         {/* --- NEW ORIENTATION BUTTON --- */}
@@ -297,6 +301,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1c1c1e',
   },
   infoText: { color: 'white', fontSize: 16, textAlign: 'center', padding: 20 },
+  cameraWrapper: { flex: 1 },
   cameraPreview: { flex: 1 },
   overlayContainer: {
     ...StyleSheet.absoluteFillObject,

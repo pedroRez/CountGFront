@@ -35,6 +35,8 @@ export default function VideoUploadSender({
   const [isUploading, setIsUploading] = useState(false);
   const [isQueued, setIsQueued] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const uploadRequestRef = useRef(null);
+  const isMountedRef = useRef(true);
   const retryTimerRef = useRef(null);
   const pendingPayloadRef = useRef(null);
   const isRetryingRef = useRef(false);
@@ -46,6 +48,19 @@ export default function VideoUploadSender({
   });
 
   const statusText = t(status.key, status.params);
+
+  const safeSetIsUploading = (value) => {
+    if (isMountedRef.current) setIsUploading(value);
+  };
+  const safeSetIsQueued = (value) => {
+    if (isMountedRef.current) setIsQueued(value);
+  };
+  const safeSetUploadProgress = (value) => {
+    if (isMountedRef.current) setUploadProgress(value);
+  };
+  const safeSetStatus = (value) => {
+    if (isMountedRef.current) setStatus(value);
+  };
 
   const resolveFileSize = async (assetUri, fallbackSize) => {
     if (Number.isFinite(fallbackSize) && fallbackSize > 0) {
@@ -79,9 +94,14 @@ export default function VideoUploadSender({
 
   useEffect(() => {
     return () => {
+      isMountedRef.current = false;
       if (retryTimerRef.current) {
         clearInterval(retryTimerRef.current);
         retryTimerRef.current = null;
+      }
+      if (uploadRequestRef.current) {
+        uploadRequestRef.current.abort();
+        uploadRequestRef.current = null;
       }
     };
   }, []);
@@ -124,10 +144,11 @@ export default function VideoUploadSender({
   };
 
   const queueUpload = (payload, { showAlert = true } = {}) => {
+    if (!isMountedRef.current) return;
     pendingPayloadRef.current = payload;
-    setIsQueued(true);
-    setUploadProgress(0);
-    setStatus({ key: 'upload.waitingForConnection', params: {} });
+    safeSetIsQueued(true);
+    safeSetUploadProgress(0);
+    safeSetStatus({ key: 'upload.waitingForConnection', params: {} });
     if (showAlert) {
       Alert.alert(
         t('upload.noInternetTitle'),
@@ -139,7 +160,7 @@ export default function VideoUploadSender({
 
   const clearQueuedUpload = () => {
     pendingPayloadRef.current = null;
-    setIsQueued(false);
+    safeSetIsQueued(false);
     if (retryTimerRef.current) {
       clearInterval(retryTimerRef.current);
       retryTimerRef.current = null;
@@ -229,13 +250,14 @@ export default function VideoUploadSender({
       type: payload.mimeType,
     });
 
-    setIsUploading(true);
-    setUploadProgress(0);
-    setStatus({ key: 'upload.uploadingWithPercent', params: { percent: 0 } });
+    safeSetIsUploading(true);
+    safeSetUploadProgress(0);
+    safeSetStatus({ key: 'upload.uploadingWithPercent', params: { percent: 0 } });
 
     try {
       const responseData = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
+        uploadRequestRef.current = xhr;
         xhr.open('POST', `${apiUrl}/upload-video/`);
         xhr.timeout = 600000;
 
@@ -256,25 +278,26 @@ export default function VideoUploadSender({
           }
           const totalForProgress = uploadTotalRef.current;
           if (!totalForProgress) {
-            setStatus({ key: 'upload.uploading', params: {} });
+            safeSetStatus({ key: 'upload.uploading', params: {} });
             return;
           }
           const safeTotal = Math.max(totalForProgress, loaded);
           const clampedProgress = Math.min(loaded / safeTotal, 1);
 
-          setUploadProgress(clampedProgress);
-          setStatus({
+          safeSetUploadProgress(clampedProgress);
+          safeSetStatus({
             key: 'upload.uploadingWithPercent',
             params: { percent: Math.round(clampedProgress * 100) },
           });
         };
 
         xhr.upload.onload = () => {
-          setUploadProgress(1);
-          setStatus({ key: 'upload.savingOnServer', params: {} });
+          safeSetUploadProgress(1);
+          safeSetStatus({ key: 'upload.savingOnServer', params: {} });
         };
 
         xhr.onload = () => {
+          uploadRequestRef.current = null;
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               resolve(JSON.parse(xhr.responseText));
@@ -286,11 +309,23 @@ export default function VideoUploadSender({
           }
         };
 
-        xhr.onerror = () => reject(new Error('Network error'));
-        xhr.ontimeout = () => reject(new Error('Upload timeout'));
+        xhr.onerror = () => {
+          uploadRequestRef.current = null;
+          reject(new Error('Network error'));
+        };
+        xhr.ontimeout = () => {
+          uploadRequestRef.current = null;
+          reject(new Error('Upload timeout'));
+        };
+        xhr.onabort = () => {
+          uploadRequestRef.current = null;
+          reject(new Error('Upload aborted'));
+        };
 
         xhr.send(formData);
       });
+
+      if (!isMountedRef.current) return;
 
       const hasTrimRange =
         Number.isFinite(payload.trimStartMs) &&
@@ -319,14 +354,15 @@ export default function VideoUploadSender({
         predictPayload
       );
 
-      setUploadProgress(1);
-      setStatus({ key: 'upload.uploadComplete', params: {} });
+      safeSetUploadProgress(1);
+      safeSetStatus({ key: 'upload.uploadComplete', params: {} });
       clearQueuedUpload();
 
       if (onProcessingStarted) {
         onProcessingStarted(predictResponse.data);
       }
     } catch (error) {
+      if (!isMountedRef.current) return;
       if (isNetworkError(error)) {
         queueUpload(payload, { showAlert: showOfflineAlert });
       } else {
@@ -339,10 +375,10 @@ export default function VideoUploadSender({
         if (onUploadError) onUploadError(error);
       }
     } finally {
-      setIsUploading(false);
+      safeSetIsUploading(false);
       isRetryingRef.current = false;
       if (!pendingPayloadRef.current) {
-        setStatus({ key: 'upload.processVideo', params: {} });
+        safeSetStatus({ key: 'upload.processVideo', params: {} });
       }
     }
   };

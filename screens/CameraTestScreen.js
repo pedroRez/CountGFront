@@ -14,7 +14,7 @@ export default function CameraTestScreen({ navigation }) {
   const [isCameraReady, setIsCameraReady] = useState(false); // New state to track when the camera is ready
   const cameraRef = useRef(null);
   const { hasPermission: hasCameraPermissions, isRequesting } =
-    useCameraPermissions();
+    useCameraPermissions({ includeMicrophone: false });
 
   useEffect(() => {
     (async () => {
@@ -60,9 +60,8 @@ export default function CameraTestScreen({ navigation }) {
       setIsRecording(true);
       console.log('[TEST] Starting recording (recordAsync)...');
       try {
-        // Minimal options, using mute:true as in the main use case
-        const recordOptions = { mute: true };
-        const data = await cameraRef.current.recordAsync(recordOptions);
+        // Minimal options; audio is disabled via the CameraView prop.
+        const data = await cameraRef.current.recordAsync();
 
         // If the promise resolves, recording was successful
         console.log('[TEST] Recording finished successfully! URI:', data.uri);
@@ -128,8 +127,9 @@ export default function CameraTestScreen({ navigation }) {
       <ExpoCameraModule.CameraView
         ref={cameraRef}
         style={styles.camera}
-        type={'back'}
+        facing="back"
         mode="video" // <<< MAIN FIX ADDED HERE
+        mute={true}
         onCameraReady={() => setIsCameraReady(true)} // <<< ENSURES THE CAMERA IS READY
       />
 
