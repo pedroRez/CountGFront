@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
+import { useCameraPermissions } from '../hooks/useCameraPermissions';
 
 // Function to format time
 const formatSecondsToMMSS = (totalSeconds) => {
@@ -54,7 +55,7 @@ const buildGuideOrientations = (t) => [
 export default function RecordVideoScreen({ navigation }) {
   const { t } = useLanguage();
   // --- Component state ---
-  const [hasPermission, setHasPermission] = useState(null);
+  const { hasPermission, isRequesting } = useCameraPermissions();
   const [cameraType, setCameraType] = useState('back');
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -67,15 +68,7 @@ export default function RecordVideoScreen({ navigation }) {
   const cameraRef = useRef(null);
   const recordingTimerRef = useRef(null);
 
-  // --- Permission logic ---
   useEffect(() => {
-    (async () => {
-      const { status: cameraStatus } =
-        await ExpoCameraModule.Camera.requestCameraPermissionsAsync();
-      const { status: audioStatus } =
-        await ExpoCameraModule.Camera.requestMicrophonePermissionsAsync();
-      setHasPermission(cameraStatus === 'granted' && audioStatus === 'granted');
-    })();
     return () => {
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     };
@@ -171,7 +164,7 @@ export default function RecordVideoScreen({ navigation }) {
     }
   };
 
-  if (hasPermission === null) {
+  if (hasPermission === null || isRequesting) {
     return (
       <View style={styles.centered}>
         <CustomActivityIndicator size="large" color="#FFF" />
