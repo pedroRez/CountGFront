@@ -19,6 +19,10 @@ CountGFront is the mobile interface for the CountG project. Built with React Nat
    python3.10 -m venv venv
    source venv/bin/activate            # Windows: venv\Scripts\activate
    pip install -r requirements.txt
+   # Download YOLOv8 weights (run inside the backend folder that has main.py)
+   curl -L -o yolov8n.pt https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8n.pt
+   curl -L -o yolov8m.pt https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8m.pt
+   curl -L -o yolov8l.pt https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8l.pt
    uvicorn main:app --host 0.0.0.0 --port 8000
    ```
 2. **Frontend**
