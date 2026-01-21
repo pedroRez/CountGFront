@@ -139,7 +139,7 @@ export default function RecordVideoScreen({ navigation }) {
         fileName: data.uri.split('/').pop(),
         mimeType: Platform.OS === 'ios' ? 'video/quicktime' : 'video/mp4',
         duration: elapsedTime * 1000,
-        orientation: currentOrientation.id, // <<< ENVIA A ORIENTAÇÃO SELECIONADA
+        orientation: currentOrientation.id, // <<< ENVIA A ORIENTACAO SELECIONADA
       };
 
       navigation.replace('VideoEditor', { asset: recordedVideoAsset });

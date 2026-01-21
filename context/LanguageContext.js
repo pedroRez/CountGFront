@@ -231,6 +231,7 @@ const translations = {
     },
     upload: {
       processVideo: 'Processar video',
+      preparingVideo: 'Preparando video...',
       uploading: 'Enviando...',
       uploadingWithPercent: 'Enviando... {{percent}}%',
       uploadComplete: 'Upload concluido. Iniciando analise...',
@@ -251,6 +252,9 @@ const translations = {
       configErrorMessage: 'A URL da API nao foi encontrada.',
       processingErrorTitle: 'Erro no processamento',
       processingErrorFallback: 'Falha ao iniciar o processamento do video.',
+      trimErrorMessage: 'Falha ao preparar o video para envio.',
+      trimUnavailableMessage:
+        'FFmpeg nao esta disponivel. Use um dev build (Expo Go nao suporta este modulo).',
     },
     onboarding: {
       mainTitle: 'Guia rapido: filmando seu gado!',
@@ -541,6 +545,7 @@ const translations = {
     },
     upload: {
       processVideo: 'Process Video',
+      preparingVideo: 'Preparing video...',
       uploading: 'Uploading...',
       uploadingWithPercent: 'Uploading... {{percent}}%',
       uploadComplete: 'Upload complete. Starting analysis...',
@@ -561,6 +566,9 @@ const translations = {
       configErrorMessage: 'The API URL was not found.',
       processingErrorTitle: 'Processing Error',
       processingErrorFallback: 'Failed to start video processing.',
+      trimErrorMessage: 'Failed to prepare video for upload.',
+      trimUnavailableMessage:
+        'FFmpeg is not available. Use a development build (Expo Go does not include this module).',
     },
     onboarding: {
       mainTitle: 'Quick Guide: Filming Your Cattle!',
