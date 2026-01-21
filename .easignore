@@ -1,3 +1,4 @@
-banckend/
-banckend/**
+backend/
+backend/**
 **/*.pt
+**/yolov8*.pt
