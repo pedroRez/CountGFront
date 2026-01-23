@@ -43,21 +43,20 @@ The app manipulates audio and video and relies on a few extra packages:
   preview.
 - [`@react-native-community/slider`](https://github.com/callstack/react-native-slider)
   for trim selection UI.
-- [`react-native-video-trim`](https://github.com/maitrungduc1410/react-native-video-trim)
-  for on-device trimming (requires a dev client or EAS build).
+- [`react-native-vlc-media-player`](https://github.com/razorRun/react-native-vlc-media-player)
+  for RTSP preview/recording.
 
-Local trimming runs on-device and the backend receives the already-cut segment.
+The backend uses trim start/end metadata to process only the selected segment.
 
 Install the packages:
 
 ```bash
 npx expo install expo-av @react-native-community/slider
-npm install react-native-video-trim
-npm install react-native-udp
+npm install react-native-vlc-media-player react-native-udp
 ```
 
 After installing, rebuild the dev client or EAS build (Expo Go does not include
-native trimming or UDP discovery).
+RTSP preview/recording or UDP discovery).
 
 ## Usage
 

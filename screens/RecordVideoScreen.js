@@ -52,8 +52,12 @@ const buildGuideOrientations = (t) => [
   },
 ];
 
-export default function RecordVideoScreen({ navigation }) {
+export default function RecordVideoScreen({ navigation, route }) {
   const { t } = useLanguage();
+  const wifiCamera = route?.params?.wifiCamera || null;
+  const wifiCameraLabel = wifiCamera?.ip
+    ? t('record.wifiCameraLabel', { ip: wifiCamera.ip })
+    : null;
   // --- Component state ---
   const { hasPermission, isRequesting } = useCameraPermissions({
     includeMicrophone: false,
@@ -207,6 +211,11 @@ export default function RecordVideoScreen({ navigation }) {
           onCameraReady={() => setIsCameraReady(true)}
         />
         <View pointerEvents="none" style={styles.overlayContainer}>
+          {wifiCameraLabel ? (
+            <View style={styles.wifiBadge}>
+              <Text style={styles.wifiBadgeText}>{wifiCameraLabel}</Text>
+            </View>
+          ) : null}
           {isRecording && (
             <View style={styles.timerContainer}>
               <View style={styles.recordingIndicator} />
@@ -339,6 +348,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'red',
     marginRight: 8,
   },
+  wifiBadge: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 20 : 12,
+    left: 12,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  wifiBadgeText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   timerText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
   controlsContainer: {
     position: 'absolute',

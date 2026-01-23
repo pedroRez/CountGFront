@@ -18,6 +18,7 @@ import SettingsScreen from '../screens/SettingsScreen';
 import VideoEditorScreen from '../screens/VideoEditorScreen';
 import ProcessedVideoScreen from '../screens/ProcessedVideoScreen';
 import WifiCameraScreen from '../screens/WifiCameraScreen';
+import WifiCameraRecordScreen from '../screens/WifiCameraRecordScreen';
 import CustomHeader from '../components/CustomHeader'; // <<< Import our new header
 import { useLanguage } from '../context/LanguageContext';
 
@@ -124,6 +125,11 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
                 title: t('nav.wifiCameraTitle'),
                 headerLeft: () => renderHeaderBack(navigation),
               })}
+            />
+            <Stack.Screen
+              name="WifiCameraRecord"
+              component={WifiCameraRecordScreen}
+              options={{ headerShown: false }}
             />
             <Stack.Screen
               name="VideoEditor"

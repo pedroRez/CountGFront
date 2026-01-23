@@ -5,28 +5,11 @@ import axios from 'axios';
 import BigButton from './BigButton';
 import { useApi } from '../context/ApiContext';
 import { useLanguage } from '../context/LanguageContext';
-import { trimVideoToRange } from '../utils/videoTrim';
-
 const CONNECTIVITY_TIMEOUT_MS = 5000;
 const RETRY_INTERVAL_MS = 10000;
-const TRIM_CACHE_PREFIX = `${FileSystem.cacheDirectory || ''}`;
 
 const isValidTrimRange = (startMs, endMs) =>
   Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs;
-
-const shouldCleanupTrimmedFile = (uri) =>
-  typeof uri === 'string' &&
-  TRIM_CACHE_PREFIX &&
-  uri.startsWith(TRIM_CACHE_PREFIX);
-
-const cleanupTrimmedFile = async (uri) => {
-  if (!shouldCleanupTrimmedFile(uri)) return;
-  try {
-    await FileSystem.deleteAsync(uri, { idempotent: true });
-  } catch (error) {
-    console.warn('Failed to cleanup trimmed video:', error);
-  }
-};
 
 const InternalProgressBar = ({ progress }) => (
   <View style={styles.progressBarContainer}>
@@ -236,55 +219,23 @@ export default function VideoUploadSender({
     const fileName = videoAsset.fileName || assetUri.split('/').pop();
     const mimeType = videoAsset.mimeType || 'video/mp4';
     const hasTrimRange = isValidTrimRange(trimStartMs, trimEndMs);
-    let finalAssetUri = assetUri;
-    let finalFileName = fileName;
-    let finalMimeType = mimeType;
-    let localTrimUri = null;
-
-    if (hasTrimRange) {
-      safeSetStatus({ key: 'upload.preparingVideo', params: {} });
-      try {
-        const trimmedResult = await trimVideoToRange({
-          sourceUri: assetUri,
-          trimStartMs,
-          trimEndMs,
-          fileName,
-        });
-        finalAssetUri = trimmedResult.uri;
-        finalFileName = trimmedResult.fileName || fileName;
-        finalMimeType = trimmedResult.mimeType || mimeType;
-        localTrimUri = trimmedResult.uri;
-      } catch (error) {
-        const errorMessage = String(error?.message || '');
-        const isUnavailable = errorMessage.includes('TRIM_UNAVAILABLE');
-        const alertMessage = isUnavailable
-          ? t('upload.trimUnavailableMessage')
-          : `${t('upload.trimErrorMessage')}${
-              errorMessage ? `\nDetalhes: ${errorMessage}` : ''
-            }`;
-        console.warn('Video trim failed:', error);
-        Alert.alert(t('upload.processingErrorTitle'), alertMessage);
-        return null;
-      }
-    }
 
     const fileSize = await resolveFileSize(
-      finalAssetUri,
-      hasTrimRange ? null : videoAsset?.fileSize || videoAsset?.size
+      assetUri,
+      videoAsset?.fileSize || videoAsset?.size
     );
 
     return {
-      assetUri: finalAssetUri,
-      fileName: finalFileName,
-      mimeType: finalMimeType,
+      assetUri,
+      fileName,
+      mimeType,
       fileSize,
       finalOrientation,
       modelChoice,
       linePositionRatio: clampedRatio,
-      trimStartMs: hasTrimRange ? null : trimStartMs,
-      trimEndMs: hasTrimRange ? null : trimEndMs,
+      trimStartMs: hasTrimRange ? trimStartMs : null,
+      trimEndMs: hasTrimRange ? trimEndMs : null,
       targetClasses,
-      localTrimUri,
     };
   };
 
@@ -433,7 +384,6 @@ export default function VideoUploadSender({
       isRetryingRef.current = false;
       if (!pendingPayloadRef.current) {
         safeSetStatus({ key: 'upload.processVideo', params: {} });
-        void cleanupTrimmedFile(payload.localTrimUri);
       }
     }
   };

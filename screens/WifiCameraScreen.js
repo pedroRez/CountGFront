@@ -1,5 +1,17 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import BigButton from '../components/BigButton';
@@ -7,11 +19,15 @@ import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
 import { discoverOnvifDevices } from '../utils/onvifDiscovery';
 
-const WifiCameraScreen = () => {
+const WifiCameraScreen = ({ navigation }) => {
   const { t } = useLanguage();
   const [isScanning, setIsScanning] = useState(false);
   const [devices, setDevices] = useState([]);
   const [errorMessage, setErrorMessage] = useState('');
+  const [selectedDevice, setSelectedDevice] = useState(null);
+  const [isAuthVisible, setIsAuthVisible] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
 
   const handleScan = async () => {
     if (isScanning) return;
@@ -26,6 +42,44 @@ const WifiCameraScreen = () => {
     } finally {
       setIsScanning(false);
     }
+  };
+
+  const openAuthModal = (device) => {
+    setSelectedDevice(device);
+    setUsername('');
+    setPassword('');
+    setIsAuthVisible(true);
+  };
+
+  const closeAuthModal = () => {
+    setIsAuthVisible(false);
+    setSelectedDevice(null);
+    setPassword('');
+  };
+
+  const handleStartRecording = () => {
+    if (!selectedDevice?.ip) {
+      Alert.alert(t('common.error'), t('wifiCamera.noDeviceSelected'));
+      return;
+    }
+    if (!password.trim()) {
+      Alert.alert(
+        t('wifiCamera.passwordRequiredTitle'),
+        t('wifiCamera.passwordRequiredMessage')
+      );
+      return;
+    }
+    const wifiCamera = {
+      ip: selectedDevice.ip,
+      username: username.trim(),
+      password,
+      xaddrs: selectedDevice.xaddrs || [],
+    };
+    setIsAuthVisible(false);
+    setSelectedDevice(null);
+    setUsername('');
+    setPassword('');
+    navigation.navigate('WifiCameraRecord', { wifiCamera });
   };
 
   return (
@@ -66,24 +120,104 @@ const WifiCameraScreen = () => {
           {!isScanning && devices.length > 0 ? (
             <>
               <Text style={styles.metaText}>
-                {t('wifiCamera.foundCount', { count: devices.length })}
-              </Text>
-              {devices.map((device) => (
-                <View key={device.ip} style={styles.resultRow}>
+              {t('wifiCamera.foundCount', { count: devices.length })}
+            </Text>
+            {devices.map((device) => (
+              <View key={device.ip} style={styles.resultRow}>
+                <View style={styles.resultRowHeader}>
                   <Text style={styles.resultTitle}>
                     {t('wifiCamera.deviceLabel', { ip: device.ip })}
                   </Text>
-                  {(device.xaddrs || []).map((url) => (
-                    <Text key={`${device.ip}-${url}`} style={styles.resultSubtitle}>
-                      {t('wifiCamera.xaddrsLabel', { url })}
+                  <TouchableOpacity
+                    style={styles.connectButton}
+                    onPress={() => openAuthModal(device)}
+                  >
+                    <Text style={styles.connectButtonText}>
+                      {t('wifiCamera.connect')}
                     </Text>
-                  ))}
+                  </TouchableOpacity>
+                </View>
+                {(device.xaddrs || []).map((url) => (
+                  <Text key={`${device.ip}-${url}`} style={styles.resultSubtitle}>
+                    {t('wifiCamera.xaddrsLabel', { url })}
+                  </Text>
+                ))}
                 </View>
               ))}
             </>
           ) : null}
         </View>
       </ScrollView>
+      <Modal
+        visible={isAuthVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeAuthModal}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={closeAuthModal}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.modalWrapper}
+          >
+            <Pressable
+              style={styles.modalCard}
+              onPress={(event) => event.stopPropagation()}
+            >
+              <Text style={styles.modalTitle}>{t('wifiCamera.authTitle')}</Text>
+              {selectedDevice?.ip ? (
+                <Text style={styles.modalSubtitle}>
+                  {t('wifiCamera.selectedCameraLabel', {
+                    ip: selectedDevice.ip,
+                  })}
+                </Text>
+              ) : null}
+              <Text style={styles.inputLabel}>
+                {t('wifiCamera.usernameLabel')}
+              </Text>
+              <TextInput
+                style={styles.input}
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder={t('wifiCamera.usernamePlaceholder')}
+                placeholderTextColor="#9ca3af"
+              />
+              <Text style={styles.inputLabel}>
+                {t('wifiCamera.passwordLabel')}
+              </Text>
+              <TextInput
+                style={styles.input}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder={t('wifiCamera.passwordPlaceholder')}
+                placeholderTextColor="#9ca3af"
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalCancelButton]}
+                  onPress={closeAuthModal}
+                >
+                  <Text style={styles.modalCancelText}>
+                    {t('common.cancel')}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalPrimaryButton]}
+                  onPress={handleStartRecording}
+                >
+                  <Text style={styles.modalPrimaryText}>
+                    {t('wifiCamera.startRecording')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -140,7 +274,14 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     backgroundColor: '#f9fafb',
   },
+  resultRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   resultTitle: {
+    flex: 1,
     fontSize: 15,
     fontWeight: '700',
     color: '#111827',
@@ -149,6 +290,91 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6b7280',
     marginTop: 2,
+  },
+  connectButton: {
+    backgroundColor: '#2563eb',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  connectButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalWrapper: {
+    width: '100%',
+    maxWidth: 380,
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 18,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
+    fontSize: 14,
+    color: '#111827',
+    backgroundColor: '#f9fafb',
+    marginBottom: 12,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 6,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalCancelButton: {
+    backgroundColor: '#e5e7eb',
+  },
+  modalPrimaryButton: {
+    backgroundColor: '#2563eb',
+  },
+  modalCancelText: {
+    color: '#111827',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  modalPrimaryText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });
 
