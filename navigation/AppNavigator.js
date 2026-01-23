@@ -17,6 +17,7 @@ import CameraTestScreen from '../screens/CameraTestScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import VideoEditorScreen from '../screens/VideoEditorScreen';
 import ProcessedVideoScreen from '../screens/ProcessedVideoScreen';
+import WifiCameraScreen from '../screens/WifiCameraScreen';
 import CustomHeader from '../components/CustomHeader'; // <<< Import our new header
 import { useLanguage } from '../context/LanguageContext';
 
@@ -113,6 +114,14 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
               component={CameraTestScreen}
               options={({ navigation }) => ({
                 title: t('nav.cameraTestTitle'),
+                headerLeft: () => renderHeaderBack(navigation),
+              })}
+            />
+            <Stack.Screen
+              name="WifiCamera"
+              component={WifiCameraScreen}
+              options={({ navigation }) => ({
+                title: t('nav.wifiCameraTitle'),
                 headerLeft: () => renderHeaderBack(navigation),
               })}
             />

@@ -9,7 +9,7 @@ import { trimVideoToRange } from '../utils/videoTrim';
 
 const CONNECTIVITY_TIMEOUT_MS = 5000;
 const RETRY_INTERVAL_MS = 10000;
-const TRIM_CACHE_PREFIX = `${FileSystem.cacheDirectory || ''}trimmed/`;
+const TRIM_CACHE_PREFIX = `${FileSystem.cacheDirectory || ''}`;
 
 const isValidTrimRange = (startMs, endMs) =>
   Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs;
@@ -256,7 +256,7 @@ export default function VideoUploadSender({
         localTrimUri = trimmedResult.uri;
       } catch (error) {
         const errorMessage = String(error?.message || '');
-        const isUnavailable = errorMessage.includes('FFMPEG_UNAVAILABLE');
+        const isUnavailable = errorMessage.includes('TRIM_UNAVAILABLE');
         const alertMessage = isUnavailable
           ? t('upload.trimUnavailableMessage')
           : `${t('upload.trimErrorMessage')}${

@@ -14,7 +14,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kyoday.countg"
+      "bundleIdentifier": "com.kyoday.countg",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Allow CountG to access devices on the local network."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,6 +25,9 @@
         "backgroundColor": "#ffffff"
       },
       "permissions": [
+        "INTERNET",
+        "ACCESS_WIFI_STATE",
+        "CHANGE_WIFI_MULTICAST_STATE",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
       ],
@@ -63,7 +69,6 @@
           "recordAudioAndroid": true
         }
       ],
-      "@config-plugins/ffmpeg-kit-react-native",
       "expo-font",
       "expo-sqlite"
     ],

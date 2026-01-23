@@ -694,12 +694,7 @@ const HomeScreen = ({ route }) => {
               <MenuButton
                 label={t('home.menu.wifiCamera')}
                 icon="wifi-strength-4"
-                onPress={() =>
-                  Alert.alert(
-                    t('home.menu.comingSoonTitle'),
-                    t('home.menu.comingSoonMessage')
-                  )
-                }
+                onPress={() => navigation.navigate('WifiCamera')}
                 index={3}
               />
               <MenuButton

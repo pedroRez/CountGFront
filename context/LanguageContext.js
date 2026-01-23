@@ -36,6 +36,7 @@ const translations = {
       filmingGuideTitle: 'Guia de filmagem',
       settingsTitle: 'Configuracoes',
       cameraTestTitle: 'Teste de camera',
+      wifiCameraTitle: 'Camera Wi-Fi',
       processedVideoTitle: 'Video processado',
       countsTitle: 'Contagens',
     },
@@ -169,6 +170,20 @@ const translations = {
         notDefined: 'Nao definido',
       },
     },
+    wifiCamera: {
+      title: 'Camera Wi-Fi',
+      subtitle: 'Busque cameras ONVIF na rede local.',
+      hint:
+        'Ative ONVIF na camera. Se ela nao suportar, use o IP manual.',
+      scan: 'Buscar cameras',
+      scanning: 'Buscando...',
+      resultsTitle: 'Resultados',
+      noResults: 'Nenhuma camera encontrada.',
+      foundCount: 'Encontradas: {{count}}',
+      deviceLabel: 'IP: {{ip}}',
+      xaddrsLabel: 'Servico: {{url}}',
+      errorMessage: 'Nao foi possivel buscar cameras. {{details}}',
+    },
     record: {
       loadingPermissions: 'Solicitando permissoes...',
       permissionDenied: 'E necessario acesso a camera.',
@@ -254,7 +269,7 @@ const translations = {
       processingErrorFallback: 'Falha ao iniciar o processamento do video.',
       trimErrorMessage: 'Falha ao preparar o video para envio.',
       trimUnavailableMessage:
-        'FFmpeg nao esta disponivel. Use um dev build (Expo Go nao suporta este modulo).',
+        'Recorte de video indisponivel. Use um dev build (Expo Go nao suporta este modulo).',
     },
     onboarding: {
       mainTitle: 'Guia rapido: filmando seu gado!',
@@ -352,6 +367,7 @@ const translations = {
       filmingGuideTitle: 'Filming Guide',
       settingsTitle: 'Settings',
       cameraTestTitle: 'Camera Test',
+      wifiCameraTitle: 'Wi-Fi Camera',
       processedVideoTitle: 'Processed video',
       countsTitle: 'Counts',
     },
@@ -484,6 +500,20 @@ const translations = {
         notDefined: 'Not set',
       },
     },
+    wifiCamera: {
+      title: 'Wi-Fi Camera',
+      subtitle: 'Search for ONVIF cameras on the local network.',
+      hint:
+        'Enable ONVIF on the camera. If it is not supported, use the IP manually.',
+      scan: 'Find cameras',
+      scanning: 'Scanning...',
+      resultsTitle: 'Results',
+      noResults: 'No cameras found.',
+      foundCount: 'Found: {{count}}',
+      deviceLabel: 'IP: {{ip}}',
+      xaddrsLabel: 'Service: {{url}}',
+      errorMessage: 'Could not scan for cameras. {{details}}',
+    },
     record: {
       loadingPermissions: 'Requesting permissions...',
       permissionDenied: 'Camera access is required.',
@@ -568,7 +598,7 @@ const translations = {
       processingErrorFallback: 'Failed to start video processing.',
       trimErrorMessage: 'Failed to prepare video for upload.',
       trimUnavailableMessage:
-        'FFmpeg is not available. Use a development build (Expo Go does not include this module).',
+        'Video trim is unavailable. Use a dev build (Expo Go does not support this module).',
     },
     onboarding: {
       mainTitle: 'Quick Guide: Filming Your Cattle!',

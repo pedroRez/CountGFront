@@ -43,10 +43,8 @@ The app manipulates audio and video and relies on a few extra packages:
   preview.
 - [`@react-native-community/slider`](https://github.com/callstack/react-native-slider)
   for trim selection UI.
-- [`ffmpeg-kit-react-native`](https://github.com/arthenica/ffmpeg-kit)
+- [`react-native-video-trim`](https://github.com/maitrungduc1410/react-native-video-trim)
   for on-device trimming (requires a dev client or EAS build).
-- [`@config-plugins/ffmpeg-kit-react-native`](https://github.com/expo/config-plugins)
-  to wire the native build step.
 
 Local trimming runs on-device and the backend receives the already-cut segment.
 
@@ -54,13 +52,12 @@ Install the packages:
 
 ```bash
 npx expo install expo-av @react-native-community/slider
-npm install ffmpeg-kit-react-native
-npm install -D @config-plugins/ffmpeg-kit-react-native
+npm install react-native-video-trim
+npm install react-native-udp
 ```
 
-After installing, keep the config plugin in `app.json` and rebuild the dev
-client or EAS build (Expo Go does not include ffmpeg).
-If npm blocks on peer deps, retry with `--legacy-peer-deps`.
+After installing, rebuild the dev client or EAS build (Expo Go does not include
+native trimming or UDP discovery).
 
 ## Usage
 

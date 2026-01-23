@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
-import { FFmpegKit, ReturnCode } from 'ffmpeg-kit-react-native';
+import { trim } from 'react-native-video-trim';
 
 const TRIM_DIR = `${FileSystem.cacheDirectory}trimmed/`;
 const DEFAULT_EXTENSION = 'mp4';
@@ -34,14 +34,15 @@ const inferExtension = (value) => {
   return ext;
 };
 
-const normalizePath = (uri) =>
+const ensurePlainPath = (uri) =>
   typeof uri === 'string' && uri.startsWith('file://')
     ? uri.replace('file://', '')
     : uri;
 
-const quotePath = (value) => `"${String(value).replace(/"/g, '\\"')}"`;
-
-const toSeconds = (ms) => (ms / 1000).toFixed(3);
+const ensureFileUri = (value) => {
+  if (!value) return value;
+  return value.startsWith('file://') ? value : `file://${value}`;
+};
 
 const ensureLocalFileUri = async (uri, fallbackName) => {
   if (!uri) return null;
@@ -64,13 +65,8 @@ export const trimVideoToRange = async ({
   trimEndMs,
   fileName,
 }) => {
-  if (
-    !FFmpegKit ||
-    typeof FFmpegKit.execute !== 'function' ||
-    !ReturnCode ||
-    typeof ReturnCode.isSuccess !== 'function'
-  ) {
-    throw new Error('FFMPEG_UNAVAILABLE');
+  if (!trim || typeof trim !== 'function') {
+    throw new Error('TRIM_UNAVAILABLE');
   }
   if (!sourceUri) {
     throw new Error('Missing source uri.');
@@ -82,36 +78,36 @@ export const trimVideoToRange = async ({
     throw new Error('Invalid trim range.');
   }
 
-  await ensureTrimDir();
   const localUri = await ensureLocalFileUri(sourceUri, fileName);
+  const inputPath = ensurePlainPath(localUri);
   const extension = inferExtension(fileName || localUri);
   const baseName = sanitizeBaseName(fileName || SAFE_NAME_FALLBACK);
-  const outputUri = `${TRIM_DIR}${baseName}_${Date.now()}.${extension}`;
-  const inputPath = normalizePath(localUri);
-  const outputPath = normalizePath(outputUri);
-  const startSeconds = toSeconds(trimStartMs);
-  const durationSeconds = toSeconds(trimEndMs - trimStartMs);
 
-  const command = [
-    '-ss',
-    startSeconds,
-    '-i',
-    quotePath(inputPath),
-    '-t',
-    durationSeconds,
-    '-c',
-    'copy',
-    quotePath(outputPath),
-  ].join(' ');
+  let result;
+  try {
+    result = await trim(inputPath, {
+      startTime: Math.round(trimStartMs),
+      endTime: Math.round(trimEndMs),
+    });
+  } catch (error) {
+    throw new Error(error?.message || 'Trim failed.');
+  }
 
-  const session = await FFmpegKit.execute(command);
-  const returnCode = await session.getReturnCode();
-  if (!ReturnCode.isSuccess(returnCode)) {
-    const rcValue =
-      typeof returnCode?.getValue === 'function'
-        ? returnCode.getValue()
-        : String(returnCode);
-    throw new Error(`Trim failed (rc=${rcValue}).`);
+  const outputPath =
+    result?.outputPath ||
+    result?.output ||
+    (typeof result === 'string' ? result : null);
+  if (!outputPath) {
+    throw new Error('Trim output not found.');
+  }
+
+  await ensureTrimDir();
+  let outputUri = ensureFileUri(outputPath);
+  if (TRIM_DIR && !outputUri.startsWith(TRIM_DIR)) {
+    const targetUri = `${TRIM_DIR}${baseName}_${Date.now()}.${extension}`;
+    await FileSystem.copyAsync({ from: outputUri, to: targetUri });
+    await FileSystem.deleteAsync(outputUri, { idempotent: true });
+    outputUri = targetUri;
   }
 
   const info = await FileSystem.getInfoAsync(outputUri, { size: true });
