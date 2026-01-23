@@ -2,3 +2,7 @@ backend/
 backend/**
 **/*.pt
 **/yolov8*.pt
+android/
+android/**
+ios/
+ios/**
