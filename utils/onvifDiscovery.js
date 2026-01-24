@@ -70,7 +70,7 @@ export const discoverOnvifDevices = ({
   retries = 2,
 } = {}) =>
   new Promise((resolve, reject) => {
-    const socket = dgram.createSocket({ type: 'udp4' });
+    const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
     const devices = new Map();
     let finished = false;
     let sendCount = 0;
@@ -103,14 +103,7 @@ export const discoverOnvifDevices = ({
     const sendProbe = () => {
       if (finished) return;
       const message = buildProbeMessage();
-      socket.send(
-        message,
-        undefined,
-        undefined,
-        MULTICAST_PORT,
-        MULTICAST_ADDRESS,
-        () => {}
-      );
+      socket.send(message, MULTICAST_PORT, MULTICAST_ADDRESS, () => {});
       sendCount += 1;
       if (sendCount < retries) {
         setTimeout(sendProbe, 500);
@@ -132,6 +125,16 @@ export const discoverOnvifDevices = ({
     socket.bind(0, () => {
       try {
         socket.setBroadcast(true);
+      } catch (error) {
+        // ignore
+      }
+      try {
+        socket.setMulticastTTL(1);
+      } catch (error) {
+        // ignore
+      }
+      try {
+        socket.addMembership(MULTICAST_ADDRESS);
       } catch (error) {
         // ignore
       }

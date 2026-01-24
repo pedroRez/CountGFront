@@ -19,6 +19,8 @@ import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
 import { discoverOnvifDevices } from '../utils/onvifDiscovery';
 
+const DEFAULT_ONVIF_USERNAME = 'admin';
+
 const WifiCameraScreen = ({ navigation }) => {
   const { t } = useLanguage();
   const [isScanning, setIsScanning] = useState(false);
@@ -26,7 +28,6 @@ const WifiCameraScreen = ({ navigation }) => {
   const [errorMessage, setErrorMessage] = useState('');
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [isAuthVisible, setIsAuthVisible] = useState(false);
-  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
   const handleScan = async () => {
@@ -46,7 +47,6 @@ const WifiCameraScreen = ({ navigation }) => {
 
   const openAuthModal = (device) => {
     setSelectedDevice(device);
-    setUsername('');
     setPassword('');
     setIsAuthVisible(true);
   };
@@ -71,13 +71,12 @@ const WifiCameraScreen = ({ navigation }) => {
     }
     const wifiCamera = {
       ip: selectedDevice.ip,
-      username: username.trim(),
+      username: DEFAULT_ONVIF_USERNAME,
       password,
       xaddrs: selectedDevice.xaddrs || [],
     };
     setIsAuthVisible(false);
     setSelectedDevice(null);
-    setUsername('');
     setPassword('');
     navigation.navigate('WifiCameraRecord', { wifiCamera });
   };
@@ -171,18 +170,6 @@ const WifiCameraScreen = ({ navigation }) => {
                   })}
                 </Text>
               ) : null}
-              <Text style={styles.inputLabel}>
-                {t('wifiCamera.usernameLabel')}
-              </Text>
-              <TextInput
-                style={styles.input}
-                value={username}
-                onChangeText={setUsername}
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder={t('wifiCamera.usernamePlaceholder')}
-                placeholderTextColor="#9ca3af"
-              />
               <Text style={styles.inputLabel}>
                 {t('wifiCamera.passwordLabel')}
               </Text>
