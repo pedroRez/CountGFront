@@ -3,6 +3,21 @@ import { NativeModules, Platform } from 'react-native';
 
 const MULTICAST_ADDRESS = '239.255.255.250';
 const MULTICAST_PORT = 3702;
+const SSDP_ADDRESS = '239.255.255.250';
+const SSDP_PORT = 1900;
+const BROADCAST_ADDRESS = '255.255.255.255';
+const PROBE_TYPES = [
+  null,
+  'dn:NetworkVideoTransmitter',
+  'tds:Device',
+  'dn:Device',
+];
+const SSDP_ST_VALUES = [
+  'ssdp:all',
+  'upnp:rootdevice',
+  'urn:schemas-upnp-org:device:Basic:1',
+  'urn:schemas-upnp-org:device:MediaServer:1',
+];
 
 const acquireMulticastLock = async () => {
   if (Platform.OS !== 'android') return;
@@ -29,12 +44,13 @@ const releaseMulticastLock = async () => {
 const buildMessageId = () =>
   `uuid:${Math.random().toString(16).slice(2)}-${Date.now()}`;
 
-const buildProbeMessage = () => `<?xml version="1.0" encoding="UTF-8"?>
+const buildProbeMessage = (types) => `<?xml version="1.0" encoding="UTF-8"?>
 <e:Envelope
   xmlns:e="http://www.w3.org/2003/05/soap-envelope"
   xmlns:w="http://schemas.xmlsoap.org/ws/2004/08/addressing"
   xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery"
-  xmlns:dn="http://www.onvif.org/ver10/network/wsdl">
+  xmlns:dn="http://www.onvif.org/ver10/network/wsdl"
+  xmlns:tds="http://www.onvif.org/ver10/device/wsdl">
   <e:Header>
     <w:MessageID>${buildMessageId()}</w:MessageID>
     <w:To>urn:schemas-xmlsoap-org:ws:2005:04:discovery</w:To>
@@ -42,10 +58,21 @@ const buildProbeMessage = () => `<?xml version="1.0" encoding="UTF-8"?>
   </e:Header>
   <e:Body>
     <d:Probe>
-      <d:Types>dn:NetworkVideoTransmitter</d:Types>
+      ${types ? `<d:Types>${types}</d:Types>` : ''}
     </d:Probe>
   </e:Body>
 </e:Envelope>`;
+
+const buildSsdpMessage = (stValue = 'ssdp:all') =>
+  [
+    'M-SEARCH * HTTP/1.1',
+    `HOST: ${SSDP_ADDRESS}:${SSDP_PORT}`,
+    'MAN: "ssdp:discover"',
+    'MX: 2',
+    `ST: ${stValue}`,
+    '',
+    '',
+  ].join('\r\n');
 
 const extractXAddrs = (text) => {
   if (!text) return [];
@@ -75,6 +102,12 @@ const extractXAddrs = (text) => {
   return Array.from(new Set(urls));
 };
 
+const extractSsdpLocation = (text) => {
+  if (!text) return null;
+  const match = text.match(/(?:^|\r\n)LOCATION:\s*([^\r\n]+)/i);
+  return match ? match[1].trim() : null;
+};
+
 const extractIps = (values) => {
   const ips = new Set();
   const regex = /(\d{1,3}(?:\.\d{1,3}){3})/g;
@@ -99,6 +132,21 @@ export const discoverOnvifDevices = ({
     let sendCount = 0;
     let lockReleased = false;
 
+    const addDevice = (ip, xaddrs = []) => {
+      if (!ip) return;
+      const existing = devices.get(ip);
+      if (existing) {
+        const mergedXaddrs = Array.from(
+          new Set([...(existing.xaddrs || []), ...xaddrs].filter(Boolean))
+        );
+        if (mergedXaddrs.length !== (existing.xaddrs || []).length) {
+          devices.set(ip, { ...existing, xaddrs: mergedXaddrs });
+        }
+        return;
+      }
+      devices.set(ip, { ip, xaddrs });
+    };
+
     const releaseLockOnce = () => {
       if (lockReleased) return;
       lockReleased = true;
@@ -120,28 +168,45 @@ export const discoverOnvifDevices = ({
     const handleMessage = (message, rinfo) => {
       const text = message?.toString ? message.toString('utf8') : String(message);
       const xaddrs = extractXAddrs(text);
-      const ips = extractIps(xaddrs);
-      if (rinfo?.address) {
-        ips.push(rinfo.address);
-      }
-      ips.forEach((ip) => {
-        if (!devices.has(ip)) {
-          devices.set(ip, { ip, xaddrs });
+      if (xaddrs.length) {
+        const ips = extractIps(xaddrs);
+        if (rinfo?.address) {
+          ips.push(rinfo.address);
         }
-      });
+        ips.forEach((ip) => addDevice(ip, xaddrs));
+        return;
+      }
+
+      const ssdpLocation = extractSsdpLocation(text);
+      const ssdpIps = ssdpLocation ? extractIps([ssdpLocation]) : [];
+      if (rinfo?.address) {
+        ssdpIps.push(rinfo.address);
+      }
+      ssdpIps.forEach((ip) => addDevice(ip, []));
+    };
+
+    const sendUdp = (message, port, address) => {
+      if (!message) return;
+      const payload = typeof message === 'string' ? message : String(message);
+      try {
+        socket.send(payload, 0, payload.length, port, address, () => {});
+      } catch (error) {
+        // ignore send errors
+      }
     };
 
     const sendProbe = () => {
       if (finished) return;
-      const message = buildProbeMessage();
-      socket.send(
-        message,
-        undefined,
-        undefined,
-        MULTICAST_PORT,
-        MULTICAST_ADDRESS,
-        () => {}
-      );
+      PROBE_TYPES.forEach((types) => {
+        const message = buildProbeMessage(types);
+        sendUdp(message, MULTICAST_PORT, MULTICAST_ADDRESS);
+        sendUdp(message, MULTICAST_PORT, BROADCAST_ADDRESS);
+      });
+      SSDP_ST_VALUES.forEach((stValue) => {
+        const ssdpMessage = buildSsdpMessage(stValue);
+        sendUdp(ssdpMessage, SSDP_PORT, SSDP_ADDRESS);
+        sendUdp(ssdpMessage, SSDP_PORT, BROADCAST_ADDRESS);
+      });
       sendCount += 1;
       if (sendCount < retries) {
         setTimeout(sendProbe, 500);

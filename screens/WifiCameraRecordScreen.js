@@ -19,11 +19,14 @@ import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
 import {
   normalizeManualRtspInput,
+  buildRtspUrlFromPath,
   resolveOnvifRtspUrl,
 } from '../utils/onvifClient';
 
 const MIN_FILE_BYTES = 200 * 1024;
-const VLC_INIT_OPTIONS = ['--rtsp-tcp'];
+const DEFAULT_RTSP_PATH = '/onvif1';
+const VLC_INIT_OPTIONS = ['--rtsp-tcp', '--network-caching=300'];
+const VLC_MEDIA_OPTIONS = [':network-caching=300', ':rtsp-tcp'];
 
 const formatSecondsToMMSS = (totalSeconds) => {
   if (!Number.isFinite(totalSeconds) || totalSeconds < 0) totalSeconds = 0;
@@ -170,7 +173,17 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     } catch (error) {
       setConnectError(t('wifiCameraRecord.connectError'));
       setRtspUrl('');
-      setManualInput((prev) => prev || '/onvif1');
+      setManualInput((prev) => {
+        if (prev) return prev;
+        return (
+          buildRtspUrlFromPath({
+            ip: wifiCamera?.ip,
+            path: DEFAULT_RTSP_PATH,
+            username: wifiCamera?.username,
+            password: wifiCamera?.password,
+          }) || DEFAULT_RTSP_PATH
+        );
+      });
     } finally {
       setIsConnecting(false);
     }
@@ -194,18 +207,30 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   }, [stopTimer]);
 
   const handleManualConnect = () => {
-    const manualUrl = normalizeManualRtspInput({
-      input: manualInput,
-      ip: wifiCamera.ip,
-      username: wifiCamera.username,
-      password: wifiCamera.password,
+    const trimmedInput = manualInput.trim();
+    const fallbackUrl = buildRtspUrlFromPath({
+      ip: wifiCamera?.ip,
+      path: DEFAULT_RTSP_PATH,
+      username: wifiCamera?.username,
+      password: wifiCamera?.password,
     });
+    const manualUrl = trimmedInput
+      ? normalizeManualRtspInput({
+          input: trimmedInput,
+          ip: wifiCamera.ip,
+          username: wifiCamera.username,
+          password: wifiCamera.password,
+        })
+      : fallbackUrl;
     if (!manualUrl) {
       Alert.alert(
         t('common.error'),
         t('wifiCameraRecord.manualInvalidMessage')
       );
       return;
+    }
+    if (!trimmedInput && fallbackUrl) {
+      setManualInput(fallbackUrl);
     }
     setConnectError('');
     setRtspUrl(manualUrl);
@@ -305,6 +330,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                     uri: rtspUrl,
                     initType: 2,
                     initOptions: VLC_INIT_OPTIONS,
+                    mediaOptions: VLC_MEDIA_OPTIONS,
                   }}
                   style={styles.preview}
                   autoplay={true}

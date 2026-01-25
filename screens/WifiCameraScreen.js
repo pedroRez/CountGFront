@@ -50,7 +50,10 @@ const WifiCameraScreen = ({ navigation }) => {
     setErrorMessage('');
     setDevices([]);
     try {
-      const results = await discoverOnvifDevices({ timeoutMs: 5000, retries: 2 });
+      const results = await discoverOnvifDevices({
+        timeoutMs: 12000,
+        retries: 3,
+      });
       setDevices(Array.isArray(results) ? results : []);
     } catch (error) {
       setErrorMessage(error?.message || 'Scan failed.');
