@@ -157,6 +157,21 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
       setIsConnecting(false);
       return;
     }
+    const fallbackUrl = buildRtspUrlFromPath({
+      ip: wifiCamera?.ip,
+      path: wifiCamera?.rtspPath || DEFAULT_RTSP_PATH,
+      port: wifiCamera?.rtspPort || 554,
+      username: wifiCamera?.username,
+      password: wifiCamera?.password,
+    });
+    if (wifiCamera?.rtspPath || wifiCamera?.rtspPort) {
+      if (fallbackUrl) {
+        setRtspUrl(fallbackUrl);
+        setManualInput((prev) => prev || fallbackUrl);
+        setIsConnecting(false);
+        return;
+      }
+    }
     setIsConnecting(true);
     setConnectError('');
     try {
@@ -178,7 +193,8 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
         return (
           buildRtspUrlFromPath({
             ip: wifiCamera?.ip,
-            path: DEFAULT_RTSP_PATH,
+            path: wifiCamera?.rtspPath || DEFAULT_RTSP_PATH,
+            port: wifiCamera?.rtspPort || 554,
             username: wifiCamera?.username,
             password: wifiCamera?.password,
           }) || DEFAULT_RTSP_PATH
@@ -210,7 +226,8 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     const trimmedInput = manualInput.trim();
     const fallbackUrl = buildRtspUrlFromPath({
       ip: wifiCamera?.ip,
-      path: DEFAULT_RTSP_PATH,
+      path: wifiCamera?.rtspPath || DEFAULT_RTSP_PATH,
+      port: wifiCamera?.rtspPort || 554,
       username: wifiCamera?.username,
       password: wifiCamera?.password,
     });

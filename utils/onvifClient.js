@@ -198,17 +198,25 @@ const ensureRtspCredentials = (uri, username, password) => {
   return `rtsp://${creds}@${remainder}`;
 };
 
-const buildDefaultDeviceServiceUrl = (ip) => {
-  if (!ip) return null;
-  return `http://${ip}:80/onvif/device_service`;
+const buildDeviceServiceUrl = (ip, port) => {
+  if (!ip || !port) return null;
+  return `http://${ip}:${port}/onvif/device_service`;
 };
 
-const pickDeviceServiceUrl = ({ ip, xaddrs } = {}) => {
+const getCandidateDeviceServiceUrls = ({ ip, xaddrs } = {}) => {
+  const candidates = [];
   if (Array.isArray(xaddrs)) {
     const httpAddr = xaddrs.find((value) => value?.startsWith('http'));
-    if (httpAddr) return httpAddr;
+    if (httpAddr) candidates.push(httpAddr);
   }
-  return buildDefaultDeviceServiceUrl(ip);
+  if (ip) {
+    const defaultPorts = [80, 5000];
+    defaultPorts.forEach((port) => {
+      const url = buildDeviceServiceUrl(ip, port);
+      if (url) candidates.push(url);
+    });
+  }
+  return Array.from(new Set(candidates));
 };
 
 const buildFallbackMediaUrl = (deviceServiceUrl) => {
@@ -227,46 +235,65 @@ export const resolveOnvifRtspUrl = async ({
   password,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) => {
-  const deviceServiceUrl = pickDeviceServiceUrl({ ip, xaddrs });
-  if (!deviceServiceUrl) {
+  const candidates = getCandidateDeviceServiceUrls({ ip, xaddrs });
+  if (!candidates.length) {
     throw new Error('Missing device service URL.');
   }
 
-  const capabilitiesXml = await fetchSoap(deviceServiceUrl, buildGetCapabilitiesBody(), {
-    username,
-    password,
-    timeoutMs,
-    action: `${DEVICE_NS}/GetCapabilities`,
-  });
-  const mediaXaddr =
-    extractMediaXaddr(capabilitiesXml) || buildFallbackMediaUrl(deviceServiceUrl);
-  if (!mediaXaddr) {
-    throw new Error('Media service not found.');
+  let lastError = null;
+  for (const deviceServiceUrl of candidates) {
+    try {
+      const capabilitiesXml = await fetchSoap(
+        deviceServiceUrl,
+        buildGetCapabilitiesBody(),
+        {
+          username,
+          password,
+          timeoutMs,
+          action: `${DEVICE_NS}/GetCapabilities`,
+        }
+      );
+      const mediaXaddr =
+        extractMediaXaddr(capabilitiesXml) ||
+        buildFallbackMediaUrl(deviceServiceUrl);
+      if (!mediaXaddr) {
+        throw new Error('Media service not found.');
+      }
+
+      const profilesXml = await fetchSoap(mediaXaddr, buildGetProfilesBody(), {
+        username,
+        password,
+        timeoutMs,
+        action: `${MEDIA_NS}/GetProfiles`,
+      });
+      const profileToken = extractProfileToken(profilesXml);
+      if (!profileToken) {
+        throw new Error('No profiles found.');
+      }
+
+      const streamXml = await fetchSoap(
+        mediaXaddr,
+        buildGetStreamUriBody(profileToken),
+        {
+          username,
+          password,
+          timeoutMs,
+          action: `${MEDIA_NS}/GetStreamUri`,
+        }
+      );
+      const streamUri = extractTagValue(streamXml, 'Uri');
+      if (!streamUri) {
+        throw new Error('Stream URI not found.');
+      }
+
+      return ensureRtspCredentials(streamUri, username, password);
+    } catch (error) {
+      lastError = error;
+    }
   }
 
-  const profilesXml = await fetchSoap(mediaXaddr, buildGetProfilesBody(), {
-    username,
-    password,
-    timeoutMs,
-    action: `${MEDIA_NS}/GetProfiles`,
-  });
-  const profileToken = extractProfileToken(profilesXml);
-  if (!profileToken) {
-    throw new Error('No profiles found.');
-  }
-
-  const streamXml = await fetchSoap(mediaXaddr, buildGetStreamUriBody(profileToken), {
-    username,
-    password,
-    timeoutMs,
-    action: `${MEDIA_NS}/GetStreamUri`,
-  });
-  const streamUri = extractTagValue(streamXml, 'Uri');
-  if (!streamUri) {
-    throw new Error('Stream URI not found.');
-  }
-
-  return ensureRtspCredentials(streamUri, username, password);
+  if (lastError) throw lastError;
+  throw new Error('Stream URI not found.');
 };
 
 export const buildRtspUrlFromPath = ({

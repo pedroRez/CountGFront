@@ -18,6 +18,7 @@ import BigButton from '../components/BigButton';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
 import { discoverOnvifDevices } from '../utils/onvifDiscovery';
+import { scanRtspDevices } from '../utils/rtspScan';
 
 const DEFAULT_ONVIF_USERNAME = 'admin';
 
@@ -54,7 +55,17 @@ const WifiCameraScreen = ({ navigation }) => {
         timeoutMs: 12000,
         retries: 3,
       });
-      setDevices(Array.isArray(results) ? results : []);
+      let nextDevices = Array.isArray(results) ? results : [];
+      if (!nextDevices.length) {
+        const manualPrefix = isValidIp(manualIp)
+          ? manualIp.split('.').slice(0, 3).join('.')
+          : null;
+        const rtspDevices = await scanRtspDevices({
+          subnetPrefix: manualPrefix,
+        });
+        nextDevices = Array.isArray(rtspDevices) ? rtspDevices : [];
+      }
+      setDevices(nextDevices);
     } catch (error) {
       setErrorMessage(error?.message || 'Scan failed.');
     } finally {
@@ -95,6 +106,8 @@ const WifiCameraScreen = ({ navigation }) => {
       username: trimmedUsername,
       password,
       xaddrs: selectedDevice.xaddrs || [],
+      rtspPath: selectedDevice.rtspPath,
+      rtspPort: selectedDevice.rtspPort,
     };
     setIsAuthVisible(false);
     setSelectedDevice(null);
