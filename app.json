@@ -24,6 +24,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "minSdkVersion": 26,
       "permissions": [
         "INTERNET",
         "ACCESS_WIFI_STATE",
