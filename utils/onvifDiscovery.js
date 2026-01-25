@@ -103,7 +103,14 @@ export const discoverOnvifDevices = ({
     const sendProbe = () => {
       if (finished) return;
       const message = buildProbeMessage();
-      socket.send(message, MULTICAST_PORT, MULTICAST_ADDRESS, () => {});
+      socket.send(
+        message,
+        undefined,
+        undefined,
+        MULTICAST_PORT,
+        MULTICAST_ADDRESS,
+        () => {}
+      );
       sendCount += 1;
       if (sendCount < retries) {
         setTimeout(sendProbe, 500);
@@ -125,11 +132,6 @@ export const discoverOnvifDevices = ({
     socket.bind(0, () => {
       try {
         socket.setBroadcast(true);
-      } catch (error) {
-        // ignore
-      }
-      try {
-        socket.setMulticastTTL(1);
       } catch (error) {
         // ignore
       }

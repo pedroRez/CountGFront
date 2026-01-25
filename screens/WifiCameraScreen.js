@@ -28,6 +28,8 @@ const WifiCameraScreen = ({ navigation }) => {
   const [errorMessage, setErrorMessage] = useState('');
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [isAuthVisible, setIsAuthVisible] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [username, setUsername] = useState(DEFAULT_ONVIF_USERNAME);
   const [password, setPassword] = useState('');
 
   const handleScan = async () => {
@@ -47,6 +49,8 @@ const WifiCameraScreen = ({ navigation }) => {
 
   const openAuthModal = (device) => {
     setSelectedDevice(device);
+    setShowAdvanced(false);
+    setUsername(DEFAULT_ONVIF_USERNAME);
     setPassword('');
     setIsAuthVisible(true);
   };
@@ -54,6 +58,7 @@ const WifiCameraScreen = ({ navigation }) => {
   const closeAuthModal = () => {
     setIsAuthVisible(false);
     setSelectedDevice(null);
+    setShowAdvanced(false);
     setPassword('');
   };
 
@@ -69,9 +74,10 @@ const WifiCameraScreen = ({ navigation }) => {
       );
       return;
     }
+    const trimmedUsername = username.trim();
     const wifiCamera = {
       ip: selectedDevice.ip,
-      username: DEFAULT_ONVIF_USERNAME,
+      username: trimmedUsername,
       password,
       xaddrs: selectedDevice.xaddrs || [],
     };
@@ -183,6 +189,32 @@ const WifiCameraScreen = ({ navigation }) => {
                 placeholder={t('wifiCamera.passwordPlaceholder')}
                 placeholderTextColor="#9ca3af"
               />
+              <TouchableOpacity
+                style={styles.advancedToggle}
+                onPress={() => setShowAdvanced((prev) => !prev)}
+              >
+                <Text style={styles.advancedToggleText}>
+                  {showAdvanced
+                    ? t('wifiCamera.advancedHide')
+                    : t('wifiCamera.advancedShow')}
+                </Text>
+              </TouchableOpacity>
+              {showAdvanced ? (
+                <>
+                  <Text style={styles.inputLabel}>
+                    {t('wifiCamera.usernameLabel')}
+                  </Text>
+                  <TextInput
+                    style={styles.input}
+                    value={username}
+                    onChangeText={setUsername}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder={t('wifiCamera.usernamePlaceholder')}
+                    placeholderTextColor="#9ca3af"
+                  />
+                </>
+              ) : null}
               <View style={styles.modalActions}>
                 <TouchableOpacity
                   style={[styles.modalButton, styles.modalCancelButton]}
@@ -334,6 +366,15 @@ const styles = StyleSheet.create({
     color: '#111827',
     backgroundColor: '#f9fafb',
     marginBottom: 12,
+  },
+  advancedToggle: {
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+  },
+  advancedToggleText: {
+    fontSize: 12,
+    color: '#2563eb',
+    fontWeight: '600',
   },
   modalActions: {
     flexDirection: 'row',
