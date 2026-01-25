@@ -2,7 +2,7 @@
   "expo": {
     "name": "CountG",
     "slug": "countg",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -24,7 +24,6 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "minSdkVersion": 26,
       "permissions": [
         "INTERNET",
         "ACCESS_WIFI_STATE",
