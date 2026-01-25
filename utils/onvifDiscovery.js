@@ -3,20 +3,12 @@ import { NativeModules, Platform } from 'react-native';
 
 const MULTICAST_ADDRESS = '239.255.255.250';
 const MULTICAST_PORT = 3702;
-const SSDP_ADDRESS = '239.255.255.250';
-const SSDP_PORT = 1900;
 const BROADCAST_ADDRESS = '255.255.255.255';
 const PROBE_TYPES = [
   null,
   'dn:NetworkVideoTransmitter',
   'tds:Device',
   'dn:Device',
-];
-const SSDP_ST_VALUES = [
-  'ssdp:all',
-  'upnp:rootdevice',
-  'urn:schemas-upnp-org:device:Basic:1',
-  'urn:schemas-upnp-org:device:MediaServer:1',
 ];
 
 const acquireMulticastLock = async () => {
@@ -62,17 +54,6 @@ const buildProbeMessage = (types) => `<?xml version="1.0" encoding="UTF-8"?>
     </d:Probe>
   </e:Body>
 </e:Envelope>`;
-
-const buildSsdpMessage = (stValue = 'ssdp:all') =>
-  [
-    'M-SEARCH * HTTP/1.1',
-    `HOST: ${SSDP_ADDRESS}:${SSDP_PORT}`,
-    'MAN: "ssdp:discover"',
-    'MX: 2',
-    `ST: ${stValue}`,
-    '',
-    '',
-  ].join('\r\n');
 
 const extractXAddrs = (text) => {
   if (!text) return [];
@@ -177,12 +158,7 @@ export const discoverOnvifDevices = ({
         return;
       }
 
-      const ssdpLocation = extractSsdpLocation(text);
-      const ssdpIps = ssdpLocation ? extractIps([ssdpLocation]) : [];
-      if (rinfo?.address) {
-        ssdpIps.push(rinfo.address);
-      }
-      ssdpIps.forEach((ip) => addDevice(ip, []));
+      // Ignore SSDP/UPnP responses to avoid non-ONVIF devices.
     };
 
     const sendUdp = (message, port, address) => {
@@ -202,11 +178,6 @@ export const discoverOnvifDevices = ({
         sendUdp(message, MULTICAST_PORT, MULTICAST_ADDRESS);
         sendUdp(message, MULTICAST_PORT, BROADCAST_ADDRESS);
       });
-      SSDP_ST_VALUES.forEach((stValue) => {
-        const ssdpMessage = buildSsdpMessage(stValue);
-        sendUdp(ssdpMessage, SSDP_PORT, SSDP_ADDRESS);
-        sendUdp(ssdpMessage, SSDP_PORT, BROADCAST_ADDRESS);
-      });
       sendCount += 1;
       if (sendCount < retries) {
         setTimeout(sendProbe, 500);
@@ -216,6 +187,11 @@ export const discoverOnvifDevices = ({
     socket.on('message', handleMessage);
     socket.on('error', (error) => {
       if (finished) return;
+      const message = error?.message || '';
+      if (message.toLowerCase().includes('socket is closed')) {
+        finish();
+        return;
+      }
       finished = true;
       releaseLockOnce();
       try {

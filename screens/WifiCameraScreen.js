@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
   Modal,
+  NativeModules,
   Platform,
   Pressable,
   ScrollView,
@@ -17,10 +18,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import BigButton from '../components/BigButton';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
-import { discoverOnvifDevices } from '../utils/onvifDiscovery';
-import { scanRtspDevices } from '../utils/rtspScan';
+import { filterRtspDevices, scanRtspDevices } from '../utils/rtspScan';
 
 const DEFAULT_ONVIF_USERNAME = 'admin';
+const COMMON_PREFIXES = ['192.168.0'];
 
 const isValidIp = (value) => {
   if (!value) return false;
@@ -31,6 +32,35 @@ const isValidIp = (value) => {
     const num = Number(part);
     return num >= 0 && num <= 255;
   });
+};
+
+const getLocalPrefix = async () => {
+  const netInfo = NativeModules?.NetworkInfo;
+  if (!netInfo?.getIpAddress) return null;
+  try {
+    const ip = await netInfo.getIpAddress();
+    if (typeof ip === 'string' && ip.includes('.')) {
+      const parts = ip.split('.');
+      if (parts.length === 4) {
+        return parts.slice(0, 3).join('.');
+      }
+    }
+  } catch (error) {
+    // ignore ip lookup errors
+  }
+  return null;
+};
+
+const buildScanPrefixes = async (manualIp) => {
+  if (isValidIp(manualIp)) {
+    return [manualIp.split('.').slice(0, 3).join('.')];
+  }
+  const localPrefix = await getLocalPrefix();
+  if (!localPrefix) return [...COMMON_PREFIXES];
+  if (localPrefix.startsWith('192.168.')) {
+    return [localPrefix];
+  }
+  return [localPrefix, ...COMMON_PREFIXES];
 };
 
 const WifiCameraScreen = ({ navigation }) => {
@@ -44,30 +74,47 @@ const WifiCameraScreen = ({ navigation }) => {
   const [username, setUsername] = useState(DEFAULT_ONVIF_USERNAME);
   const [password, setPassword] = useState('');
   const [manualIp, setManualIp] = useState('');
+  const [showLogs, setShowLogs] = useState(false);
+  const [scanLogs, setScanLogs] = useState([]);
+
+  const appendLog = useCallback((message) => {
+    setScanLogs((prev) => {
+      const next = prev.concat([message]);
+      return next.length > 200 ? next.slice(-200) : next;
+    });
+  }, []);
+
+  const clearLogs = useCallback(() => {
+    setScanLogs([]);
+  }, []);
 
   const handleScan = async () => {
     if (isScanning) return;
     setIsScanning(true);
     setErrorMessage('');
     setDevices([]);
+    setScanLogs([]);
     try {
-      const results = await discoverOnvifDevices({
-        timeoutMs: 12000,
-        retries: 3,
-      });
-      let nextDevices = Array.isArray(results) ? results : [];
+      let nextDevices = [];
       if (!nextDevices.length) {
-        const manualPrefix = isValidIp(manualIp)
-          ? manualIp.split('.').slice(0, 3).join('.')
-          : null;
-        const rtspDevices = await scanRtspDevices({
-          subnetPrefix: manualPrefix,
-        });
+        const prefixes = await buildScanPrefixes(manualIp);
+        let rtspDevices = [];
+        for (const prefix of prefixes) {
+          const scanResults = await scanRtspDevices({
+            subnetPrefix: prefix,
+            matchHint: 'HIipCamera',
+            verifyOnvifPort: [5000, 80],
+            debug: true,
+            onLog: appendLog,
+          });
+          if (scanResults.length) {
+            rtspDevices = scanResults;
+            break;
+          }
+        }
         nextDevices = Array.isArray(rtspDevices) ? rtspDevices : [];
       }
       setDevices(nextDevices);
-    } catch (error) {
-      setErrorMessage(error?.message || 'Scan failed.');
     } finally {
       setIsScanning(false);
     }
@@ -215,6 +262,27 @@ const WifiCameraScreen = ({ navigation }) => {
                 </View>
               ))}
             </>
+          ) : null}
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.logHeader}>
+            <Text style={styles.sectionTitle}>Scan logs</Text>
+            <TouchableOpacity onPress={clearLogs}>
+              <Text style={styles.logActionText}>Clear</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowLogs((prev) => !prev)}>
+              <Text style={styles.logActionText}>
+                {showLogs ? 'Hide' : 'Show'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {showLogs ? (
+            <View style={styles.logBox}>
+              <Text style={styles.logText}>
+                {scanLogs.length ? scanLogs.join('\n') : 'No logs yet.'}
+              </Text>
+            </View>
           ) : null}
         </View>
       </ScrollView>
@@ -479,6 +547,29 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     fontSize: 14,
+  },
+  logHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  logActionText: {
+    fontSize: 12,
+    color: '#2563eb',
+    fontWeight: '600',
+  },
+  logBox: {
+    marginTop: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    backgroundColor: '#f9fafb',
+  },
+  logText: {
+    fontSize: 11,
+    color: '#374151',
+    lineHeight: 16,
   },
 });
 
