@@ -21,6 +21,17 @@ import { discoverOnvifDevices } from '../utils/onvifDiscovery';
 
 const DEFAULT_ONVIF_USERNAME = 'admin';
 
+const isValidIp = (value) => {
+  if (!value) return false;
+  const parts = value.split('.');
+  if (parts.length !== 4) return false;
+  return parts.every((part) => {
+    if (!/^\d+$/.test(part)) return false;
+    const num = Number(part);
+    return num >= 0 && num <= 255;
+  });
+};
+
 const WifiCameraScreen = ({ navigation }) => {
   const { t } = useLanguage();
   const [isScanning, setIsScanning] = useState(false);
@@ -31,6 +42,7 @@ const WifiCameraScreen = ({ navigation }) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [username, setUsername] = useState(DEFAULT_ONVIF_USERNAME);
   const [password, setPassword] = useState('');
+  const [manualIp, setManualIp] = useState('');
 
   const handleScan = async () => {
     if (isScanning) return;
@@ -87,6 +99,18 @@ const WifiCameraScreen = ({ navigation }) => {
     navigation.navigate('WifiCameraRecord', { wifiCamera });
   };
 
+  const handleManualConnect = () => {
+    const trimmed = manualIp.trim();
+    if (!isValidIp(trimmed)) {
+      Alert.alert(
+        t('wifiCamera.manualIpInvalidTitle'),
+        t('wifiCamera.manualIpInvalidMessage')
+      );
+      return;
+    }
+    openAuthModal({ ip: trimmed, xaddrs: [] });
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -105,6 +129,31 @@ const WifiCameraScreen = ({ navigation }) => {
           onPress={handleScan}
           disabled={isScanning}
         />
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>
+            {t('wifiCamera.manualIpTitle')}
+          </Text>
+          <Text style={styles.inputLabel}>{t('wifiCamera.manualIpLabel')}</Text>
+          <TextInput
+            style={styles.input}
+            value={manualIp}
+            onChangeText={setManualIp}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="numeric"
+            placeholder={t('wifiCamera.manualIpPlaceholder')}
+            placeholderTextColor="#9ca3af"
+          />
+          <TouchableOpacity
+            style={styles.manualButton}
+            onPress={handleManualConnect}
+          >
+            <Text style={styles.manualButtonText}>
+              {t('wifiCamera.manualIpConnect')}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>{t('wifiCamera.resultsTitle')}</Text>
@@ -366,6 +415,17 @@ const styles = StyleSheet.create({
     color: '#111827',
     backgroundColor: '#f9fafb',
     marginBottom: 12,
+  },
+  manualButton: {
+    backgroundColor: '#2563eb',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  manualButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
   },
   advancedToggle: {
     alignSelf: 'flex-start',

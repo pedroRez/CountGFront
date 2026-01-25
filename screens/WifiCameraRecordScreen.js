@@ -3,6 +3,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -22,6 +23,7 @@ import {
 } from '../utils/onvifClient';
 
 const MIN_FILE_BYTES = 200 * 1024;
+const VLC_INIT_OPTIONS = ['--rtsp-tcp'];
 
 const formatSecondsToMMSS = (totalSeconds) => {
   if (!Number.isFinite(totalSeconds) || totalSeconds < 0) totalSeconds = 0;
@@ -168,6 +170,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     } catch (error) {
       setConnectError(t('wifiCameraRecord.connectError'));
       setRtspUrl('');
+      setManualInput((prev) => prev || '/onvif1');
     } finally {
       setIsConnecting(false);
     }
@@ -269,122 +272,132 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>{t('wifiCameraRecord.title')}</Text>
-          {wifiCamera?.ip ? (
-            <Text style={styles.subtitle}>
-              {t('wifiCameraRecord.subtitle', { ip: wifiCamera.ip })}
-            </Text>
-          ) : null}
-        </View>
-
-        <View style={styles.previewWrapper}>
-          {isConnecting ? (
-            <View style={styles.centered}>
-              <CustomActivityIndicator size="large" color="#fff" />
-              <Text style={styles.statusText}>
-                {t('wifiCameraRecord.connecting')}
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          scrollEnabled={Boolean(connectError)}
+        >
+          <View style={styles.header}>
+            <Text style={styles.title}>{t('wifiCameraRecord.title')}</Text>
+            {wifiCamera?.ip ? (
+              <Text style={styles.subtitle}>
+                {t('wifiCameraRecord.subtitle', { ip: wifiCamera.ip })}
               </Text>
-            </View>
-          ) : rtspUrl ? (
-            <>
-              <VLCPlayer
-                ref={vlcRef}
-                source={{ uri: rtspUrl }}
-                style={styles.preview}
-                autoplay={true}
-                paused={false}
-                onError={() => {
-                  setConnectError(t('wifiCameraRecord.previewError'));
-                  setRtspUrl('');
-                }}
-                onRecordingCreated={handleRecordingCreated}
-              />
-              {isRecording && (
-                <View style={styles.timerBadge}>
-                  <View style={styles.recordingDot} />
-                  <Text style={styles.timerText}>
-                    {formatSecondsToMMSS(elapsedTime)}
-                  </Text>
-                </View>
-              )}
-            </>
-          ) : (
-            <View style={styles.centered}>
-              <Text style={styles.errorText}>{connectError}</Text>
-            </View>
-          )}
-        </View>
-
-        {connectError ? (
-          <View style={styles.manualCard}>
-            <Text style={styles.manualLabel}>
-              {t('wifiCameraRecord.manualLabel')}
-            </Text>
-            <TextInput
-              style={styles.manualInput}
-              value={manualInput}
-              onChangeText={setManualInput}
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholder={t('wifiCameraRecord.manualPlaceholder')}
-              placeholderTextColor="#9ca3af"
-            />
-            <View style={styles.manualButtons}>
-              <TouchableOpacity
-                style={[styles.manualButton, styles.manualPrimary]}
-                onPress={handleManualConnect}
-              >
-                <Text style={styles.manualPrimaryText}>
-                  {t('wifiCameraRecord.manualConnect')}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.manualButton, styles.manualSecondary]}
-                onPress={handleConnectOnvif}
-              >
-                <Text style={styles.manualSecondaryText}>
-                  {t('wifiCameraRecord.retryOnvif')}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            ) : null}
           </View>
-        ) : null}
 
-        <View style={styles.controls}>
-          <TouchableOpacity
-            style={[
-              styles.recordButton,
-              isRecording && styles.recordButtonActive,
-              (!rtspUrl || isConnecting) && styles.recordButtonDisabled,
-            ]}
-            onPress={handleRecordPress}
-            disabled={!rtspUrl || isConnecting}
-          >
-            <MaterialCommunityIcons
-              name={isRecording ? 'stop-circle' : 'record-circle-outline'}
-              size={56}
-              color={isRecording ? '#ff3b30' : '#fff'}
-            />
-            <Text style={styles.recordButtonText}>
-              {isRecording
-                ? t('wifiCameraRecord.recordStop')
-                : t('wifiCameraRecord.recordStart')}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.previewWrapper}>
+            {isConnecting ? (
+              <View style={styles.centered}>
+                <CustomActivityIndicator size="large" color="#fff" />
+                <Text style={styles.statusText}>
+                  {t('wifiCameraRecord.connecting')}
+                </Text>
+              </View>
+            ) : rtspUrl ? (
+              <>
+                <VLCPlayer
+                  ref={vlcRef}
+                  source={{
+                    uri: rtspUrl,
+                    initType: 2,
+                    initOptions: VLC_INIT_OPTIONS,
+                  }}
+                  style={styles.preview}
+                  autoplay={true}
+                  paused={false}
+                  onError={() => {
+                    setConnectError(t('wifiCameraRecord.previewError'));
+                    setRtspUrl('');
+                  }}
+                  onRecordingCreated={handleRecordingCreated}
+                />
+                {isRecording && (
+                  <View style={styles.timerBadge}>
+                    <View style={styles.recordingDot} />
+                    <Text style={styles.timerText}>
+                      {formatSecondsToMMSS(elapsedTime)}
+                    </Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              <View style={styles.centered}>
+                <Text style={styles.errorText}>{connectError}</Text>
+              </View>
+            )}
+          </View>
 
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.backButtonText}>
-              {t('wifiCameraRecord.backToList')}
-            </Text>
-          </TouchableOpacity>
-        </View>
+          {connectError ? (
+            <View style={styles.manualCard}>
+              <Text style={styles.manualLabel}>
+                {t('wifiCameraRecord.manualLabel')}
+              </Text>
+              <TextInput
+                style={styles.manualInput}
+                value={manualInput}
+                onChangeText={setManualInput}
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder={t('wifiCameraRecord.manualPlaceholder')}
+                placeholderTextColor="#9ca3af"
+              />
+              <View style={styles.manualButtons}>
+                <TouchableOpacity
+                  style={[styles.manualButton, styles.manualPrimary]}
+                  onPress={handleManualConnect}
+                >
+                  <Text style={styles.manualPrimaryText}>
+                    {t('wifiCameraRecord.manualConnect')}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.manualButton, styles.manualSecondary]}
+                  onPress={handleConnectOnvif}
+                >
+                  <Text style={styles.manualSecondaryText}>
+                    {t('wifiCameraRecord.retryOnvif')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
+
+          <View style={styles.controls}>
+            <TouchableOpacity
+              style={[
+                styles.recordButton,
+                isRecording && styles.recordButtonActive,
+                (!rtspUrl || isConnecting) && styles.recordButtonDisabled,
+              ]}
+              onPress={handleRecordPress}
+              disabled={!rtspUrl || isConnecting}
+            >
+              <MaterialCommunityIcons
+                name={isRecording ? 'stop-circle' : 'record-circle-outline'}
+                size={56}
+                color={isRecording ? '#ff3b30' : '#fff'}
+              />
+              <Text style={styles.recordButtonText}>
+                {isRecording
+                  ? t('wifiCameraRecord.recordStop')
+                  : t('wifiCameraRecord.recordStart')}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.backButtonText}>
+                {t('wifiCameraRecord.backToList')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -395,6 +408,7 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingTop: 10 },
   title: { color: '#fff', fontSize: 20, fontWeight: '700' },
   subtitle: { color: '#9ca3af', fontSize: 13, marginTop: 4 },
+  scrollContent: { flexGrow: 1 },
   previewWrapper: {
     flex: 1,
     marginTop: 16,

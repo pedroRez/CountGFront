@@ -1,7 +1,30 @@
 import dgram from 'react-native-udp';
+import { NativeModules, Platform } from 'react-native';
 
 const MULTICAST_ADDRESS = '239.255.255.250';
 const MULTICAST_PORT = 3702;
+
+const acquireMulticastLock = async () => {
+  if (Platform.OS !== 'android') return;
+  const module = NativeModules?.MulticastLock;
+  if (!module?.acquire) return;
+  try {
+    await module.acquire();
+  } catch (error) {
+    // ignore lock errors
+  }
+};
+
+const releaseMulticastLock = async () => {
+  if (Platform.OS !== 'android') return;
+  const module = NativeModules?.MulticastLock;
+  if (!module?.release) return;
+  try {
+    await module.release();
+  } catch (error) {
+    // ignore lock errors
+  }
+};
 
 const buildMessageId = () =>
   `uuid:${Math.random().toString(16).slice(2)}-${Date.now()}`;
@@ -74,10 +97,18 @@ export const discoverOnvifDevices = ({
     const devices = new Map();
     let finished = false;
     let sendCount = 0;
+    let lockReleased = false;
+
+    const releaseLockOnce = () => {
+      if (lockReleased) return;
+      lockReleased = true;
+      void releaseMulticastLock();
+    };
 
     const finish = () => {
       if (finished) return;
       finished = true;
+      releaseLockOnce();
       try {
         socket.close();
       } catch (error) {
@@ -121,6 +152,7 @@ export const discoverOnvifDevices = ({
     socket.on('error', (error) => {
       if (finished) return;
       finished = true;
+      releaseLockOnce();
       try {
         socket.close();
       } catch (closeError) {
@@ -128,6 +160,8 @@ export const discoverOnvifDevices = ({
       }
       reject(error);
     });
+
+    void acquireMulticastLock();
 
     socket.bind(0, () => {
       try {

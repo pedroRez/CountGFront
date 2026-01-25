@@ -232,6 +232,9 @@ const HomeScreen = ({ route }) => {
           trimmedVideo: null,
           newlyRecordedVideo: null,
         });
+      } else if (appStatus === 'picking') {
+        setIsPickerLoading(false);
+        setAppStatus('idle');
       }
     }, [
       route.params?.trimmedVideo,
@@ -239,6 +242,7 @@ const HomeScreen = ({ route }) => {
       route.params?.resetHome,
       countName,
       countDescription,
+      appStatus,
       navigation,
     ])
   );
