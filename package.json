@@ -25,6 +25,7 @@
     "axios": "^1.13.2",
     "expo": "~54.0.32",
     "expo-av": "~16.0.8",
+    "expo-build-properties": "~1.0.10",
     "expo-camera": "~17.0.10",
     "expo-dev-client": "~6.0.20",
     "expo-document-picker": "~14.0.8",

@@ -72,7 +72,15 @@
       ],
       "react-native-vlc-media-player",
       "expo-font",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
     ],
     "assetBundlePatterns": [
       "assets/images/*",
