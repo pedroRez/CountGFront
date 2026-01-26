@@ -8,6 +8,8 @@ const DEFAULT_HTTP_TIMEOUT_MS = 900;
 const DEFAULT_CONCURRENCY = 18;
 const DEFAULT_ALLOW_CONNECT_ONLY = false;
 const DEFAULT_DEBUG = false;
+const BASE64_CHARS =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
 const ONVIF_PROBE_BODY = `<?xml version="1.0" encoding="UTF-8"?>
 <s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
   <s:Body>
@@ -43,24 +45,81 @@ const getSubnetPrefix = async (manualPrefix) => {
 
 const RTSP_USER_AGENT = 'AndroidXMedia3/1.8.0';
 
-const buildOptionsRequest = (ip, port, path) =>
-  [
-    `OPTIONS rtsp://${ip}:${port}${path} RTSP/1.0`,
+const encodeBase64 = (input) => {
+  const str = String(input);
+  let output = '';
+  let i = 0;
+  while (i < str.length) {
+    const chr1 = str.charCodeAt(i++);
+    const chr2 = str.charCodeAt(i++);
+    const chr3 = str.charCodeAt(i++);
+
+    const enc1 = chr1 >> 2;
+    const enc2 = ((chr1 & 3) << 4) | (chr2 >> 4);
+    let enc3 = ((chr2 & 15) << 2) | (chr3 >> 6);
+    let enc4 = chr3 & 63;
+
+    if (Number.isNaN(chr2)) {
+      enc3 = 64;
+      enc4 = 64;
+    } else if (Number.isNaN(chr3)) {
+      enc4 = 64;
+    }
+
+    output +=
+      BASE64_CHARS.charAt(enc1) +
+      BASE64_CHARS.charAt(enc2) +
+      BASE64_CHARS.charAt(enc3) +
+      BASE64_CHARS.charAt(enc4);
+  }
+  return output;
+};
+
+const buildAuthHeader = (username, password) => {
+  if (!username && !password) return null;
+  const token = encodeBase64(`${username || ''}:${password || ''}`);
+  return `Authorization: Basic ${token}`;
+};
+
+const buildRtspUrl = (ip, port, path, auth) => {
+  const normalizedPath = normalizePath(path);
+  if (!auth?.username && !auth?.password) {
+    return `rtsp://${ip}:${port}${normalizedPath}`;
+  }
+  const safeUser = encodeURIComponent(auth.username || '');
+  const safePass = encodeURIComponent(auth.password || '');
+  const creds = auth.username ? `${safeUser}:${safePass}` : `:${safePass}`;
+  return `rtsp://${creds}@${ip}:${port}${normalizedPath}`;
+};
+
+const buildOptionsRequest = (ip, port, path, auth) => {
+  const authHeader = buildAuthHeader(auth?.username, auth?.password);
+  const lines = [
+    `OPTIONS ${buildRtspUrl(ip, port, path, auth)} RTSP/1.0`,
     'CSeq: 0',
     `User-Agent: ${RTSP_USER_AGENT}`,
-    '',
-    '',
-  ].join('\r\n');
+  ];
+  if (authHeader) {
+    lines.push(authHeader);
+  }
+  lines.push('', '');
+  return lines.join('\r\n');
+};
 
-const buildDescribeRequest = (ip, port, path) =>
-  [
-    `DESCRIBE rtsp://${ip}:${port}${path} RTSP/1.0`,
+const buildDescribeRequest = (ip, port, path, auth) => {
+  const authHeader = buildAuthHeader(auth?.username, auth?.password);
+  const lines = [
+    `DESCRIBE ${buildRtspUrl(ip, port, path, auth)} RTSP/1.0`,
     'CSeq: 1',
     'Accept: application/sdp',
     `User-Agent: ${RTSP_USER_AGENT}`,
-    '',
-    '',
-  ].join('\r\n');
+  ];
+  if (authHeader) {
+    lines.push(authHeader);
+  }
+  lines.push('', '');
+  return lines.join('\r\n');
+};
 
 const extractMatchHints = (responseText) => {
   if (!responseText) return {};
@@ -130,7 +189,7 @@ const probeRtspPath = (
   port,
   path,
   timeoutMs,
-  { allowConnectOnly, onLog } = {}
+  { allowConnectOnly, onLog, auth } = {}
 ) =>
   new Promise((resolve) => {
     let done = false;
@@ -162,7 +221,7 @@ const probeRtspPath = (
       if (typeof onLog === 'function') {
         onLog('[rtsp-scan] connected', ip, port);
       }
-      const request = buildOptionsRequest(ip, port, path);
+      const request = buildOptionsRequest(ip, port, path, auth);
       try {
         socket.write(request);
       } catch (error) {
@@ -230,7 +289,7 @@ const probeRtspPath = (
     followupTimer = setTimeout(() => {
       if (!connected || sawResponse || done) return;
       try {
-        const request = buildDescribeRequest(ip, port, path);
+        const request = buildDescribeRequest(ip, port, path, auth);
         socket.write(request);
       } catch (error) {
         // ignore follow-up errors
@@ -251,6 +310,8 @@ export const scanRtspDevices = async ({
   allowConnectOnly = DEFAULT_ALLOW_CONNECT_ONLY,
   debug = DEFAULT_DEBUG,
   onLog = null,
+  username = null,
+  password = null,
   hostMin = 1,
   hostMax = 254,
 } = {}) => {
@@ -292,6 +353,13 @@ export const scanRtspDevices = async ({
         const hit = await probeRtspPath(ip, port, path, timeoutMs, {
           allowConnectOnly,
           onLog: (msg, ...rest) => log(msg, ...rest),
+          auth:
+            username || password
+              ? {
+                  username,
+                  password,
+                }
+              : null,
         });
         if (hit) {
           let onvifOk = true;
@@ -351,6 +419,8 @@ export const filterRtspDevices = async ({
   allowConnectOnly = DEFAULT_ALLOW_CONNECT_ONLY,
   debug = DEFAULT_DEBUG,
   onLog = null,
+  username = null,
+  password = null,
 } = {}) => {
   const log = (...args) => {
     if (debug) {
@@ -381,6 +451,13 @@ export const filterRtspDevices = async ({
       for (const path of normalizedPaths) {
         const hit = await probeRtspPath(ip, port, path, timeoutMs, {
           allowConnectOnly,
+          auth:
+            username || password
+              ? {
+                  username,
+                  password,
+                }
+              : null,
         });
         if (!hit) continue;
         let onvifOk = true;

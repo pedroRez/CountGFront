@@ -20,13 +20,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import BigButton from '../components/BigButton';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
+import { discoverOnvifDevices } from '../utils/onvifDiscovery';
 import { scanRtspDevices } from '../utils/rtspScan';
 
 const DEFAULT_ONVIF_USERNAME = 'admin';
 const COMMON_PREFIXES = ['192.168.0'];
-const DEFAULT_HOST_MIN = 10;
-const DEFAULT_HOST_MAX = 20;
+const DEFAULT_HOST_MIN = 1;
+const DEFAULT_HOST_MAX = 254;
 const WIFI_CAMERA_CREDENTIALS_KEY = '@wifi_camera_credentials';
+const WIFI_CAMERA_LAST_PASSWORD_KEY = '@wifi_camera_last_password';
 
 const isValidIp = (value) => {
   if (!value) return false;
@@ -117,6 +119,7 @@ const WifiCameraScreen = ({ navigation }) => {
         WIFI_CAMERA_CREDENTIALS_KEY,
         JSON.stringify(parsed)
       );
+      await AsyncStorage.setItem(WIFI_CAMERA_LAST_PASSWORD_KEY, pass);
       setHasSavedCredentials(true);
     } catch (error) {
       // ignore storage failures
@@ -137,6 +140,7 @@ const WifiCameraScreen = ({ navigation }) => {
           JSON.stringify(parsed)
         );
       }
+      await AsyncStorage.removeItem(WIFI_CAMERA_LAST_PASSWORD_KEY);
     } catch (error) {
       // ignore storage failures
     }
@@ -159,7 +163,26 @@ const WifiCameraScreen = ({ navigation }) => {
     setErrorMessage('');
     setDevices([]);
     try {
+      let lastPassword = null;
+      try {
+        lastPassword = await AsyncStorage.getItem(WIFI_CAMERA_LAST_PASSWORD_KEY);
+      } catch (error) {
+        lastPassword = null;
+      }
+
       let nextDevices = [];
+      try {
+        const onvifDevices = await discoverOnvifDevices({
+          timeoutMs: 4500,
+          retries: 3,
+        });
+        if (Array.isArray(onvifDevices) && onvifDevices.length) {
+          nextDevices = onvifDevices;
+        }
+      } catch (error) {
+        // ignore discovery errors and fallback to RTSP scan
+      }
+
       if (!nextDevices.length) {
         const prefixes = await buildScanPrefixes(manualIp);
         let rtspDevices = [];
@@ -169,8 +192,10 @@ const WifiCameraScreen = ({ navigation }) => {
             timeoutMs: 2500,
             concurrency: 4,
             probeDelayMs: 120,
-            matchHint: 'HIipCamera',
+            matchHint: null,
             verifyOnvifPort: [5000, 80],
+            username: lastPassword ? DEFAULT_ONVIF_USERNAME : null,
+            password: lastPassword || null,
             hostMin: DEFAULT_HOST_MIN,
             hostMax: DEFAULT_HOST_MAX,
             allowConnectOnly: true,
@@ -182,6 +207,7 @@ const WifiCameraScreen = ({ navigation }) => {
         }
         nextDevices = Array.isArray(rtspDevices) ? rtspDevices : [];
       }
+
       setDevices(nextDevices);
     } finally {
       setIsScanning(false);
