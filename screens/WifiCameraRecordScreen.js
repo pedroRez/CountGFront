@@ -9,6 +9,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  UIManager,
+  findNodeHandle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -27,6 +29,9 @@ const MIN_FILE_BYTES = 200 * 1024;
 const DEFAULT_RTSP_PATH = '/onvif1';
 const VLC_INIT_OPTIONS = ['--rtsp-tcp', '--network-caching=300'];
 const VLC_MEDIA_OPTIONS = [':network-caching=300', ':rtsp-tcp'];
+const RECORDING_EXTENSION = 'mp4';
+const RECORDING_READY_DELAY_MS = 150;
+const RECORDING_READY_ATTEMPTS = 8;
 
 const formatSecondsToMMSS = (totalSeconds) => {
   if (!Number.isFinite(totalSeconds) || totalSeconds < 0) totalSeconds = 0;
@@ -46,16 +51,120 @@ const ensureFileUri = (value) => {
   return value.startsWith('file://') ? value : `file://${value}`;
 };
 
+const normalizeDirectoryPath = (value) => {
+  if (!value) return value;
+  return value.endsWith('/') ? value : `${value}/`;
+};
+
+const buildRecordingFilePath = (directory) => {
+  if (!directory) return null;
+  const normalizedDir = normalizeDirectoryPath(directory);
+  const timestamp = Date.now();
+  return `${normalizedDir}wifi_camera_${timestamp}.${RECORDING_EXTENSION}`;
+};
+
+const getMimeTypeForPath = (path) => {
+  if (!path) return 'video/mp4';
+  const lower = path.toLowerCase();
+  if (lower.endsWith('.ts')) return 'video/mp2t';
+  if (lower.endsWith('.mkv')) return 'video/x-matroska';
+  if (lower.endsWith('.mov')) return 'video/quicktime';
+  if (lower.endsWith('.avi')) return 'video/x-msvideo';
+  return 'video/mp4';
+};
+
+const normalizeRecordingPath = (value) => {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    if (typeof value.path === 'string') return value.path;
+    if (typeof value.recordPath === 'string') return value.recordPath;
+  }
+  return null;
+};
+
+const getExistingFileInfo = async (path) => {
+  if (!path) return null;
+  const uri = ensureFileUri(path);
+  try {
+    const info = await FileSystem.getInfoAsync(uri, { size: true });
+    if (!info?.exists || info.isDirectory) return null;
+    return { uri, info };
+  } catch (error) {
+    return null;
+  }
+};
+
+const findLatestRecording = async (directory, sinceMs = 0) => {
+  if (!directory) return null;
+  const dirUri = ensureFileUri(normalizeDirectoryPath(directory));
+  let entries = [];
+  try {
+    entries = await FileSystem.readDirectoryAsync(dirUri);
+  } catch (error) {
+    return null;
+  }
+  if (!entries.length) return null;
+
+  let bestPath = null;
+  let bestTime = 0;
+  let bestSize = 0;
+
+  for (const entry of entries) {
+    const entryUri = `${dirUri}${entry}`;
+    let info;
+    try {
+      info = await FileSystem.getInfoAsync(entryUri, { size: true });
+    } catch (error) {
+      continue;
+    }
+    if (!info?.exists || info.isDirectory) continue;
+
+    const modTimeMs =
+      typeof info.modificationTime === 'number'
+        ? info.modificationTime * 1000
+        : 0;
+    const size = info.size || 0;
+    if (sinceMs && modTimeMs && modTimeMs < sinceMs - 2000) {
+      continue;
+    }
+
+    if (modTimeMs > bestTime || (modTimeMs === bestTime && size > bestSize)) {
+      bestTime = modTimeMs;
+      bestSize = size;
+      bestPath = stripFileScheme(entryUri);
+    }
+  }
+
+  return bestPath;
+};
+
 const resolveRecordingDirectory = async () => {
   const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
-  if (!baseDir) return null;
-  const targetDir = `${baseDir}wifi_recordings/`;
+  if (!baseDir) {
+    return {
+      path: null,
+      reason: 'fs-unavailable',
+    };
+  }
+  const targetDir = `${baseDir}wifi_recordings`;
+  let targetExists = false;
   try {
     await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true });
   } catch (error) {
     // Directory already exists or is not accessible.
   }
-  return stripFileScheme(targetDir);
+  try {
+    const info = await FileSystem.getInfoAsync(targetDir);
+    targetExists = Boolean(info?.exists);
+  } catch (error) {
+    targetExists = false;
+  }
+  const selected = targetExists ? targetDir : baseDir;
+  return {
+    path: stripFileScheme(selected),
+    reason: targetExists ? null : 'fallback-base',
+  };
 };
 
 export default function WifiCameraRecordScreen({ route, navigation }) {
@@ -67,6 +176,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   const [manualInput, setManualInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [isStreamReady, setIsStreamReady] = useState(false);
 
   const timerRef = useRef(null);
   const elapsedRef = useRef(0);
@@ -74,6 +184,44 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   const recordingHandledRef = useRef(false);
   const stopFallbackRef = useRef(null);
   const isFinalizingRef = useRef(false);
+  const recordingDirRef = useRef(null);
+  const recordingFileRef = useRef(null);
+  const recordingStartRef = useRef(0);
+  const recordingPendingRef = useRef(false);
+
+  const buildRecordErrorMessage = useCallback(
+    (details) => {
+      const base = t('wifiCameraRecord.recordErrorMessage');
+      if (!details) return base;
+      return `${base}\n\n${details}`;
+    },
+    [t]
+  );
+
+  const getVlcCommand = useCallback((commandName) => {
+    const config = UIManager.getViewManagerConfig('RCTVLCPlayer');
+    const commandId = config?.Commands?.[commandName];
+    const target =
+      vlcRef.current?._root
+        ? findNodeHandle(vlcRef.current._root)
+        : findNodeHandle(vlcRef.current);
+    return {
+      commandId,
+      target,
+    };
+  }, []);
+
+  const dispatchVlcCommand = useCallback(
+    (commandName, args = []) => {
+      const { commandId, target } = getVlcCommand(commandName);
+      if (typeof commandId !== 'number' || !target) {
+        return false;
+      }
+      UIManager.dispatchViewManagerCommand(target, commandId, args);
+      return true;
+    },
+    [getVlcCommand]
+  );
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) {
@@ -95,6 +243,17 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     }, 1000);
   }, [stopTimer]);
 
+  const waitForRecorderReady = useCallback(async () => {
+    for (let attempt = 0; attempt < RECORDING_READY_ATTEMPTS; attempt += 1) {
+      const { commandId, target } = getVlcCommand('startRecording');
+      if (typeof commandId === 'number' && target) return true;
+      await new Promise((resolve) =>
+        setTimeout(resolve, RECORDING_READY_DELAY_MS)
+      );
+    }
+    return false;
+  }, []);
+
   const finalizeRecording = useCallback(
     async (recordPath, wasCancelled = false) => {
       if (isFinalizingRef.current) return;
@@ -107,19 +266,34 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
         stopFallbackRef.current = null;
       }
 
-      const outputUri = recordPath ? ensureFileUri(recordPath) : null;
-      if (!outputUri) {
+      let resolvedPath = normalizeRecordingPath(recordPath);
+      let fileResult = await getExistingFileInfo(resolvedPath);
+      if (!fileResult) {
+        fileResult = await getExistingFileInfo(recordingFileRef.current);
+      }
+      if (!fileResult && recordingDirRef.current) {
+        const latest = await findLatestRecording(
+          recordingDirRef.current,
+          recordingStartRef.current
+        );
+        resolvedPath = latest;
+        fileResult = await getExistingFileInfo(latest);
+      }
+
+      if (!fileResult) {
         if (!wasCancelled) {
           Alert.alert(
             t('wifiCameraRecord.recordErrorTitle'),
-            t('wifiCameraRecord.recordErrorMessage')
+            buildRecordErrorMessage(
+              `Arquivo nao encontrado. Pasta: ${recordingDirRef.current || '-'}`
+            )
           );
         }
         isFinalizingRef.current = false;
         return;
       }
 
-      const info = await FileSystem.getInfoAsync(outputUri, { size: true });
+      const { uri: outputUri, info } = fileResult;
       if (!info?.exists || !info.size || info.size < MIN_FILE_BYTES) {
         Alert.alert(
           t('wifiCameraRecord.recordTooShortTitle'),
@@ -132,14 +306,14 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
       const recordedAsset = {
         uri: outputUri,
         fileName: outputUri.split('/').pop(),
-        mimeType: 'video/mp4',
+        mimeType: getMimeTypeForPath(outputUri),
         duration: elapsedRef.current * 1000,
       };
 
       navigation.replace('VideoEditor', { asset: recordedAsset });
       isFinalizingRef.current = false;
     },
-    [navigation, stopTimer, t]
+    [buildRecordErrorMessage, navigation, stopTimer, t]
   );
 
   const handleRecordingCreated = useCallback(
@@ -210,17 +384,30 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   }, [handleConnectOnvif]);
 
   useEffect(() => {
+    if (isConnecting || !rtspUrl) {
+      setIsStreamReady(false);
+    }
+  }, [isConnecting, rtspUrl]);
+
+  useEffect(() => {
     return () => {
       stopTimer();
       if (stopFallbackRef.current) {
         clearTimeout(stopFallbackRef.current);
         stopFallbackRef.current = null;
       }
+      if (dispatchVlcCommand('stopRecording')) {
+        return;
+      }
       if (vlcRef.current?.stopRecording) {
-        vlcRef.current.stopRecording();
+        try {
+          vlcRef.current.stopRecording();
+        } catch (error) {
+          // ignore cleanup errors
+        }
       }
     };
-  }, [stopTimer]);
+  }, [dispatchVlcCommand, stopTimer]);
 
   const handleManualConnect = () => {
     const trimmedInput = manualInput.trim();
@@ -261,38 +448,79 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
       );
       return;
     }
+    if (!isStreamReady) {
+      Alert.alert(
+        t('wifiCameraRecord.recordNotReadyTitle'),
+        t('wifiCameraRecord.recordNotReadyMessage')
+      );
+      return;
+    }
     if (isRecording) return;
-    if (!vlcRef.current?.startRecording) {
+    if (recordingPendingRef.current) return;
+    recordingPendingRef.current = true;
+    const recorderReady = await waitForRecorderReady();
+    if (!recorderReady) {
       Alert.alert(
-        t('wifiCameraRecord.recordErrorTitle'),
-        t('wifiCameraRecord.recordErrorMessage')
+        t('wifiCameraRecord.recordUnsupportedTitle'),
+        t('wifiCameraRecord.recordUnsupportedMessage')
       );
+      recordingPendingRef.current = false;
       return;
     }
 
-    const recordingDir = await resolveRecordingDirectory();
+    const recordingResolution = await resolveRecordingDirectory();
+    const recordingDir = recordingResolution?.path;
     if (!recordingDir) {
+      const docDir = FileSystem.documentDirectory || '-';
+      const cacheDir = FileSystem.cacheDirectory || '-';
       Alert.alert(
         t('wifiCameraRecord.recordErrorTitle'),
-        t('wifiCameraRecord.recordErrorMessage')
+        buildRecordErrorMessage(
+          `FileSystem indisponivel.\nDocDir: ${docDir}\nCacheDir: ${cacheDir}`
+        )
       );
+      recordingPendingRef.current = false;
       return;
     }
 
+    const normalizedDir = normalizeDirectoryPath(recordingDir);
+    const recordingFilePath = buildRecordingFilePath(normalizedDir);
     recordingHandledRef.current = false;
+    recordingDirRef.current = normalizedDir;
+    recordingFileRef.current = recordingFilePath;
+    recordingStartRef.current = Date.now();
     setIsRecording(true);
     startTimer();
-    vlcRef.current.startRecording(recordingDir);
+    try {
+      const started = dispatchVlcCommand('startRecording', [normalizedDir]);
+      if (!started && vlcRef.current?.startRecording) {
+        vlcRef.current.startRecording(normalizedDir);
+      }
+    } catch (error) {
+      stopTimer();
+      setIsRecording(false);
+      Alert.alert(
+        t('wifiCameraRecord.recordErrorTitle'),
+        buildRecordErrorMessage(error?.message || 'Falha ao iniciar gravacao.')
+      );
+    } finally {
+      recordingPendingRef.current = false;
+    }
   };
 
   const stopRecording = async () => {
-    if (!vlcRef.current?.stopRecording) {
+    const { commandId, target } = getVlcCommand('stopRecording');
+    const canDispatchStop = typeof commandId === 'number' && target;
+    if (!canDispatchStop && !vlcRef.current?.stopRecording) {
       void finalizeRecording(null, true);
       return;
     }
     stopTimer();
     setIsRecording(false);
-    vlcRef.current.stopRecording();
+    const stopped = dispatchVlcCommand('stopRecording');
+    if (!stopped && vlcRef.current?.stopRecording) {
+      vlcRef.current.stopRecording();
+    }
     if (stopFallbackRef.current) {
       clearTimeout(stopFallbackRef.current);
     }
@@ -353,8 +581,12 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                   autoplay={true}
                   paused={false}
                   onError={() => {
+                    setIsStreamReady(false);
                     setConnectError(t('wifiCameraRecord.previewError'));
                     setRtspUrl('');
+                  }}
+                  onPlaying={() => {
+                    setIsStreamReady(true);
                   }}
                   onRecordingCreated={handleRecordingCreated}
                 />
@@ -414,10 +646,11 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
               style={[
                 styles.recordButton,
                 isRecording && styles.recordButtonActive,
-                (!rtspUrl || isConnecting) && styles.recordButtonDisabled,
+                (!rtspUrl || isConnecting || !isStreamReady) &&
+                  styles.recordButtonDisabled,
               ]}
               onPress={handleRecordPress}
-              disabled={!rtspUrl || isConnecting}
+              disabled={!rtspUrl || isConnecting || !isStreamReady}
             >
               <MaterialCommunityIcons
                 name={isRecording ? 'stop-circle' : 'record-circle-outline'}

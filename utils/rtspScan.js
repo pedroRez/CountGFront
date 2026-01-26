@@ -130,7 +130,7 @@ const probeRtspPath = (
   port,
   path,
   timeoutMs,
-  { allowConnectOnly } = {}
+  { allowConnectOnly, onLog } = {}
 ) =>
   new Promise((resolve) => {
     let done = false;
@@ -159,6 +159,9 @@ const probeRtspPath = (
     socket = TcpSocket.createConnection({ host: ip, port }, () => {
       if (done) return;
       connected = true;
+      if (typeof onLog === 'function') {
+        onLog('[rtsp-scan] connected', ip, port);
+      }
       const request = buildOptionsRequest(ip, port, path);
       try {
         socket.write(request);
@@ -168,6 +171,15 @@ const probeRtspPath = (
     });
 
     timer = setTimeout(() => {
+      if (typeof onLog === 'function') {
+        onLog(
+          '[rtsp-scan] timeout',
+          ip,
+          port,
+          `connected=${connected ? 'yes' : 'no'}`,
+          `response=${sawResponse ? 'yes' : 'no'}`
+        );
+      }
       if (allowConnectOnly && connected) {
         finish({
           ip,
@@ -185,6 +197,9 @@ const probeRtspPath = (
 
     socket.on('data', (data) => {
       sawResponse = true;
+      if (typeof onLog === 'function') {
+        onLog('[rtsp-scan] response', ip, port);
+      }
       buffer += data?.toString ? data.toString('utf8') : String(data);
       if (buffer.includes('RTSP/1.0')) {
         const hints = extractMatchHints(buffer);
@@ -199,8 +214,18 @@ const probeRtspPath = (
       }
     });
 
-    socket.on('error', () => finish(null));
-    socket.on('close', () => finish(null));
+    socket.on('error', (error) => {
+      if (typeof onLog === 'function') {
+        onLog('[rtsp-scan] error', ip, port, error?.message || 'unknown');
+      }
+      finish(null);
+    });
+    socket.on('close', () => {
+      if (typeof onLog === 'function' && !done) {
+        onLog('[rtsp-scan] close', ip, port);
+      }
+      finish(null);
+    });
 
     followupTimer = setTimeout(() => {
       if (!connected || sawResponse || done) return;
@@ -219,12 +244,15 @@ export const scanRtspDevices = async ({
   paths = DEFAULT_PATHS,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   concurrency = DEFAULT_CONCURRENCY,
+  probeDelayMs = 0,
   matchHint = null,
   verifyOnvifPort = null,
   verifyTimeoutMs = DEFAULT_HTTP_TIMEOUT_MS,
   allowConnectOnly = DEFAULT_ALLOW_CONNECT_ONLY,
   debug = DEFAULT_DEBUG,
   onLog = null,
+  hostMin = 1,
+  hostMax = 254,
 } = {}) => {
   const log = (...args) => {
     if (debug) {
@@ -243,23 +271,27 @@ export const scanRtspDevices = async ({
   if (!prefix) return [];
 
   const normalizedPaths = paths.map(normalizePath);
+  const safeMin = Math.min(Math.max(1, hostMin), 254);
+  const safeMax = Math.min(Math.max(safeMin, hostMax), 254);
   const ips = [];
-  for (let i = 1; i <= 254; i += 1) {
+  for (let i = safeMin; i <= safeMax; i += 1) {
     ips.push(`${prefix}.${i}`);
   }
 
   const results = [];
   let index = 0;
 
-  log('[rtsp-scan] start', `prefix=${prefix}`);
+  log('[rtsp-scan] start', `prefix=${prefix}`, `range=${safeMin}-${safeMax}`);
 
   const worker = async () => {
     while (index < ips.length) {
       const ip = ips[index];
       index += 1;
       for (const path of normalizedPaths) {
+        log('[rtsp-scan] probe', ip, `path=${path}`);
         const hit = await probeRtspPath(ip, port, path, timeoutMs, {
           allowConnectOnly,
+          onLog: (msg, ...rest) => log(msg, ...rest),
         });
         if (hit) {
           let onvifOk = true;
@@ -287,11 +319,15 @@ export const scanRtspDevices = async ({
             ip,
             `realm=${hit.realm || '-'}`,
             `server=${hit.server || '-'}`,
-            `onvif=${onvifOk}`
+            `onvif=${onvifOk}`,
+            `connectOnly=${hit.connectOnly ? 'yes' : 'no'}`
           );
           results.push(hit);
           break;
         }
+      }
+      if (probeDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, probeDelayMs));
       }
     }
   };

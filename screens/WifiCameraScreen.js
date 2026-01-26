@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -14,14 +14,19 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import BigButton from '../components/BigButton';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
-import { filterRtspDevices, scanRtspDevices } from '../utils/rtspScan';
+import { scanRtspDevices } from '../utils/rtspScan';
 
 const DEFAULT_ONVIF_USERNAME = 'admin';
 const COMMON_PREFIXES = ['192.168.0'];
+const DEFAULT_HOST_MIN = 10;
+const DEFAULT_HOST_MAX = 20;
+const WIFI_CAMERA_CREDENTIALS_KEY = '@wifi_camera_credentials';
 
 const isValidIp = (value) => {
   if (!value) return false;
@@ -74,26 +79,85 @@ const WifiCameraScreen = ({ navigation }) => {
   const [username, setUsername] = useState(DEFAULT_ONVIF_USERNAME);
   const [password, setPassword] = useState('');
   const [manualIp, setManualIp] = useState('');
-  const [showLogs, setShowLogs] = useState(false);
-  const [scanLogs, setScanLogs] = useState([]);
+  const [hasSavedCredentials, setHasSavedCredentials] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  const appendLog = useCallback((message) => {
-    setScanLogs((prev) => {
-      const next = prev.concat([message]);
-      return next.length > 200 ? next.slice(-200) : next;
-    });
+  const loadSavedCredentials = useCallback(async (ip) => {
+    setHasSavedCredentials(false);
+    if (!ip) return;
+    try {
+      const raw = await AsyncStorage.getItem(WIFI_CAMERA_CREDENTIALS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const saved = parsed?.[ip];
+      if (!saved) return;
+      if (typeof saved.username === 'string' && saved.username.trim()) {
+        setUsername(saved.username);
+      }
+      if (typeof saved.password === 'string') {
+        setPassword(saved.password);
+      }
+      setHasSavedCredentials(true);
+    } catch (error) {
+      setHasSavedCredentials(false);
+    }
   }, []);
 
-  const clearLogs = useCallback(() => {
-    setScanLogs([]);
+  const saveCredentials = useCallback(async (ip, user, pass) => {
+    if (!ip || !pass) return;
+    try {
+      const raw = await AsyncStorage.getItem(WIFI_CAMERA_CREDENTIALS_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      parsed[ip] = {
+        username: user || DEFAULT_ONVIF_USERNAME,
+        password: pass,
+        updatedAt: Date.now(),
+      };
+      await AsyncStorage.setItem(
+        WIFI_CAMERA_CREDENTIALS_KEY,
+        JSON.stringify(parsed)
+      );
+      setHasSavedCredentials(true);
+    } catch (error) {
+      // ignore storage failures
+    }
   }, []);
+
+  const clearSavedCredentials = useCallback(async () => {
+    const ip = selectedDevice?.ip;
+    if (!ip) return;
+    try {
+      const raw = await AsyncStorage.getItem(WIFI_CAMERA_CREDENTIALS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed[ip]) {
+        delete parsed[ip];
+        await AsyncStorage.setItem(
+          WIFI_CAMERA_CREDENTIALS_KEY,
+          JSON.stringify(parsed)
+        );
+      }
+    } catch (error) {
+      // ignore storage failures
+    }
+    setPassword('');
+    setUsername(DEFAULT_ONVIF_USERNAME);
+    setHasSavedCredentials(false);
+  }, [selectedDevice?.ip]);
+
+  useEffect(() => {
+    if (!isAuthVisible || !selectedDevice?.ip) {
+      setHasSavedCredentials(false);
+      return;
+    }
+    void loadSavedCredentials(selectedDevice.ip);
+  }, [isAuthVisible, loadSavedCredentials, selectedDevice?.ip]);
 
   const handleScan = async () => {
     if (isScanning) return;
     setIsScanning(true);
     setErrorMessage('');
     setDevices([]);
-    setScanLogs([]);
     try {
       let nextDevices = [];
       if (!nextDevices.length) {
@@ -102,10 +166,14 @@ const WifiCameraScreen = ({ navigation }) => {
         for (const prefix of prefixes) {
           const scanResults = await scanRtspDevices({
             subnetPrefix: prefix,
+            timeoutMs: 2500,
+            concurrency: 4,
+            probeDelayMs: 120,
             matchHint: 'HIipCamera',
             verifyOnvifPort: [5000, 80],
-            debug: true,
-            onLog: appendLog,
+            hostMin: DEFAULT_HOST_MIN,
+            hostMax: DEFAULT_HOST_MAX,
+            allowConnectOnly: true,
           });
           if (scanResults.length) {
             rtspDevices = scanResults;
@@ -125,6 +193,7 @@ const WifiCameraScreen = ({ navigation }) => {
     setShowAdvanced(false);
     setUsername(DEFAULT_ONVIF_USERNAME);
     setPassword('');
+    setShowPassword(false);
     setIsAuthVisible(true);
   };
 
@@ -133,6 +202,7 @@ const WifiCameraScreen = ({ navigation }) => {
     setSelectedDevice(null);
     setShowAdvanced(false);
     setPassword('');
+    setShowPassword(false);
   };
 
   const handleStartRecording = () => {
@@ -148,6 +218,7 @@ const WifiCameraScreen = ({ navigation }) => {
       return;
     }
     const trimmedUsername = username.trim();
+    void saveCredentials(selectedDevice.ip, trimmedUsername, password);
     const wifiCamera = {
       ip: selectedDevice.ip,
       username: trimmedUsername,
@@ -264,27 +335,6 @@ const WifiCameraScreen = ({ navigation }) => {
             </>
           ) : null}
         </View>
-
-        <View style={styles.card}>
-          <View style={styles.logHeader}>
-            <Text style={styles.sectionTitle}>Scan logs</Text>
-            <TouchableOpacity onPress={clearLogs}>
-              <Text style={styles.logActionText}>Clear</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowLogs((prev) => !prev)}>
-              <Text style={styles.logActionText}>
-                {showLogs ? 'Hide' : 'Show'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          {showLogs ? (
-            <View style={styles.logBox}>
-              <Text style={styles.logText}>
-                {scanLogs.length ? scanLogs.join('\n') : 'No logs yet.'}
-              </Text>
-            </View>
-          ) : null}
-        </View>
       </ScrollView>
       <Modal
         visible={isAuthVisible}
@@ -312,16 +362,42 @@ const WifiCameraScreen = ({ navigation }) => {
               <Text style={styles.inputLabel}>
                 {t('wifiCamera.passwordLabel')}
               </Text>
-              <TextInput
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder={t('wifiCamera.passwordPlaceholder')}
-                placeholderTextColor="#9ca3af"
-              />
+              <View style={styles.passwordRow}>
+                <TextInput
+                  style={[styles.input, styles.passwordInput]}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder={t('wifiCamera.passwordPlaceholder')}
+                  placeholderTextColor="#9ca3af"
+                />
+                <TouchableOpacity
+                  style={styles.passwordToggle}
+                  onPress={() => setShowPassword((prev) => !prev)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('wifiCamera.togglePassword')}
+                >
+                  <MaterialCommunityIcons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color="#6b7280"
+                  />
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.clearCredentialsButton,
+                  !hasSavedCredentials && styles.clearCredentialsButtonDisabled,
+                ]}
+                onPress={clearSavedCredentials}
+                disabled={!hasSavedCredentials}
+              >
+                <Text style={styles.clearCredentialsText}>
+                  {t('wifiCamera.clearCredentials')}
+                </Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.advancedToggle}
                 onPress={() => setShowAdvanced((prev) => !prev)}
@@ -500,6 +576,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9fafb',
     marginBottom: 12,
   },
+  passwordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  passwordInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  passwordToggle: {
+    marginLeft: 8,
+    padding: 8,
+  },
   manualButton: {
     backgroundColor: '#2563eb',
     paddingVertical: 10,
@@ -518,6 +607,18 @@ const styles = StyleSheet.create({
   advancedToggleText: {
     fontSize: 12,
     color: '#2563eb',
+    fontWeight: '600',
+  },
+  clearCredentialsButton: {
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+  },
+  clearCredentialsButtonDisabled: {
+    opacity: 0.5,
+  },
+  clearCredentialsText: {
+    fontSize: 12,
+    color: '#6b7280',
     fontWeight: '600',
   },
   modalActions: {
@@ -547,29 +648,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     fontSize: 14,
-  },
-  logHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  logActionText: {
-    fontSize: 12,
-    color: '#2563eb',
-    fontWeight: '600',
-  },
-  logBox: {
-    marginTop: 10,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 8,
-    backgroundColor: '#f9fafb',
-  },
-  logText: {
-    fontSize: 11,
-    color: '#374151',
-    lineHeight: 16,
   },
 });
 
