@@ -58,16 +58,27 @@ const getLocalPrefix = async () => {
   return null;
 };
 
-const buildScanPrefixes = async (manualIp) => {
+const buildScanPrefixes = async (manualIp, scanLocalOnly = false) => {
+  const localPrefix = await getLocalPrefix();
+  if (scanLocalOnly) {
+    if (!localPrefix) return [];
+    if (isValidIp(manualIp)) {
+      const manualPrefix = manualIp.split('.').slice(0, 3).join('.');
+      if (manualPrefix === localPrefix) {
+        return [localPrefix];
+      }
+    }
+    return [localPrefix];
+  }
   if (isValidIp(manualIp)) {
     return [manualIp.split('.').slice(0, 3).join('.')];
   }
-  const localPrefix = await getLocalPrefix();
   if (!localPrefix) return [...COMMON_PREFIXES];
   if (localPrefix.startsWith('192.168.')) {
     return [localPrefix];
   }
-  return [localPrefix, ...COMMON_PREFIXES];
+  const ordered = [...COMMON_PREFIXES, localPrefix];
+  return Array.from(new Set(ordered.filter(Boolean)));
 };
 
 const WifiCameraScreen = ({ navigation }) => {
@@ -83,6 +94,7 @@ const WifiCameraScreen = ({ navigation }) => {
   const [manualIp, setManualIp] = useState('');
   const [hasSavedCredentials, setHasSavedCredentials] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const scanLocalOnly = true;
 
   const loadSavedCredentials = useCallback(async (ip) => {
     setHasSavedCredentials(false);
@@ -184,14 +196,18 @@ const WifiCameraScreen = ({ navigation }) => {
       }
 
       if (!nextDevices.length) {
-        const prefixes = await buildScanPrefixes(manualIp);
+        const prefixes = await buildScanPrefixes(manualIp, scanLocalOnly);
+        if (!prefixes.length) {
+          setErrorMessage(t('wifiCamera.networkNotDetected'));
+          return;
+        }
         let rtspDevices = [];
         for (const prefix of prefixes) {
           const scanResults = await scanRtspDevices({
             subnetPrefix: prefix,
-            timeoutMs: 2500,
-            concurrency: 4,
-            probeDelayMs: 120,
+            timeoutMs: 1800,
+            concurrency: 10,
+            probeDelayMs: 60,
             matchHint: null,
             verifyOnvifPort: [5000, 80],
             username: lastPassword ? DEFAULT_ONVIF_USERNAME : null,
@@ -289,7 +305,6 @@ const WifiCameraScreen = ({ navigation }) => {
           onPress={handleScan}
           disabled={isScanning}
         />
-
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>
             {t('wifiCamera.manualIpTitle')}

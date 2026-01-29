@@ -277,11 +277,35 @@ const probeRtspPath = (
       if (typeof onLog === 'function') {
         onLog('[rtsp-scan] error', ip, port, error?.message || 'unknown');
       }
+      if (allowConnectOnly && connected && !sawResponse) {
+        finish({
+          ip,
+          rtspPath: path,
+          rtspPort: port,
+          realm: null,
+          server: null,
+          source: 'rtsp-scan',
+          connectOnly: true,
+        });
+        return;
+      }
       finish(null);
     });
     socket.on('close', () => {
       if (typeof onLog === 'function' && !done) {
         onLog('[rtsp-scan] close', ip, port);
+      }
+      if (allowConnectOnly && connected && !sawResponse) {
+        finish({
+          ip,
+          rtspPath: path,
+          rtspPort: port,
+          realm: null,
+          server: null,
+          source: 'rtsp-scan',
+          connectOnly: true,
+        });
+        return;
       }
       finish(null);
     });

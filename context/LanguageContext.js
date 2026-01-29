@@ -175,6 +175,8 @@ const translations = {
       subtitle: 'Busque cameras ONVIF na rede local.',
       hint:
         'Ative ONVIF na camera. Se ela nao suportar, use o IP manual.',
+      scanLocalOnly: 'Buscar apenas na rede atual do celular',
+      networkNotDetected: 'Nao foi possivel identificar a rede do celular.',
       scan: 'Buscar cameras',
       scanning: 'Buscando...',
       manualIpTitle: 'Conectar por IP',
@@ -554,6 +556,8 @@ const translations = {
       subtitle: 'Search for ONVIF cameras on the local network.',
       hint:
         'Enable ONVIF on the camera. If it is not supported, use the IP manually.',
+      scanLocalOnly: 'Scan only the phone current network',
+      networkNotDetected: 'Could not identify the phone network.',
       scan: 'Find cameras',
       scanning: 'Scanning...',
       manualIpTitle: 'Connect by IP',
