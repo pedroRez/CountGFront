@@ -182,24 +182,18 @@ const WifiCameraScreen = ({ navigation }) => {
         lastPassword = null;
       }
 
-      let nextDevices = [];
-      try {
-        const onvifDevices = await discoverOnvifDevices({
-          timeoutMs: 4500,
-          retries: 3,
-        });
-        if (Array.isArray(onvifDevices) && onvifDevices.length) {
-          nextDevices = onvifDevices;
-        }
-      } catch (error) {
-        // ignore discovery errors and fallback to RTSP scan
-      }
+      const preferVerified = (items) => {
+        if (!Array.isArray(items) || !items.length) return [];
+        const verified = items.filter(
+          (item) => !item?.connectOnly || item?.onvifOk
+        );
+        return verified.length ? verified : items;
+      };
 
-      if (!nextDevices.length) {
-        const prefixes = await buildScanPrefixes(manualIp, scanLocalOnly);
+      const runRtspScan = async (localOnly) => {
+        const prefixes = await buildScanPrefixes(manualIp, localOnly);
         if (!prefixes.length) {
-          setErrorMessage(t('wifiCamera.networkNotDetected'));
-          return;
+          return { prefixes, results: [] };
         }
         let rtspDevices = [];
         for (const prefix of prefixes) {
@@ -220,6 +214,40 @@ const WifiCameraScreen = ({ navigation }) => {
             rtspDevices = scanResults;
             break;
           }
+        }
+        return { prefixes, results: preferVerified(rtspDevices) };
+      };
+
+      let nextDevices = [];
+      try {
+        const onvifDevices = await discoverOnvifDevices({
+          timeoutMs: 4500,
+          retries: 3,
+        });
+        if (Array.isArray(onvifDevices) && onvifDevices.length) {
+          nextDevices = onvifDevices;
+        }
+      } catch (error) {
+        // ignore discovery errors and fallback to RTSP scan
+      }
+
+      if (!nextDevices.length) {
+        const primaryScan = await runRtspScan(scanLocalOnly);
+        let rtspDevices = primaryScan.results;
+        if (!rtspDevices.length && scanLocalOnly) {
+          const fallbackScan = await runRtspScan(false);
+          rtspDevices = fallbackScan.results;
+          if (
+            !rtspDevices.length &&
+            !primaryScan.prefixes.length &&
+            !fallbackScan.prefixes.length
+          ) {
+            setErrorMessage(t('wifiCamera.networkNotDetected'));
+            return;
+          }
+        } else if (!rtspDevices.length && !primaryScan.prefixes.length) {
+          setErrorMessage(t('wifiCamera.networkNotDetected'));
+          return;
         }
         nextDevices = Array.isArray(rtspDevices) ? rtspDevices : [];
       }

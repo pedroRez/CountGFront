@@ -406,6 +406,7 @@ export const scanRtspDevices = async ({
               continue;
             }
           }
+          const enrichedHit = { ...hit, onvifOk };
           log(
             '[rtsp-scan] hit',
             ip,
@@ -414,7 +415,7 @@ export const scanRtspDevices = async ({
             `onvif=${onvifOk}`,
             `connectOnly=${hit.connectOnly ? 'yes' : 'no'}`
           );
-          results.push(hit);
+          results.push(enrichedHit);
           break;
         }
       }
@@ -504,6 +505,7 @@ export const filterRtspDevices = async ({
             continue;
           }
         }
+        const enrichedHit = { ...hit, onvifOk };
         log(
           '[rtsp-filter] hit',
           ip,
@@ -511,7 +513,7 @@ export const filterRtspDevices = async ({
           `server=${hit.server || '-'}`,
           `onvif=${onvifOk}`
         );
-        results.push(hit);
+        results.push(enrichedHit);
         break;
       }
     }
