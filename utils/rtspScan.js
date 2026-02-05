@@ -332,6 +332,7 @@ export const scanRtspDevices = async ({
   verifyOnvifPort = null,
   verifyTimeoutMs = DEFAULT_HTTP_TIMEOUT_MS,
   allowConnectOnly = DEFAULT_ALLOW_CONNECT_ONLY,
+  verifyConnectOnly = true,
   debug = DEFAULT_DEBUG,
   onLog = null,
   username = null,
@@ -386,6 +387,29 @@ export const scanRtspDevices = async ({
               : null,
         });
         if (hit) {
+          if (hit.connectOnly && verifyConnectOnly) {
+            const verifyHit = await probeRtspPath(
+              ip,
+              port,
+              path,
+              Math.max(timeoutMs * 2, 2500),
+              {
+                allowConnectOnly: false,
+                onLog: (msg, ...rest) => log(msg, ...rest),
+                auth:
+                  username || password
+                    ? {
+                        username,
+                        password,
+                      }
+                    : null,
+              }
+            );
+            if (!verifyHit) {
+              log('[rtsp-scan] connectOnly reject', ip);
+              continue;
+            }
+          }
           let onvifOk = true;
           if (verifyOnvifPort) {
             onvifOk = await verifyOnvifService(

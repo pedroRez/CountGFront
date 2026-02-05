@@ -58,6 +58,20 @@ const getLocalPrefix = async () => {
   return null;
 };
 
+const getLocalIp = async () => {
+  const netInfo = NativeModules?.NetworkInfo;
+  if (!netInfo?.getIpAddress) return null;
+  try {
+    const ip = await netInfo.getIpAddress();
+    if (typeof ip === 'string' && ip.includes('.')) {
+      return ip;
+    }
+  } catch (error) {
+    // ignore ip lookup errors
+  }
+  return null;
+};
+
 const buildScanPrefixes = async (manualIp, scanLocalOnly = false) => {
   const localPrefix = await getLocalPrefix();
   if (scanLocalOnly) {
@@ -176,6 +190,7 @@ const WifiCameraScreen = ({ navigation }) => {
     setDevices([]);
     try {
       let lastPassword = null;
+      const localIp = await getLocalIp();
       try {
         lastPassword = await AsyncStorage.getItem(WIFI_CAMERA_LAST_PASSWORD_KEY);
       } catch (error) {
@@ -187,7 +202,10 @@ const WifiCameraScreen = ({ navigation }) => {
         const verified = items.filter(
           (item) => !item?.connectOnly || item?.onvifOk
         );
-        return verified.length ? verified : items;
+        const cleaned = (verified.length ? verified : items).filter(
+          (item) => item?.ip && item.ip !== localIp
+        );
+        return cleaned;
       };
 
       const runRtspScan = async (localOnly) => {
@@ -204,6 +222,7 @@ const WifiCameraScreen = ({ navigation }) => {
             probeDelayMs: 60,
             matchHint: null,
             verifyOnvifPort: [5000, 80],
+            verifyConnectOnly: true,
             username: lastPassword ? DEFAULT_ONVIF_USERNAME : null,
             password: lastPassword || null,
             hostMin: DEFAULT_HOST_MIN,
