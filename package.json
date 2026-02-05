@@ -1,6 +1,6 @@
 {
   "name": "countgfront",
-  "version": "1.0.0",
+  "version": "1.0.10",
   "description": "Mobile interface for the CountG project built with React Native and Expo.",
   "license": "MIT",
   "repository": {
