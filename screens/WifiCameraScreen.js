@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
 import BigButton from '../components/BigButton';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
@@ -56,6 +57,26 @@ const getLocalPrefix = async () => {
     // ignore ip lookup errors
   }
   return null;
+};
+
+const extractHostIp = (value) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const withoutScheme = raw.replace(/^https?:\/\//i, '');
+  const hostPart = withoutScheme.split('/')[0];
+  const host = hostPart.split(':')[0];
+  return isValidIp(host) ? host : null;
+};
+
+const getDevServerIp = () => {
+  const fromExpoConfig = extractHostIp(Constants?.expoConfig?.hostUri);
+  if (fromExpoConfig) return fromExpoConfig;
+  const fromManifest2 = extractHostIp(
+    Constants?.manifest2?.extra?.expoClient?.hostUri
+  );
+  if (fromManifest2) return fromManifest2;
+  return extractHostIp(Constants?.manifest?.hostUri);
 };
 
 const getLocalIp = async () => {
@@ -191,6 +212,7 @@ const WifiCameraScreen = ({ navigation }) => {
     try {
       let lastPassword = null;
       const localIp = await getLocalIp();
+      const devServerIp = getDevServerIp();
       try {
         lastPassword = await AsyncStorage.getItem(WIFI_CAMERA_LAST_PASSWORD_KEY);
       } catch (error) {
@@ -202,9 +224,12 @@ const WifiCameraScreen = ({ navigation }) => {
         const verified = items.filter(
           (item) => !item?.connectOnly || item?.onvifOk
         );
-        const cleaned = (verified.length ? verified : items).filter(
-          (item) => item?.ip && item.ip !== localIp
-        );
+        const cleaned = (verified.length ? verified : items).filter((item) => {
+          if (!item?.ip) return false;
+          if (item.ip === localIp) return false;
+          if (devServerIp && item.ip === devServerIp) return false;
+          return true;
+        });
         return cleaned;
       };
 
@@ -217,17 +242,16 @@ const WifiCameraScreen = ({ navigation }) => {
         for (const prefix of prefixes) {
           const scanResults = await scanRtspDevices({
             subnetPrefix: prefix,
-            timeoutMs: 1800,
+            timeoutMs: 2500,
             concurrency: 10,
             probeDelayMs: 60,
             matchHint: null,
-            verifyOnvifPort: [5000, 80],
-            verifyConnectOnly: true,
+            verifyOnvifPort: [80, 5000, 8000, 8080, 8899],
             username: lastPassword ? DEFAULT_ONVIF_USERNAME : null,
             password: lastPassword || null,
             hostMin: DEFAULT_HOST_MIN,
             hostMax: DEFAULT_HOST_MAX,
-            allowConnectOnly: true,
+            allowConnectOnly: false,
           });
           if (scanResults.length) {
             rtspDevices = scanResults;
