@@ -41,6 +41,8 @@ const PRIMARY_CAMERA_IP = '192.168.0.14';
 const PRIMARY_PREFIX = '192.168.0';
 const WIFI_CAMERA_CREDENTIALS_KEY = '@wifi_camera_credentials';
 const WIFI_CAMERA_LAST_PASSWORD_KEY = '@wifi_camera_last_password';
+const CAMERA_DISCOVERY_DEBUG_UI =
+  String(process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG || '') === '1';
 
 const isValidIp = (value) => {
   if (!value) return false;
@@ -721,86 +723,103 @@ const WifiCameraScreen = ({ navigation }) => {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>{t('wifiCamera.title')}</Text>
-        <Text style={styles.subtitle}>{t('wifiCamera.subtitle')}</Text>
+        <View style={styles.header}>
+          <Text style={styles.title}>{t('wifiCamera.title')}</Text>
+          <Text style={styles.subtitle}>{t('wifiCamera.subtitle')}</Text>
+        </View>
 
-        <View style={styles.card}>
+        <View style={styles.actionsCard}>
+          <BigButton
+            title={isScanning ? t('wifiCamera.scanning') : t('wifiCamera.scan')}
+            onPress={handleScan}
+            disabled={isScanning}
+          />
+          <View style={styles.manualBlock}>
+            <Text style={styles.inputLabel}>
+              {t('wifiCamera.manualIpLabel')}
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={manualIp}
+              onChangeText={setManualIp}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="numeric"
+              placeholder={t('wifiCamera.manualIpPlaceholder')}
+              placeholderTextColor="#9ca3af"
+            />
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={handleManualConnect}
+            >
+              <Text style={styles.secondaryButtonText}>
+                {t('wifiCamera.manualIpTitle')}
+              </Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.hintText}>{t('wifiCamera.hint')}</Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>{t('wifiCamera.statusTitle')}</Text>
-          <Text style={styles.statusText}>
-            {scanStage || t('wifiCamera.statusIdle')}
-          </Text>
-          {scanStageDetail ? (
-            <Text style={styles.statusDetail}>{scanStageDetail}</Text>
-          ) : null}
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>
-              {t('wifiCamera.forcePrefixLabel')}
+        {CAMERA_DISCOVERY_DEBUG_UI ? (
+          <View style={styles.debugCard}>
+            <Text style={styles.sectionTitle}>
+              {t('wifiCamera.statusTitle')}
             </Text>
-            <Switch
-              value={forceLocalPrefix}
-              onValueChange={setForceLocalPrefix}
-            />
+            <Text style={styles.statusText}>
+              {scanStage || t('wifiCamera.statusIdle')}
+            </Text>
+            {scanStageDetail ? (
+              <Text style={styles.statusDetail}>{scanStageDetail}</Text>
+            ) : null}
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>
+                {t('wifiCamera.forcePrefixLabel')}
+              </Text>
+              <Switch
+                value={forceLocalPrefix}
+                onValueChange={setForceLocalPrefix}
+              />
+            </View>
+            {!scanMeta.localIp ? (
+              <Text style={styles.helperText}>
+                {t('wifiCamera.forcePrefixHint')}
+              </Text>
+            ) : null}
+            {scanMeta.forcedByEnv ? (
+              <Text style={styles.helperText}>
+                {t('wifiCamera.forcePrefixEnv')}
+              </Text>
+            ) : null}
+            <TouchableOpacity
+              style={styles.logButton}
+              onPress={handleCopyLogs}
+            >
+              <Text style={styles.logButtonText}>
+                {t('wifiCamera.copyLogs')}
+              </Text>
+            </TouchableOpacity>
           </View>
-          {!scanMeta.localIp ? (
-            <Text style={styles.helperText}>
-              {t('wifiCamera.forcePrefixHint')}
+        ) : null}
+
+        <View style={styles.resultsCard}>
+          <View style={styles.resultsHeader}>
+            <Text style={styles.sectionTitle}>
+              {t('wifiCamera.resultsTitle')}
             </Text>
-          ) : null}
-          {scanMeta.forcedByEnv ? (
-            <Text style={styles.helperText}>
-              {t('wifiCamera.forcePrefixEnv')}
-            </Text>
-          ) : null}
-        </View>
+            {!isScanning && devices.length > 0 ? (
+              <Text style={styles.metaText}>
+                {t('wifiCamera.foundCount', { count: devices.length })}
+              </Text>
+            ) : null}
+          </View>
 
-        <BigButton
-          title={isScanning ? t('wifiCamera.scanning') : t('wifiCamera.scan')}
-          onPress={handleScan}
-          disabled={isScanning}
-        />
-
-        <TouchableOpacity
-          style={styles.logButton}
-          onPress={handleCopyLogs}
-        >
-          <Text style={styles.logButtonText}>
-            {t('wifiCamera.copyLogs')}
-          </Text>
-        </TouchableOpacity>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>
-            {t('wifiCamera.manualIpTitle')}
-          </Text>
-          <Text style={styles.inputLabel}>{t('wifiCamera.manualIpLabel')}</Text>
-          <TextInput
-            style={styles.input}
-            value={manualIp}
-            onChangeText={setManualIp}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="numeric"
-            placeholder={t('wifiCamera.manualIpPlaceholder')}
-            placeholderTextColor="#9ca3af"
-          />
-          <TouchableOpacity
-            style={styles.manualButton}
-            onPress={handleManualConnect}
-          >
-            <Text style={styles.manualButtonText}>
-              {t('wifiCamera.manualIpConnect')}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>{t('wifiCamera.resultsTitle')}</Text>
           {isScanning && (
-            <CustomActivityIndicator size="large" color="#007AFF" />
+            <View style={styles.scanningRow}>
+              <CustomActivityIndicator size="large" color="#007AFF" />
+              <Text style={styles.scanningText}>
+                {t('wifiCamera.scanning')}
+              </Text>
+            </View>
           )}
 
           {!isScanning && errorMessage ? (
@@ -812,42 +831,48 @@ const WifiCameraScreen = ({ navigation }) => {
           {!isScanning && !errorMessage && devices.length === 0 ? (
             <View>
               <Text style={styles.helperText}>{t('wifiCamera.noResults')}</Text>
-              <Text style={styles.metaText}>
-                {t('wifiCamera.noResultsDetailsTitle')}
-              </Text>
-              {buildNoResultsDetails().map((line) => (
-                <Text key={line} style={styles.helperText}>
-                  {line}
-                </Text>
-              ))}
+              {CAMERA_DISCOVERY_DEBUG_UI ? (
+                <>
+                  <Text style={styles.metaText}>
+                    {t('wifiCamera.noResultsDetailsTitle')}
+                  </Text>
+                  {buildNoResultsDetails().map((line) => (
+                    <Text key={line} style={styles.helperText}>
+                      {line}
+                    </Text>
+                  ))}
+                </>
+              ) : null}
             </View>
           ) : null}
 
           {!isScanning && devices.length > 0 ? (
             <>
-              <Text style={styles.metaText}>
-              {t('wifiCamera.foundCount', { count: devices.length })}
-            </Text>
-            {devices.map((device) => (
-              <View key={device.ip} style={styles.resultRow}>
-                <View style={styles.resultRowHeader}>
-                  <Text style={styles.resultTitle}>
-                    {t('wifiCamera.deviceLabel', { ip: device.ip })}
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.connectButton}
-                    onPress={() => openAuthModal(device)}
-                  >
-                    <Text style={styles.connectButtonText}>
-                      {t('wifiCamera.connect')}
+              {devices.map((device) => (
+                <View key={device.ip} style={styles.resultCard}>
+                  <View style={styles.resultRowHeader}>
+                    <Text style={styles.resultTitle}>
+                      {t('wifiCamera.deviceLabel', { ip: device.ip })}
                     </Text>
-                  </TouchableOpacity>
-                </View>
-                {(device.xaddrs || []).map((url) => (
-                  <Text key={`${device.ip}-${url}`} style={styles.resultSubtitle}>
-                    {t('wifiCamera.xaddrsLabel', { url })}
-                  </Text>
-                ))}
+                    <TouchableOpacity
+                      style={styles.connectButton}
+                      onPress={() => openAuthModal(device)}
+                    >
+                      <Text style={styles.connectButtonText}>
+                        {t('wifiCamera.connect')}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  {CAMERA_DISCOVERY_DEBUG_UI
+                    ? (device.xaddrs || []).map((url) => (
+                        <Text
+                          key={`${device.ip}-${url}`}
+                          style={styles.resultSubtitle}
+                        >
+                          {t('wifiCamera.xaddrsLabel', { url })}
+                        </Text>
+                      ))
+                    : null}
                 </View>
               ))}
             </>
@@ -969,28 +994,44 @@ const WifiCameraScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f2f5' },
+  container: { flex: 1, backgroundColor: '#f3f4f6' },
   content: { padding: 20, flexGrow: 1 },
+  header: { alignItems: 'center', marginBottom: 14 },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '700',
     textAlign: 'center',
+    color: '#111827',
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#4b5563',
     textAlign: 'center',
     marginTop: 6,
-    marginBottom: 16,
   },
-  card: {
+  actionsCard: {
     backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 15,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    gap: 12,
+  },
+  resultsCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
     marginBottom: 12,
   },
+  debugCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
   hintText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#6b7280',
   },
   statusText: {
@@ -1023,6 +1064,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     color: '#111827',
   },
+  resultsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
   helperText: {
     fontSize: 12,
     color: '#6b7280',
@@ -1036,13 +1083,26 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginBottom: 8,
   },
-  resultRow: {
+  scanningRow: {
+    alignItems: 'center',
+    gap: 10,
+    marginVertical: 10,
+  },
+  scanningText: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '600',
+  },
+  resultCard: {
     borderWidth: 1,
     borderColor: '#e5e7eb',
     borderRadius: 8,
     padding: 10,
     marginBottom: 8,
     backgroundColor: '#f9fafb',
+  },
+  manualBlock: {
+    gap: 8,
   },
   resultRowHeader: {
     flexDirection: 'row',
@@ -1072,10 +1132,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  secondaryButton: {
+    backgroundColor: '#111827',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
   logButton: {
     alignSelf: 'center',
     marginTop: 8,
-    marginBottom: 12,
+    marginBottom: 2,
     paddingHorizontal: 16,
     paddingVertical: 10,
     backgroundColor: '#0f172a',
@@ -1144,17 +1215,6 @@ const styles = StyleSheet.create({
   passwordToggle: {
     marginLeft: 8,
     padding: 8,
-  },
-  manualButton: {
-    backgroundColor: '#2563eb',
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  manualButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
   },
   advancedToggle: {
     alignSelf: 'flex-start',

@@ -172,9 +172,8 @@ const translations = {
     },
     wifiCamera: {
       title: 'Camera Wi-Fi',
-      subtitle: 'Busque cameras ONVIF na rede local.',
-      hint:
-        'Ative ONVIF na camera. Se ela nao suportar, use o IP manual.',
+      subtitle: 'Toque em "Buscar cameras" para localizar na rede.',
+      hint: 'Ative ONVIF na camera. Se nao aparecer, conecte pelo IP.',
       statusTitle: 'Status da busca',
       statusIdle: 'Aguardando inicio da busca',
       scanLocalOnly: 'Buscar apenas na rede atual do celular',
@@ -577,9 +576,8 @@ const translations = {
     },
     wifiCamera: {
       title: 'Wi-Fi Camera',
-      subtitle: 'Search for ONVIF cameras on the local network.',
-      hint:
-        'Enable ONVIF on the camera. If it is not supported, use the IP manually.',
+      subtitle: 'Tap "Find cameras" to search on your network.',
+      hint: 'Enable ONVIF on the camera. If it does not show up, connect by IP.',
       statusTitle: 'Scan status',
       statusIdle: 'Waiting to start scan',
       scanLocalOnly: 'Scan only the phone current network',
