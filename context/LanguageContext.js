@@ -252,6 +252,8 @@ const translations = {
         'O player nao respondeu ao comando de gravacao. Recompile o app para aplicar as alteracoes nativas.',
       recordErrorTitle: 'Erro de gravacao',
       recordErrorMessage: 'Nao foi possivel gravar o video.',
+      fileSystemUnavailable:
+        'Modulo de arquivos indisponivel neste build. Refaca o build incluindo expo-file-system.',
       recordTooShortTitle: 'Gravacao muito curta',
       recordTooShortMessage:
         'O video ficou muito curto. Tente gravar por mais tempo.',
@@ -656,6 +658,8 @@ const translations = {
         'The player did not respond to the record command. Rebuild the app to apply native changes.',
       recordErrorTitle: 'Recording error',
       recordErrorMessage: 'Could not record the video.',
+      fileSystemUnavailable:
+        'File module unavailable in this build. Rebuild including expo-file-system.',
       recordTooShortTitle: 'Recording too short',
       recordTooShortMessage:
         'The video was too short. Record for longer.',

@@ -32,6 +32,11 @@ const VLC_MEDIA_OPTIONS = [':network-caching=300', ':rtsp-tcp'];
 const RECORDING_EXTENSION = 'mp4';
 const RECORDING_READY_DELAY_MS = 150;
 const RECORDING_READY_ATTEMPTS = 8;
+const FILESYSTEM_DEBUG_UI =
+  String(process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG || '') === '1';
+
+const isNonEmptyString = (value) =>
+  typeof value === 'string' && value.trim().length > 0;
 
 const formatSecondsToMMSS = (totalSeconds) => {
   if (!Number.isFinite(totalSeconds) || totalSeconds < 0) totalSeconds = 0;
@@ -139,31 +144,50 @@ const findLatestRecording = async (directory, sinceMs = 0) => {
   return bestPath;
 };
 
-const resolveRecordingDirectory = async () => {
-  const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
-  if (!baseDir) {
+const getRecordingDir = async () => {
+  const docDir = isNonEmptyString(FileSystem.documentDirectory)
+    ? FileSystem.documentDirectory
+    : null;
+  const cacheDir = isNonEmptyString(FileSystem.cacheDirectory)
+    ? FileSystem.cacheDirectory
+    : null;
+
+  const ensureDir = async (base) => {
+    if (!base) return null;
+    const dir = normalizeDirectoryPath(`${base}recordings`);
+    try {
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+    } catch (error) {
+      // ignore mkdir errors
+    }
+    try {
+      const info = await FileSystem.getInfoAsync(dir);
+      if (info?.exists) {
+        return stripFileScheme(dir);
+      }
+    } catch (error) {
+      // ignore
+    }
+    return null;
+  };
+
+  const preferred = await ensureDir(docDir);
+  if (preferred) {
     return {
-      path: null,
-      reason: 'fs-unavailable',
+      path: preferred,
+      debug: { docDir, cacheDir },
     };
   }
-  const targetDir = `${baseDir}wifi_recordings`;
-  let targetExists = false;
-  try {
-    await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true });
-  } catch (error) {
-    // Directory already exists or is not accessible.
+  const fallback = await ensureDir(cacheDir);
+  if (fallback) {
+    return {
+      path: fallback,
+      debug: { docDir, cacheDir },
+    };
   }
-  try {
-    const info = await FileSystem.getInfoAsync(targetDir);
-    targetExists = Boolean(info?.exists);
-  } catch (error) {
-    targetExists = false;
-  }
-  const selected = targetExists ? targetDir : baseDir;
   return {
-    path: stripFileScheme(selected),
-    reason: targetExists ? null : 'fallback-base',
+    path: null,
+    debug: { docDir, cacheDir },
   };
 };
 
@@ -293,7 +317,25 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
         return;
       }
 
-      const { uri: outputUri, info } = fileResult;
+      let { uri: outputUri, info } = fileResult;
+      const targetPath = recordingFileRef.current;
+      if (targetPath && outputUri) {
+        const targetUri = ensureFileUri(targetPath);
+        if (targetUri && targetUri !== outputUri) {
+          try {
+            await FileSystem.moveAsync({ from: outputUri, to: targetUri });
+            const movedInfo = await FileSystem.getInfoAsync(targetUri, {
+              size: true,
+            });
+            if (movedInfo?.exists) {
+              outputUri = targetUri;
+              info = movedInfo;
+            }
+          } catch (error) {
+            // ignore move failures
+          }
+        }
+      }
       if (!info?.exists || !info.size || info.size < MIN_FILE_BYTES) {
         Alert.alert(
           t('wifiCameraRecord.recordTooShortTitle'),
@@ -458,6 +500,25 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     if (isRecording) return;
     if (recordingPendingRef.current) return;
     recordingPendingRef.current = true;
+    const docDir = isNonEmptyString(FileSystem.documentDirectory)
+      ? FileSystem.documentDirectory
+      : null;
+    const cacheDir = isNonEmptyString(FileSystem.cacheDirectory)
+      ? FileSystem.cacheDirectory
+      : null;
+    if (!docDir && !cacheDir) {
+      const details = FILESYSTEM_DEBUG_UI
+        ? `\n\nDocDir: ${FileSystem.documentDirectory || '-'}\nCacheDir: ${
+            FileSystem.cacheDirectory || '-'
+          }`
+        : '';
+      Alert.alert(
+        t('wifiCameraRecord.recordErrorTitle'),
+        `${t('wifiCameraRecord.fileSystemUnavailable')}${details}`
+      );
+      recordingPendingRef.current = false;
+      return;
+    }
     const recorderReady = await waitForRecorderReady();
     if (!recorderReady) {
       Alert.alert(
@@ -468,16 +529,17 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
       return;
     }
 
-    const recordingResolution = await resolveRecordingDirectory();
+    const recordingResolution = await getRecordingDir();
     const recordingDir = recordingResolution?.path;
     if (!recordingDir) {
-      const docDir = FileSystem.documentDirectory || '-';
-      const cacheDir = FileSystem.cacheDirectory || '-';
+      const details = FILESYSTEM_DEBUG_UI
+        ? `\n\nDocDir: ${recordingResolution?.debug?.docDir || '-'}\nCacheDir: ${
+            recordingResolution?.debug?.cacheDir || '-'
+          }`
+        : '';
       Alert.alert(
         t('wifiCameraRecord.recordErrorTitle'),
-        buildRecordErrorMessage(
-          `FileSystem indisponivel.\nDocDir: ${docDir}\nCacheDir: ${cacheDir}`
-        )
+        `${t('wifiCameraRecord.fileSystemUnavailable')}${details}`
       );
       recordingPendingRef.current = false;
       return;
