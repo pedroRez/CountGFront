@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -11,9 +11,11 @@ import {
   View,
   UIManager,
   findNodeHandle,
+  NativeModules,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system';
 import { VLCPlayer } from 'react-native-vlc-media-player';
 
@@ -212,6 +214,53 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   const recordingFileRef = useRef(null);
   const recordingStartRef = useRef(0);
   const recordingPendingRef = useRef(false);
+
+  const debugInfo = useMemo(() => {
+    if (!FILESYSTEM_DEBUG_UI) return null;
+    const nativeModules = NativeModules || {};
+    const expoOs =
+      typeof process !== 'undefined' ? process?.env?.EXPO_OS : undefined;
+    const sdkVersion = Constants?.expoConfig?.sdkVersion || null;
+    const fileSystemKeys = Object.keys(FileSystem || {})
+      .slice(0, 40)
+      .join(', ');
+    const nativeModuleKeys = Object.keys(nativeModules)
+      .filter(
+        (key) =>
+          key.toLowerCase().includes('file') ||
+          key.toLowerCase().includes('expo')
+      )
+      .slice(0, 50)
+      .join(', ');
+
+    return {
+      platform: Platform.OS,
+      expoOs,
+      sdkVersion,
+      fileSystemType: typeof FileSystem,
+      documentDirectory: FileSystem?.documentDirectory || '-',
+      cacheDirectory: FileSystem?.cacheDirectory || '-',
+      fileSystemKeys,
+      exponentFileSystemExists: Boolean(nativeModules?.ExponentFileSystem),
+      nativeModuleKeys,
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!FILESYSTEM_DEBUG_UI || !debugInfo) return;
+    console.log('[FS][debug] Platform.OS', debugInfo.platform);
+    console.log('[FS][debug] EXPO_OS', debugInfo.expoOs || '-');
+    console.log('[FS][debug] sdkVersion', debugInfo.sdkVersion || '-');
+    console.log('[FS][debug] typeof FileSystem', debugInfo.fileSystemType);
+    console.log('[FS][debug] documentDirectory', debugInfo.documentDirectory);
+    console.log('[FS][debug] cacheDirectory', debugInfo.cacheDirectory);
+    console.log('[FS][debug] FileSystem keys', debugInfo.fileSystemKeys);
+    console.log(
+      '[FS][debug] ExponentFileSystem exists',
+      debugInfo.exponentFileSystemExists
+    );
+    console.log('[FS][debug] NativeModules keys', debugInfo.nativeModuleKeys);
+  }, [debugInfo]);
 
   const buildRecordErrorMessage = useCallback(
     (details) => {
@@ -621,6 +670,25 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
             ) : null}
           </View>
 
+          {FILESYSTEM_DEBUG_UI && debugInfo ? (
+            <View style={styles.debugPanel}>
+              <Text style={styles.debugTitle}>Filesystem Debug</Text>
+              <Text style={styles.debugText}>
+                {[
+                  `Platform.OS: ${debugInfo.platform}`,
+                  `EXPO_OS: ${debugInfo.expoOs || '-'}`,
+                  `SDK: ${debugInfo.sdkVersion || '-'}`,
+                  `typeof FileSystem: ${debugInfo.fileSystemType}`,
+                  `documentDirectory: ${debugInfo.documentDirectory}`,
+                  `cacheDirectory: ${debugInfo.cacheDirectory}`,
+                  `ExponentFileSystem: ${debugInfo.exponentFileSystemExists}`,
+                  `FileSystem keys: ${debugInfo.fileSystemKeys || '-'}`,
+                  `NativeModules keys: ${debugInfo.nativeModuleKeys || '-'}`,
+                ].join('\n')}
+              </Text>
+            </View>
+          ) : null}
+
           <View style={styles.previewWrapper}>
             {isConnecting ? (
               <View style={styles.centered}>
@@ -839,4 +907,15 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   backButtonText: { color: '#9ca3af', fontSize: 14 },
+  debugPanel: {
+    marginTop: 10,
+    marginHorizontal: 16,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  debugTitle: { color: '#e5e7eb', fontWeight: '700', marginBottom: 6 },
+  debugText: { color: '#9ca3af', fontSize: 12, lineHeight: 16 },
 });
