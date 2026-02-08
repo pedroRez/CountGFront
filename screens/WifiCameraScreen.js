@@ -450,11 +450,17 @@ const WifiCameraScreen = ({ navigation }) => {
         }
         let rtspDevices = [];
         for (const prefix of prefixes) {
+          const metrics = {
+            hits: 0,
+            misses: 0,
+            reasons: {},
+          };
           const scanResults = await scanRtspDevices({
             subnetPrefix: prefix,
             timeoutMs: 2500,
             concurrency: 10,
             probeDelayMs: 60,
+            priorityIps: options.priorityIps || [],
             matchHint: null,
             verifyOnvifPort: [80, 5000, 8000, 8080, 8899],
             username: lastPassword ? DEFAULT_ONVIF_USERNAME : null,
@@ -462,6 +468,28 @@ const WifiCameraScreen = ({ navigation }) => {
             hostMin: DEFAULT_HOST_MIN,
             hostMax: DEFAULT_HOST_MAX,
             allowConnectOnly: false,
+            onStage: (stage, payload) => {
+              if (stage === 'onvif_verify') {
+                setStage(t('wifiCamera.stageOnvifVerify'), payload?.ip || '');
+              }
+              if (stage === 'rtsp_scan') {
+                setStage(t('wifiCamera.stageRtspScan'), payload?.ip || '');
+              }
+            },
+            onHostResult: (result) => {
+              logCameraDiscovery('rtsp_host_result', result);
+              if (result?.result === 'hit') {
+                metrics.hits += 1;
+              } else {
+                metrics.misses += 1;
+                const reason = result?.reason || 'unknown';
+                metrics.reasons[reason] = (metrics.reasons[reason] || 0) + 1;
+              }
+            },
+          });
+          logCameraDiscovery('rtsp_scan_metrics', {
+            prefix,
+            metrics,
           });
           if (scanResults.length) {
             rtspDevices = scanResults;
@@ -497,6 +525,10 @@ const WifiCameraScreen = ({ navigation }) => {
           sanityCheck: sanityDetails,
         }));
       }
+      const priorityIps = [
+        sanityAlive ? sanityTarget : null,
+        isValidIp(manualIp) ? manualIp.trim() : null,
+      ].filter(Boolean);
       try {
         startStageTimer(t('wifiCamera.stageDiscovery'));
         const onvifDevices = await discoverOnvifDevices({
@@ -532,6 +564,7 @@ const WifiCameraScreen = ({ navigation }) => {
             timeoutMs: 2000,
             concurrency: 1,
             probeDelayMs: 0,
+            priorityIps,
             matchHint: null,
             verifyOnvifPort: [80, 5000, 8000, 8080, 8899],
             username: lastPassword ? DEFAULT_ONVIF_USERNAME : null,
@@ -539,6 +572,17 @@ const WifiCameraScreen = ({ navigation }) => {
             hostMin: sanityHostSuffix,
             hostMax: sanityHostSuffix,
             allowConnectOnly: false,
+            onStage: (stage, payload) => {
+              if (stage === 'onvif_verify') {
+                setStage(t('wifiCamera.stageOnvifVerify'), payload?.ip || '');
+              }
+              if (stage === 'rtsp_scan') {
+                setStage(t('wifiCamera.stageRtspScan'), payload?.ip || '');
+              }
+            },
+            onHostResult: (result) => {
+              logCameraDiscovery('rtsp_host_result', result);
+            },
           });
           endStageTimer(t('wifiCamera.stageRtspScan'), {
             results: Array.isArray(sanityResults) ? sanityResults.length : 0,
@@ -552,14 +596,14 @@ const WifiCameraScreen = ({ navigation }) => {
           nextDevices = Array.isArray(sanityResults) ? sanityResults : [];
         } else {
         startStageTimer(t('wifiCamera.stageRtspScan'));
-        const primaryScan = await runRtspScan(scanLocalOnly);
+        const primaryScan = await runRtspScan(scanLocalOnly, { priorityIps });
         let rtspDevices = primaryScan.results;
         endStageTimer(t('wifiCamera.stageRtspScan'), {
           results: Array.isArray(rtspDevices) ? rtspDevices.length : 0,
         });
         if (!rtspDevices.length && scanLocalOnly) {
           startStageTimer(t('wifiCamera.stageRtspScan'));
-          const fallbackScan = await runRtspScan(false);
+          const fallbackScan = await runRtspScan(false, { priorityIps });
           rtspDevices = fallbackScan.results;
           endStageTimer(t('wifiCamera.stageRtspScan'), {
             results: Array.isArray(rtspDevices) ? rtspDevices.length : 0,
