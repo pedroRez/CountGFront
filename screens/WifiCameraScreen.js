@@ -12,17 +12,25 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import * as Clipboard from 'expo-clipboard';
 
 import BigButton from '../components/BigButton';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
 import { discoverOnvifDevices } from '../utils/onvifDiscovery';
 import { scanRtspDevices } from '../utils/rtspScan';
+import {
+  clearCameraDiscoveryLogs,
+  getCameraDiscoveryLogsText,
+  isCameraDiscoveryDebugEnabled,
+  logCameraDiscovery,
+} from '../utils/cameraDiscoveryLogger';
 
 const DEFAULT_ONVIF_USERNAME = 'admin';
 const COMMON_PREFIXES = ['192.168.0'];
@@ -129,6 +137,17 @@ const WifiCameraScreen = ({ navigation }) => {
   const [manualIp, setManualIp] = useState('');
   const [hasSavedCredentials, setHasSavedCredentials] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [forceLocalPrefix, setForceLocalPrefix] = useState(false);
+  const [scanStage, setScanStage] = useState('');
+  const [scanStageDetail, setScanStageDetail] = useState('');
+  const [scanMeta, setScanMeta] = useState({
+    localIp: null,
+    prefixes: [],
+    wsDiscoveryResponses: 0,
+    forcedPrefix: null,
+    forcedByEnv: false,
+    manualPrefix: false,
+  });
   const scanLocalOnly = true;
 
   const loadSavedCredentials = useCallback(async (ip) => {
@@ -204,15 +223,81 @@ const WifiCameraScreen = ({ navigation }) => {
     void loadSavedCredentials(selectedDevice.ip);
   }, [isAuthVisible, loadSavedCredentials, selectedDevice?.ip]);
 
+  const setStage = useCallback(
+    (stage, detail = '') => {
+      setScanStage(stage);
+      setScanStageDetail(detail);
+      logCameraDiscovery('scan_stage', { stage, detail });
+    },
+    []
+  );
+
+  const handleCopyLogs = useCallback(async () => {
+    const text = getCameraDiscoveryLogsText();
+    if (!text) {
+      Alert.alert(t('wifiCamera.copyLogsEmptyTitle'), t('wifiCamera.copyLogsEmptyMessage'));
+      return;
+    }
+    try {
+      await Clipboard.setStringAsync(text);
+      Alert.alert(
+        t('wifiCamera.copyLogsSuccessTitle'),
+        t('wifiCamera.copyLogsSuccessMessage')
+      );
+    } catch (error) {
+      Alert.alert(
+        t('wifiCamera.copyLogsErrorTitle'),
+        t('wifiCamera.copyLogsErrorMessage')
+      );
+    }
+  }, [t]);
+
   const handleScan = async () => {
     if (isScanning) return;
     setIsScanning(true);
     setErrorMessage('');
     setDevices([]);
+    clearCameraDiscoveryLogs();
+    const scanStartedAt = Date.now();
+    const stageTimers = {};
+    const startStageTimer = (label, detail = '') => {
+      stageTimers[label] = Date.now();
+      setStage(label, detail);
+    };
+    const endStageTimer = (label, extra = {}) => {
+      const startedAt = stageTimers[label];
+      const durationMs =
+        typeof startedAt === 'number' ? Date.now() - startedAt : null;
+      logCameraDiscovery('stage_complete', {
+        stage: label,
+        durationMs,
+        ...extra,
+      });
+    };
+    logCameraDiscovery('scan_start', {
+      debugEnabled: isCameraDiscoveryDebugEnabled(),
+    });
     try {
       let lastPassword = null;
       const localIp = await getLocalIp();
+      const localPrefix =
+        typeof localIp === 'string' && localIp.includes('.')
+          ? localIp.split('.').slice(0, 3).join('.')
+          : null;
       const devServerIp = getDevServerIp();
+      const forcedPrefixEnv = process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_FORCE_PREFIX || '';
+      logCameraDiscovery('local_network', {
+        localIp,
+        localPrefix,
+        devServerIp,
+        forcedPrefixEnv,
+      });
+      setScanMeta((prev) => ({
+        ...prev,
+        localIp,
+        forcedPrefix: forcedPrefixEnv || null,
+        forcedByEnv: Boolean(forcedPrefixEnv),
+      }));
       try {
         lastPassword = await AsyncStorage.getItem(WIFI_CAMERA_LAST_PASSWORD_KEY);
       } catch (error) {
@@ -235,6 +320,14 @@ const WifiCameraScreen = ({ navigation }) => {
 
       const runRtspScan = async (localOnly) => {
         const prefixes = await buildScanPrefixes(manualIp, localOnly);
+        logCameraDiscovery('rtsp_scan_prefixes', {
+          prefixes,
+          localOnly,
+        });
+        setScanMeta((prev) => ({
+          ...prev,
+          prefixes,
+        }));
         if (!prefixes.length) {
           return { prefixes, results: [] };
         }
@@ -263,23 +356,45 @@ const WifiCameraScreen = ({ navigation }) => {
 
       let nextDevices = [];
       try {
+        startStageTimer(t('wifiCamera.stageDiscovery'));
         const onvifDevices = await discoverOnvifDevices({
           timeoutMs: 4500,
           retries: 3,
         });
+        endStageTimer(t('wifiCamera.stageDiscovery'), {
+          responses: Array.isArray(onvifDevices) ? onvifDevices.length : 0,
+        });
+        setScanMeta((prev) => ({
+          ...prev,
+          wsDiscoveryResponses: Array.isArray(onvifDevices)
+            ? onvifDevices.length
+            : 0,
+        }));
         if (Array.isArray(onvifDevices) && onvifDevices.length) {
           nextDevices = onvifDevices;
         }
       } catch (error) {
         // ignore discovery errors and fallback to RTSP scan
+        endStageTimer(t('wifiCamera.stageDiscovery'), {
+          error: error?.message || 'unknown',
+        });
       }
 
       if (!nextDevices.length) {
+        startStageTimer(t('wifiCamera.stageRtspScan'));
         const primaryScan = await runRtspScan(scanLocalOnly);
         let rtspDevices = primaryScan.results;
+        endStageTimer(t('wifiCamera.stageRtspScan'), {
+          results: Array.isArray(rtspDevices) ? rtspDevices.length : 0,
+        });
         if (!rtspDevices.length && scanLocalOnly) {
+          startStageTimer(t('wifiCamera.stageRtspScan'));
           const fallbackScan = await runRtspScan(false);
           rtspDevices = fallbackScan.results;
+          endStageTimer(t('wifiCamera.stageRtspScan'), {
+            results: Array.isArray(rtspDevices) ? rtspDevices.length : 0,
+            fallback: true,
+          });
           if (
             !rtspDevices.length &&
             !primaryScan.prefixes.length &&
@@ -296,6 +411,10 @@ const WifiCameraScreen = ({ navigation }) => {
       }
 
       setDevices(nextDevices);
+      logCameraDiscovery('scan_complete', {
+        durationMs: Date.now() - scanStartedAt,
+        found: Array.isArray(nextDevices) ? nextDevices.length : 0,
+      });
     } finally {
       setIsScanning(false);
     }
@@ -371,11 +490,50 @@ const WifiCameraScreen = ({ navigation }) => {
           <Text style={styles.hintText}>{t('wifiCamera.hint')}</Text>
         </View>
 
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>{t('wifiCamera.statusTitle')}</Text>
+          <Text style={styles.statusText}>
+            {scanStage || t('wifiCamera.statusIdle')}
+          </Text>
+          {scanStageDetail ? (
+            <Text style={styles.statusDetail}>{scanStageDetail}</Text>
+          ) : null}
+          <View style={styles.switchRow}>
+            <Text style={styles.switchLabel}>
+              {t('wifiCamera.forcePrefixLabel')}
+            </Text>
+            <Switch
+              value={forceLocalPrefix}
+              onValueChange={setForceLocalPrefix}
+            />
+          </View>
+          {!scanMeta.localIp ? (
+            <Text style={styles.helperText}>
+              {t('wifiCamera.forcePrefixHint')}
+            </Text>
+          ) : null}
+          {scanMeta.forcedByEnv ? (
+            <Text style={styles.helperText}>
+              {t('wifiCamera.forcePrefixEnv')}
+            </Text>
+          ) : null}
+        </View>
+
         <BigButton
           title={isScanning ? t('wifiCamera.scanning') : t('wifiCamera.scan')}
           onPress={handleScan}
           disabled={isScanning}
         />
+
+        <TouchableOpacity
+          style={styles.logButton}
+          onPress={handleCopyLogs}
+        >
+          <Text style={styles.logButtonText}>
+            {t('wifiCamera.copyLogs')}
+          </Text>
+        </TouchableOpacity>
+
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>
             {t('wifiCamera.manualIpTitle')}
@@ -587,6 +745,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6b7280',
   },
+  statusText: {
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  statusDetail: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 6,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  switchLabel: {
+    fontSize: 13,
+    color: '#111827',
+    fontWeight: '600',
+    flex: 1,
+    paddingRight: 10,
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
@@ -640,6 +822,20 @@ const styles = StyleSheet.create({
   connectButtonText: {
     color: '#fff',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  logButton: {
+    alignSelf: 'center',
+    marginTop: 8,
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#0f172a',
+    borderRadius: 8,
+  },
+  logButtonText: {
+    color: '#e2e8f0',
+    fontSize: 13,
     fontWeight: '600',
   },
   modalBackdrop: {
