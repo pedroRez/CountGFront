@@ -19,6 +19,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Clipboard from 'expo-clipboard';
+import TcpSocket from 'react-native-tcp-socket';
 
 import BigButton from '../components/BigButton';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
@@ -36,6 +37,8 @@ const DEFAULT_ONVIF_USERNAME = 'admin';
 const COMMON_PREFIXES = ['192.168.0'];
 const DEFAULT_HOST_MIN = 1;
 const DEFAULT_HOST_MAX = 254;
+const PRIMARY_CAMERA_IP = '192.168.0.14';
+const PRIMARY_PREFIX = '192.168.0';
 const WIFI_CAMERA_CREDENTIALS_KEY = '@wifi_camera_credentials';
 const WIFI_CAMERA_LAST_PASSWORD_KEY = '@wifi_camera_last_password';
 
@@ -48,6 +51,28 @@ const isValidIp = (value) => {
     const num = Number(part);
     return num >= 0 && num <= 255;
   });
+};
+
+const normalizePrefix = (value) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const cleaned = raw.replace(/\*$/, '').replace(/\/\d+$/, '');
+  const parts = cleaned.split('.');
+  if (parts.length >= 3 && parts.length <= 4) {
+    const prefixParts = parts.slice(0, 3);
+    if (prefixParts.every((part) => /^\d+$/.test(part))) {
+      return prefixParts.join('.');
+    }
+  }
+  return null;
+};
+
+const extractHostSuffix = (ip) => {
+  if (!isValidIp(ip)) return null;
+  const last = ip.split('.').pop();
+  const num = Number(last);
+  return Number.isFinite(num) ? num : null;
 };
 
 const getLocalPrefix = async () => {
@@ -101,27 +126,81 @@ const getLocalIp = async () => {
   return null;
 };
 
-const buildScanPrefixes = async (manualIp, scanLocalOnly = false) => {
-  const localPrefix = await getLocalPrefix();
-  if (scanLocalOnly) {
-    if (!localPrefix) return [];
-    if (isValidIp(manualIp)) {
-      const manualPrefix = manualIp.split('.').slice(0, 3).join('.');
-      if (manualPrefix === localPrefix) {
-        return [localPrefix];
+const probeTcpPort = (host, port, timeoutMs = 900) =>
+  new Promise((resolve) => {
+    let settled = false;
+    let socket = null;
+    const finish = (ok, reason) => {
+      if (settled) return;
+      settled = true;
+      if (socket) {
+        try {
+          socket.destroy();
+        } catch (error) {
+          // ignore close errors
+        }
       }
+      resolve({ ok, reason });
+    };
+
+    const timer = setTimeout(() => finish(false, 'timeout'), timeoutMs);
+    try {
+      socket = TcpSocket.createConnection({ host, port }, () => {
+        clearTimeout(timer);
+        finish(true, 'connected');
+      });
+      socket.on('error', (error) => {
+        clearTimeout(timer);
+        finish(false, error?.message || 'error');
+      });
+    } catch (error) {
+      clearTimeout(timer);
+      finish(false, error?.message || 'error');
     }
-    return [localPrefix];
+  });
+
+const probeOnvifHttp = async (host, timeoutMs = 1200) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`http://${host}/onvif/device_service`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
+      body: '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"></s:Envelope>',
+      signal: controller.signal,
+    });
+    return { ok: true, status: response.status };
+  } catch (error) {
+    return { ok: false, error: error?.message || 'error' };
+  } finally {
+    clearTimeout(timeout);
   }
-  if (isValidIp(manualIp)) {
-    return [manualIp.split('.').slice(0, 3).join('.')];
+};
+
+const buildScanPrefixes = async (
+  manualIp,
+  scanLocalOnly = false,
+  { forcePrefix, preferPrefix, includeCommon = true } = {}
+) => {
+  const forced = normalizePrefix(forcePrefix);
+  if (forced) return [forced];
+  const localPrefix = await getLocalPrefix();
+  const preferred = normalizePrefix(preferPrefix);
+  const manualPrefix = isValidIp(manualIp)
+    ? manualIp.split('.').slice(0, 3).join('.')
+    : null;
+  if (scanLocalOnly) {
+    if (!localPrefix) return preferred ? [preferred] : [];
+    const ordered = [preferred, localPrefix, manualPrefix].filter(Boolean);
+    return Array.from(new Set(ordered));
   }
-  if (!localPrefix) return [...COMMON_PREFIXES];
-  if (localPrefix.startsWith('192.168.')) {
-    return [localPrefix];
-  }
-  const ordered = [...COMMON_PREFIXES, localPrefix];
-  return Array.from(new Set(ordered.filter(Boolean)));
+  const ordered = [
+    preferred,
+    manualPrefix,
+    localPrefix,
+    ...(includeCommon ? COMMON_PREFIXES : []),
+  ].filter(Boolean);
+  return Array.from(new Set(ordered));
 };
 
 const WifiCameraScreen = ({ navigation }) => {
@@ -147,6 +226,7 @@ const WifiCameraScreen = ({ navigation }) => {
     forcedPrefix: null,
     forcedByEnv: false,
     manualPrefix: false,
+    sanityCheck: null,
   });
   const scanLocalOnly = true;
 
@@ -285,19 +365,33 @@ const WifiCameraScreen = ({ navigation }) => {
           ? localIp.split('.').slice(0, 3).join('.')
           : null;
       const devServerIp = getDevServerIp();
-      const forcedPrefixEnv = process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_FORCE_PREFIX || '';
+      const forcedPrefixEnv = normalizePrefix(
+        process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_FORCE_PREFIX || ''
+      );
+      const manualForcedPrefix = forceLocalPrefix ? PRIMARY_PREFIX : null;
+      const forcedPrefix = forcedPrefixEnv || manualForcedPrefix;
       logCameraDiscovery('local_network', {
         localIp,
         localPrefix,
         devServerIp,
         forcedPrefixEnv,
+        manualForcedPrefix,
+        forcedPrefix,
       });
       setScanMeta((prev) => ({
         ...prev,
         localIp,
-        forcedPrefix: forcedPrefixEnv || null,
+        forcedPrefix: forcedPrefix || null,
         forcedByEnv: Boolean(forcedPrefixEnv),
+        manualPrefix: Boolean(manualForcedPrefix && !forcedPrefixEnv),
       }));
+      if (forcedPrefix) {
+        logCameraDiscovery('prefix_forced', {
+          forcedPrefix,
+          forcedByEnv: Boolean(forcedPrefixEnv),
+          manualToggle: Boolean(manualForcedPrefix && !forcedPrefixEnv),
+        });
+      }
       try {
         lastPassword = await AsyncStorage.getItem(WIFI_CAMERA_LAST_PASSWORD_KEY);
       } catch (error) {
@@ -318,8 +412,13 @@ const WifiCameraScreen = ({ navigation }) => {
         return cleaned;
       };
 
-      const runRtspScan = async (localOnly) => {
-        const prefixes = await buildScanPrefixes(manualIp, localOnly);
+      const runRtspScan = async (localOnly, options = {}) => {
+        const prefixes = await buildScanPrefixes(manualIp, localOnly, {
+          forcePrefix: forcedPrefix,
+          preferPrefix: localPrefix === PRIMARY_PREFIX ? PRIMARY_PREFIX : null,
+          includeCommon: !forcedPrefix,
+          ...options,
+        });
         logCameraDiscovery('rtsp_scan_prefixes', {
           prefixes,
           localOnly,
@@ -355,6 +454,31 @@ const WifiCameraScreen = ({ navigation }) => {
       };
 
       let nextDevices = [];
+      const sanityTarget = PRIMARY_CAMERA_IP;
+      const sanityHostSuffix = extractHostSuffix(sanityTarget);
+      let sanityAlive = false;
+      let sanityDetails = null;
+      if (sanityHostSuffix) {
+        logCameraDiscovery('sanity_check_start', { ip: sanityTarget });
+        const sanityStart = Date.now();
+        const tcp80 = await probeTcpPort(sanityTarget, 80, 900);
+        const tcp554 = await probeTcpPort(sanityTarget, 554, 900);
+        const httpOnvif = await probeOnvifHttp(sanityTarget, 1200);
+        sanityAlive = Boolean(tcp80.ok || tcp554.ok || httpOnvif.ok);
+        sanityDetails = {
+          ip: sanityTarget,
+          alive: sanityAlive,
+          tcp80,
+          tcp554,
+          httpOnvif,
+          durationMs: Date.now() - sanityStart,
+        };
+        logCameraDiscovery('sanity_check_result', sanityDetails);
+        setScanMeta((prev) => ({
+          ...prev,
+          sanityCheck: sanityDetails,
+        }));
+      }
       try {
         startStageTimer(t('wifiCamera.stageDiscovery'));
         const onvifDevices = await discoverOnvifDevices({
@@ -381,6 +505,32 @@ const WifiCameraScreen = ({ navigation }) => {
       }
 
       if (!nextDevices.length) {
+        if (sanityAlive && sanityHostSuffix) {
+          startStageTimer(t('wifiCamera.stageRtspScan'), sanityTarget);
+          const sanityResults = await scanRtspDevices({
+            subnetPrefix: PRIMARY_PREFIX,
+            timeoutMs: 2000,
+            concurrency: 1,
+            probeDelayMs: 0,
+            matchHint: null,
+            verifyOnvifPort: [80, 5000, 8000, 8080, 8899],
+            username: lastPassword ? DEFAULT_ONVIF_USERNAME : null,
+            password: lastPassword || null,
+            hostMin: sanityHostSuffix,
+            hostMax: sanityHostSuffix,
+            allowConnectOnly: false,
+          });
+          endStageTimer(t('wifiCamera.stageRtspScan'), {
+            results: Array.isArray(sanityResults) ? sanityResults.length : 0,
+            sanityTarget,
+          });
+          logCameraDiscovery('sanity_scan_complete', {
+            target: sanityTarget,
+            results: Array.isArray(sanityResults) ? sanityResults.length : 0,
+            skippedFullScan: true,
+          });
+          nextDevices = Array.isArray(sanityResults) ? sanityResults : [];
+        } else {
         startStageTimer(t('wifiCamera.stageRtspScan'));
         const primaryScan = await runRtspScan(scanLocalOnly);
         let rtspDevices = primaryScan.results;
@@ -408,6 +558,7 @@ const WifiCameraScreen = ({ navigation }) => {
           return;
         }
         nextDevices = Array.isArray(rtspDevices) ? rtspDevices : [];
+        }
       }
 
       setDevices(nextDevices);
@@ -475,6 +626,29 @@ const WifiCameraScreen = ({ navigation }) => {
       return;
     }
     openAuthModal({ ip: trimmed, xaddrs: [] });
+  };
+
+  const buildNoResultsDetails = () => {
+    const prefixes =
+      Array.isArray(scanMeta.prefixes) && scanMeta.prefixes.length
+        ? scanMeta.prefixes.join(', ')
+        : '-';
+    const wsCount = Number.isFinite(scanMeta.wsDiscoveryResponses)
+      ? scanMeta.wsDiscoveryResponses
+      : 0;
+    const sanityLabel = scanMeta.sanityCheck
+      ? scanMeta.sanityCheck.alive
+        ? t('wifiCamera.sanityAlive')
+        : t('wifiCamera.sanityDead')
+      : t('wifiCamera.sanitySkipped');
+    return [
+      t('wifiCamera.noResultsDetailsLocalIp', {
+        ip: scanMeta.localIp || '-',
+      }),
+      t('wifiCamera.noResultsDetailsPrefixes', { prefixes }),
+      t('wifiCamera.noResultsDetailsWsDiscovery', { count: wsCount }),
+      t('wifiCamera.noResultsDetailsSanity', { status: sanityLabel }),
+    ];
   };
 
   return (
@@ -572,7 +746,17 @@ const WifiCameraScreen = ({ navigation }) => {
           ) : null}
 
           {!isScanning && !errorMessage && devices.length === 0 ? (
-            <Text style={styles.helperText}>{t('wifiCamera.noResults')}</Text>
+            <View>
+              <Text style={styles.helperText}>{t('wifiCamera.noResults')}</Text>
+              <Text style={styles.metaText}>
+                {t('wifiCamera.noResultsDetailsTitle')}
+              </Text>
+              {buildNoResultsDetails().map((line) => (
+                <Text key={line} style={styles.helperText}>
+                  {line}
+                </Text>
+              ))}
+            </View>
           ) : null}
 
           {!isScanning && devices.length > 0 ? (
