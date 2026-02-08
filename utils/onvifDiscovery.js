@@ -55,27 +55,32 @@ const buildProbeMessage = (types) => `<?xml version="1.0" encoding="UTF-8"?>
   </e:Body>
 </e:Envelope>`;
 
+const hashPayload = (value) => {
+  const text = typeof value === 'string' ? value : String(value || '');
+  let hash = 5381;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 33) ^ text.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(16);
+};
+
 const extractXAddrs = (text) => {
   if (!text) return [];
-  const regex = /<\w*:XAddrs>([^<]+)<\/\w*:XAddrs>/gi;
-  const matches = [];
-  let match = regex.exec(text);
-  while (match) {
-    if (match[1]) {
-      matches.push(match[1].trim());
+  const collect = (regex) => {
+    const out = [];
+    let match = regex.exec(text);
+    while (match) {
+      if (match[1]) out.push(match[1].trim());
+      match = regex.exec(text);
     }
-    match = regex.exec(text);
-  }
-  if (!matches.length) {
-    const altRegex = /<XAddrs>([^<]+)<\/XAddrs>/gi;
-    let altMatch = altRegex.exec(text);
-    while (altMatch) {
-      if (altMatch[1]) {
-        matches.push(altMatch[1].trim());
-      }
-      altMatch = altRegex.exec(text);
-    }
-  }
+    return out;
+  };
+  const matches = [
+    ...collect(/<\w*:XAddrs>([^<]+)<\/\w*:XAddrs>/gi),
+    ...collect(/<XAddrs>([^<]+)<\/XAddrs>/gi),
+    ...collect(/<\w*:XAddr>([^<]+)<\/\w*:XAddr>/gi),
+    ...collect(/<XAddr>([^<]+)<\/XAddr>/gi),
+  ];
   const urls = matches
     .flatMap((value) => value.split(/\s+/))
     .map((value) => value.trim())
@@ -105,13 +110,22 @@ const extractIps = (values) => {
 export const discoverOnvifDevices = ({
   timeoutMs = 4000,
   retries = 2,
+  broadcastAddresses = [],
+  onLog,
 } = {}) =>
   new Promise((resolve, reject) => {
-    const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+    let socket = null;
     const devices = new Map();
     let finished = false;
     let sendCount = 0;
     let lockReleased = false;
+    let responseCount = 0;
+
+    const log = (message, data) => {
+      if (typeof onLog === 'function') {
+        onLog(message, data);
+      }
+    };
 
     const addDevice = (ip, xaddrs = []) => {
       if (!ip) return;
@@ -138,15 +152,27 @@ export const discoverOnvifDevices = ({
       if (finished) return;
       finished = true;
       releaseLockOnce();
-      try {
-        socket.close();
-      } catch (error) {
-        // ignore close errors
+      if (socket) {
+        try {
+          socket.close();
+        } catch (error) {
+          // ignore close errors
+        }
       }
+      log('onvif_discovery_done', {
+        responses: responseCount,
+        devices: devices.size,
+      });
       resolve(Array.from(devices.values()));
     };
 
     const handleMessage = (message, rinfo) => {
+      responseCount += 1;
+      log('onvif_discovery_message', {
+        from: rinfo?.address,
+        port: rinfo?.port,
+        bytes: message?.length || 0,
+      });
       const text = message?.toString ? message.toString('utf8') : String(message);
       const xaddrs = extractXAddrs(text);
       if (xaddrs.length) {
@@ -166,6 +192,12 @@ export const discoverOnvifDevices = ({
       const payload = typeof message === 'string' ? message : String(message);
       try {
         socket.send(payload, 0, payload.length, port, address, () => {});
+        log('onvif_discovery_send', {
+          address,
+          port,
+          bytes: payload.length,
+          hash: hashPayload(payload),
+        });
       } catch (error) {
         // ignore send errors
       }
@@ -173,10 +205,17 @@ export const discoverOnvifDevices = ({
 
     const sendProbe = () => {
       if (finished) return;
+      const extraBroadcasts = Array.isArray(broadcastAddresses)
+        ? broadcastAddresses.filter(Boolean)
+        : [];
+      const destinations = Array.from(
+        new Set([MULTICAST_ADDRESS, BROADCAST_ADDRESS, ...extraBroadcasts])
+      );
       PROBE_TYPES.forEach((types) => {
         const message = buildProbeMessage(types);
-        sendUdp(message, MULTICAST_PORT, MULTICAST_ADDRESS);
-        sendUdp(message, MULTICAST_PORT, BROADCAST_ADDRESS);
+        destinations.forEach((address) => {
+          sendUdp(message, MULTICAST_PORT, address);
+        });
       });
       sendCount += 1;
       if (sendCount < retries) {
@@ -202,20 +241,50 @@ export const discoverOnvifDevices = ({
       reject(error);
     });
 
-    void acquireMulticastLock();
+    const start = async () => {
+      await acquireMulticastLock();
+      socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+      socket.on('message', handleMessage);
+      socket.on('error', (error) => {
+        if (finished) return;
+        const message = error?.message || '';
+        if (message.toLowerCase().includes('socket is closed')) {
+          finish();
+          return;
+        }
+        finished = true;
+        releaseLockOnce();
+        try {
+          socket.close();
+        } catch (closeError) {
+          // ignore close errors
+        }
+        reject(error);
+      });
 
-    socket.bind(0, () => {
-      try {
-        socket.setBroadcast(true);
-      } catch (error) {
-        // ignore
-      }
-      try {
-        socket.addMembership(MULTICAST_ADDRESS);
-      } catch (error) {
-        // ignore
-      }
-      sendProbe();
-      setTimeout(finish, timeoutMs);
+      socket.bind(0, () => {
+        log('onvif_discovery_bound', { port: socket.address()?.port });
+        try {
+          socket.setBroadcast(true);
+          log('onvif_discovery_broadcast_enabled');
+        } catch (error) {
+          log('onvif_discovery_broadcast_error', { error: error?.message });
+        }
+        try {
+          socket.addMembership(MULTICAST_ADDRESS);
+          log('onvif_discovery_multicast_joined', {
+            address: MULTICAST_ADDRESS,
+          });
+        } catch (error) {
+          log('onvif_discovery_multicast_error', { error: error?.message });
+        }
+        sendProbe();
+        setTimeout(finish, timeoutMs);
+      });
+    };
+
+    start().catch((error) => {
+      releaseLockOnce();
+      reject(error);
     });
   });

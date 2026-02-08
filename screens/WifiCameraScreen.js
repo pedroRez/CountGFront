@@ -75,6 +75,11 @@ const extractHostSuffix = (ip) => {
   return Number.isFinite(num) ? num : null;
 };
 
+const buildBroadcastAddress = (prefix) => {
+  const normalized = normalizePrefix(prefix);
+  return normalized ? `${normalized}.255` : null;
+};
+
 const getLocalPrefix = async () => {
   const netInfo = NativeModules?.NetworkInfo;
   if (!netInfo?.getIpAddress) return null;
@@ -392,6 +397,19 @@ const WifiCameraScreen = ({ navigation }) => {
           manualToggle: Boolean(manualForcedPrefix && !forcedPrefixEnv),
         });
       }
+      const broadcastAddresses = Array.from(
+        new Set(
+          [
+            buildBroadcastAddress(PRIMARY_PREFIX),
+            buildBroadcastAddress(forcedPrefix),
+            buildBroadcastAddress(localPrefix),
+            buildBroadcastAddress(manualIp),
+          ].filter(Boolean)
+        )
+      );
+      logCameraDiscovery('ws_discovery_targets', {
+        addresses: broadcastAddresses,
+      });
       try {
         lastPassword = await AsyncStorage.getItem(WIFI_CAMERA_LAST_PASSWORD_KEY);
       } catch (error) {
@@ -484,6 +502,8 @@ const WifiCameraScreen = ({ navigation }) => {
         const onvifDevices = await discoverOnvifDevices({
           timeoutMs: 4500,
           retries: 3,
+          broadcastAddresses,
+          onLog: logCameraDiscovery,
         });
         endStageTimer(t('wifiCamera.stageDiscovery'), {
           responses: Array.isArray(onvifDevices) ? onvifDevices.length : 0,
