@@ -1,4 +1,4 @@
-package com.rezendepedro.CounG
+package com.kyoday.countg
 
 import android.os.Build
 import android.os.Bundle

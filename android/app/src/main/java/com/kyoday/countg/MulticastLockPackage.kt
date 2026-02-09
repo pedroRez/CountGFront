@@ -1,4 +1,4 @@
-package com.rezendepedro.CounG
+package com.kyoday.countg
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
