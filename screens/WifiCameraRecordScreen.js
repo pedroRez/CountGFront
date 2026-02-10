@@ -18,6 +18,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ModernFileSystem from 'expo-file-system';
+import * as Clipboard from 'expo-clipboard';
+import TcpSocket from 'react-native-tcp-socket';
 import { VLCPlayer } from 'react-native-vlc-media-player';
 
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
@@ -35,6 +37,7 @@ const VLC_MEDIA_OPTIONS = [':network-caching=300', ':rtsp-tcp'];
 const RECORDING_EXTENSION = 'mp4';
 const RECORDING_READY_DELAY_MS = 150;
 const RECORDING_READY_ATTEMPTS = 8;
+const RTSP_USER_AGENT = 'AndroidXMedia3/1.8.0';
 const FILESYSTEM_DEBUG_UI =
   String(process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG || '') === '1';
 
@@ -89,6 +92,228 @@ const normalizeRecordingPath = (value) => {
     if (typeof value.recordPath === 'string') return value.recordPath;
   }
   return null;
+};
+
+const encodeBase64 = (input) => {
+  const str = String(input);
+  let output = '';
+  let i = 0;
+  while (i < str.length) {
+    const chr1 = str.charCodeAt(i++);
+    const chr2 = str.charCodeAt(i++);
+    const chr3 = str.charCodeAt(i++);
+
+    const enc1 = chr1 >> 2;
+    const enc2 = ((chr1 & 3) << 4) | (chr2 >> 4);
+    let enc3 = ((chr2 & 15) << 2) | (chr3 >> 6);
+    let enc4 = chr3 & 63;
+
+    if (Number.isNaN(chr2)) {
+      enc3 = 64;
+      enc4 = 64;
+    } else if (Number.isNaN(chr3)) {
+      enc4 = 64;
+    }
+
+    output +=
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='.charAt(enc1) +
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='.charAt(enc2) +
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='.charAt(enc3) +
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='.charAt(enc4);
+  }
+  return output;
+};
+
+const buildRtspRequest = (method, url, authHeader = null) => {
+  const lines = [
+    `${method} ${url} RTSP/1.0`,
+    'CSeq: 1',
+    `User-Agent: ${RTSP_USER_AGENT}`,
+  ];
+  if (method === 'DESCRIBE') {
+    lines.push('Accept: application/sdp');
+  }
+  if (authHeader) {
+    lines.push(`Authorization: ${authHeader}`);
+  }
+  lines.push('', '');
+  return lines.join('\r\n');
+};
+
+const probeTcpConnect = (host, port, timeoutMs = 500) =>
+  new Promise((resolve) => {
+    let settled = false;
+    let socket = null;
+    const startedAt = Date.now();
+    const finish = (ok, reason) => {
+      if (settled) return;
+      settled = true;
+      if (socket) {
+        try {
+          socket.destroy();
+        } catch (error) {
+          // ignore close errors
+        }
+      }
+      resolve({
+        ok,
+        reason,
+        elapsedMs: Date.now() - startedAt,
+      });
+    };
+
+    if (!TcpSocket?.createConnection) {
+      finish(false, 'tcp_socket_unavailable');
+      return;
+    }
+
+    const timer = setTimeout(() => finish(false, 'timeout'), timeoutMs);
+    try {
+      socket = TcpSocket.createConnection({ host, port }, () => {
+        clearTimeout(timer);
+        finish(true, 'connected');
+      });
+      socket.on('error', (error) => {
+        clearTimeout(timer);
+        finish(false, error?.message || 'error');
+      });
+    } catch (error) {
+      clearTimeout(timer);
+      finish(false, error?.message || 'error');
+    }
+  });
+
+const probeRtspRequest = ({
+  ip,
+  port,
+  path,
+  method,
+  auth,
+  timeoutMs = 1200,
+} = {}) =>
+  new Promise((resolve) => {
+    if (!TcpSocket?.createConnection) {
+      resolve({ ok: false, reason: 'tcp_socket_unavailable', elapsedMs: 0 });
+      return;
+    }
+    if (!ip || !port || !path) {
+      resolve({ ok: false, reason: 'invalid_target', elapsedMs: 0 });
+      return;
+    }
+    let settled = false;
+    let socket = null;
+    let buffer = '';
+    const startedAt = Date.now();
+
+    const finish = (payload) => {
+      if (settled) return;
+      settled = true;
+      if (socket) {
+        try {
+          socket.destroy();
+        } catch (error) {
+          // ignore close errors
+        }
+      }
+      resolve({
+        elapsedMs: Date.now() - startedAt,
+        ...payload,
+      });
+    };
+
+    const url = buildRtspUrlFromPath({
+      ip,
+      port,
+      path,
+      username: auth?.username,
+      password: auth?.password,
+    });
+    const authHeader =
+      auth?.username || auth?.password
+        ? `Basic ${encodeBase64(`${auth?.username || ''}:${auth?.password || ''}`)}`
+        : null;
+    const request = buildRtspRequest(method, url, authHeader);
+
+    const timer = setTimeout(() => finish({ ok: false, reason: 'timeout' }), timeoutMs);
+    try {
+      socket = TcpSocket.createConnection({ host: ip, port }, () => {
+        try {
+          socket.write(request);
+        } catch (error) {
+          clearTimeout(timer);
+          finish({ ok: false, reason: 'write_error', error: error?.message });
+        }
+      });
+      socket.on('data', (data) => {
+        buffer += data?.toString ? data.toString('utf8') : String(data || '');
+        const firstLine = buffer.split(/\r?\n/)[0];
+        clearTimeout(timer);
+        finish({
+          ok: true,
+          statusLine: firstLine || null,
+          responseSnippet: buffer.slice(0, 160),
+        });
+      });
+      socket.on('error', (error) => {
+        clearTimeout(timer);
+        finish({ ok: false, reason: error?.message || 'error' });
+      });
+      socket.on('close', () => {
+        clearTimeout(timer);
+        finish({ ok: false, reason: 'closed' });
+      });
+    } catch (error) {
+      clearTimeout(timer);
+      finish({ ok: false, reason: error?.message || 'error' });
+    }
+  });
+
+const parseRtspTarget = (value) => {
+  if (!value || typeof value !== 'string') return null;
+  if (!value.startsWith('rtsp://')) return null;
+  const remainder = value.slice('rtsp://'.length);
+  const [authAndHost, ...pathParts] = remainder.split('/');
+  const hostPart = authAndHost.includes('@')
+    ? authAndHost.split('@').pop()
+    : authAndHost;
+  const [host, portStr] = hostPart.split(':');
+  if (!host) return null;
+  const path = pathParts.length ? `/${pathParts.join('/')}` : null;
+  const port = Number(portStr);
+  return {
+    host,
+    port: Number.isFinite(port) ? port : null,
+    path,
+  };
+};
+
+const resolveMaybePromise = async (value) => {
+  if (value && typeof value.then === 'function') {
+    return await value;
+  }
+  return value;
+};
+
+const getLocalNetworkInfo = async () => {
+  const netInfo = NativeModules?.NetworkInfo;
+  if (!netInfo) return { localIp: null, ssid: null };
+  let localIp = null;
+  let ssid = null;
+  if (netInfo.getIpAddress) {
+    try {
+      localIp = await resolveMaybePromise(netInfo.getIpAddress());
+    } catch (error) {
+      localIp = null;
+    }
+  }
+  if (netInfo.getSSID) {
+    try {
+      ssid = await resolveMaybePromise(netInfo.getSSID());
+    } catch (error) {
+      ssid = null;
+    }
+  }
+  return { localIp, ssid };
 };
 
 const getExistingFileInfo = async (path) => {
@@ -204,6 +429,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isStreamReady, setIsStreamReady] = useState(false);
+  const [connectDiagnostics, setConnectDiagnostics] = useState(null);
 
   const timerRef = useRef(null);
   const elapsedRef = useRef(0);
@@ -215,6 +441,11 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   const recordingFileRef = useRef(null);
   const recordingStartRef = useRef(0);
   const recordingPendingRef = useRef(false);
+  const diagnosticsRef = useRef({
+    running: false,
+    lastKey: '',
+    lastAt: 0,
+  });
 
   const debugInfo = useMemo(() => {
     if (!FILESYSTEM_DEBUG_UI) return null;
@@ -256,6 +487,139 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
       nativeModuleKeys,
     };
   }, []);
+
+  const runConnectDiagnostics = useCallback(
+    async ({ stage, error, rtspUrlOverride } = {}) => {
+      if (!FILESYSTEM_DEBUG_UI) return;
+      const targetFromUrl = parseRtspTarget(rtspUrlOverride || rtspUrl);
+      const targetIp = wifiCamera?.ip || targetFromUrl?.host || null;
+      const targetPort =
+        wifiCamera?.rtspPort || targetFromUrl?.port || 554;
+      const targetPath =
+        wifiCamera?.rtspPath || targetFromUrl?.path || DEFAULT_RTSP_PATH;
+      if (!targetIp) return;
+
+      const key = `${targetIp}:${targetPort}:${targetPath}:${stage || ''}`;
+      const now = Date.now();
+      if (diagnosticsRef.current.running) return;
+      if (
+        diagnosticsRef.current.lastKey === key &&
+        now - diagnosticsRef.current.lastAt < 3000
+      ) {
+        return;
+      }
+      diagnosticsRef.current.running = true;
+      diagnosticsRef.current.lastKey = key;
+      diagnosticsRef.current.lastAt = now;
+
+      const startedAt = Date.now();
+      try {
+        const localInfo = await getLocalNetworkInfo();
+        const tcpResult = await probeTcpConnect(
+          targetIp,
+          targetPort,
+          500
+        );
+        const optionsNoAuth = await probeRtspRequest({
+          ip: targetIp,
+          port: targetPort,
+          path: targetPath,
+          method: 'OPTIONS',
+          timeoutMs: 1200,
+        });
+        const describeNoAuth = await probeRtspRequest({
+          ip: targetIp,
+          port: targetPort,
+          path: targetPath,
+          method: 'DESCRIBE',
+          timeoutMs: 1200,
+        });
+        const hasAuth =
+          Boolean(wifiCamera?.username) || Boolean(wifiCamera?.password);
+        const describeAuth = hasAuth
+          ? await probeRtspRequest({
+              ip: targetIp,
+              port: targetPort,
+              path: targetPath,
+              method: 'DESCRIBE',
+              auth: {
+                username: wifiCamera?.username || '',
+                password: wifiCamera?.password || '',
+              },
+              timeoutMs: 1500,
+            })
+          : { ok: false, reason: 'skipped_no_credentials', elapsedMs: 0 };
+        const elapsedMs = Date.now() - startedAt;
+        const errorMessage = error
+          ? error?.message || String(error)
+          : null;
+        const errorStack = error?.stack || null;
+
+        const formatResult = (label, result) => {
+          if (!result) return `${label}: -`;
+          if (result.ok) {
+            return `${label}: ok (${result.statusLine || result.reason || 'ok'}) ${result.elapsedMs}ms`;
+          }
+          return `${label}: fail (${result.reason || 'error'}) ${result.elapsedMs}ms`;
+        };
+
+        const lines = [
+          `[Connect Diagnostics] ${new Date().toISOString()}`,
+          `stage: ${stage || '-'}`,
+          `error: ${errorMessage || '-'}`,
+          errorStack ? `stack: ${errorStack}` : null,
+          '',
+          'device:',
+          `  localIp: ${localInfo?.localIp || '-'}`,
+          `  ssid: ${localInfo?.ssid || '-'}`,
+          '',
+          'target:',
+          `  ip: ${targetIp}`,
+          `  port: ${targetPort}`,
+          `  path: ${targetPath}`,
+          `  rtspUrl: ${rtspUrlOverride || rtspUrl || '-'}`,
+          `  username: ${wifiCamera?.username || '-'}`,
+          `  hasPassword: ${wifiCamera?.password ? 'yes' : 'no'}`,
+          '',
+          `tcp_connect: ${tcpResult.ok ? 'connected' : 'fail'} (${tcpResult.reason}) ${tcpResult.elapsedMs}ms`,
+          formatResult('rtsp_options_no_auth', optionsNoAuth),
+          formatResult('rtsp_describe_no_auth', describeNoAuth),
+          formatResult('rtsp_describe_auth', describeAuth),
+          '',
+          `totalMs: ${elapsedMs}`,
+        ].filter(Boolean);
+
+        const text = lines.join('\n');
+        setConnectDiagnostics({
+          text,
+          ts: Date.now(),
+          stage: stage || null,
+        });
+        console.log('[FS][diagnostics]\n' + text);
+      } catch (diagError) {
+        const text = [
+          `[Connect Diagnostics] ${new Date().toISOString()}`,
+          `stage: ${stage || '-'}`,
+          `error: ${diagError?.message || diagError || 'unknown'}`,
+        ].join('\n');
+        setConnectDiagnostics({ text, ts: Date.now(), stage: stage || null });
+        console.log('[FS][diagnostics]\n' + text);
+      } finally {
+        diagnosticsRef.current.running = false;
+      }
+    },
+    [rtspUrl, wifiCamera]
+  );
+
+  const handleCopyDiagnostics = useCallback(async () => {
+    if (!connectDiagnostics?.text) return;
+    try {
+      await Clipboard.setStringAsync(connectDiagnostics.text);
+      Alert.alert('Diagnostico copiado', 'O log foi copiado.');
+    } catch (error) {
+      Alert.alert('Erro ao copiar', 'Nao foi possivel copiar o log.');
+    }
+  }, [connectDiagnostics]);
 
   useEffect(() => {
     if (!FILESYSTEM_DEBUG_UI || !debugInfo) return;
@@ -480,6 +844,9 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     } catch (error) {
       setConnectError(t('wifiCameraRecord.connectError'));
       setRtspUrl('');
+      if (FILESYSTEM_DEBUG_UI) {
+        void runConnectDiagnostics({ stage: 'onvif-resolve', error });
+      }
       setManualInput((prev) => {
         if (prev) return prev;
         return (
@@ -717,6 +1084,26 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                   `NativeModules keys: ${debugInfo.nativeModuleKeys || '-'}`,
                 ].join('\n')}
               </Text>
+              {connectDiagnostics?.text ? (
+                <>
+                  <Text style={styles.debugTitle}>Connect Diagnostics</Text>
+                  <Text style={styles.debugText} selectable>
+                    {connectDiagnostics.text}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.debugCopyButton}
+                    onPress={handleCopyDiagnostics}
+                  >
+                    <Text style={styles.debugCopyText}>
+                      Copiar diagnostico
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <Text style={styles.debugHint}>
+                  Diagnostico aparece apos falha de conexao RTSP.
+                </Text>
+              )}
             </View>
           ) : null}
 
@@ -741,10 +1128,17 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                   style={styles.preview}
                   autoplay={true}
                   paused={false}
-                  onError={() => {
+                  onError={(event) => {
                     setIsStreamReady(false);
                     setConnectError(t('wifiCameraRecord.previewError'));
                     setRtspUrl('');
+                    if (FILESYSTEM_DEBUG_UI) {
+                      void runConnectDiagnostics({
+                        stage: 'vlc-player',
+                        error: event,
+                        rtspUrlOverride: rtspUrl,
+                      });
+                    }
                   }}
                   onPlaying={() => {
                     setIsStreamReady(true);
@@ -949,4 +1343,14 @@ const styles = StyleSheet.create({
   },
   debugTitle: { color: '#e5e7eb', fontWeight: '700', marginBottom: 6 },
   debugText: { color: '#9ca3af', fontSize: 12, lineHeight: 16 },
+  debugHint: { color: '#6b7280', fontSize: 12, marginTop: 8 },
+  debugCopyButton: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#0f172a',
+  },
+  debugCopyText: { color: '#e2e8f0', fontSize: 12, fontWeight: '600' },
 });

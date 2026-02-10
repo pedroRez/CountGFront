@@ -487,7 +487,7 @@ const WifiCameraScreen = ({ navigation }) => {
           };
           const scanResults = await scanRtspDevices({
             subnetPrefix: prefix,
-            timeoutMs: 2500,
+            timeoutMs: 1800,
             concurrency: 10,
             probeDelayMs: 60,
             priorityIps: options.priorityIps || [],
@@ -499,7 +499,7 @@ const WifiCameraScreen = ({ navigation }) => {
             hostMax: DEFAULT_HOST_MAX,
             allowConnectOnly: false,
             openPorts: [554, 8554, 10554],
-            openPortTimeoutMs: 400,
+            openPortTimeoutMs: 500,
             refusedRetries: 1,
             refusedRetryDelayMs: 200,
             onStage: (stage, payload) => {
@@ -701,7 +701,13 @@ const WifiCameraScreen = ({ navigation }) => {
       );
       return;
     }
-    openAuthModal({ ip: trimmed, xaddrs: [] });
+    openAuthModal({
+      ip: trimmed,
+      xaddrs: [],
+      rtspPath: '/onvif1',
+      rtspPort: 554,
+      manualConnect: true,
+    });
   };
 
   const buildNoResultsDetails = () => {
