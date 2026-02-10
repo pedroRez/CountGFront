@@ -11,7 +11,7 @@ const DEFAULT_DEBUG = false;
 const DEFAULT_REFUSED_RETRIES = 1;
 const DEFAULT_REFUSED_RETRY_DELAY_MS = 150;
 const DEFAULT_OPEN_PORTS = [554, 8554, 10554];
-const DEFAULT_OPEN_PORT_TIMEOUT_MS = 450;
+const DEFAULT_OPEN_PORT_TIMEOUT_MS = 400;
 const BASE64_CHARS =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
 const ONVIF_PROBE_BODY = `<?xml version="1.0" encoding="UTF-8"?>
@@ -425,6 +425,7 @@ export const scanRtspDevices = async ({
   refusedRetryDelayMs = DEFAULT_REFUSED_RETRY_DELAY_MS,
   openPorts = DEFAULT_OPEN_PORTS,
   openPortTimeoutMs = DEFAULT_OPEN_PORT_TIMEOUT_MS,
+  onPortOpenResult = null,
 } = {}) => {
   const log = (...args) => {
     if (debug) {
@@ -493,6 +494,13 @@ export const scanRtspDevices = async ({
             openPortTimeoutMs,
             (msg, ...rest) => log(msg, ...rest)
           );
+          if (typeof onPortOpenResult === 'function') {
+            onPortOpenResult({
+              ip,
+              port: candidatePort,
+              connected: openResult.ok,
+            });
+          }
           if (openResult.ok) {
             openPort = candidatePort;
             possibleHit = {
@@ -659,7 +667,7 @@ export const scanRtspDevices = async ({
         if (typeof onHostResult === 'function') {
           onHostResult({
             ip,
-            result: 'possible',
+            result: 'possible_camera',
             reason: 'rtsp_port_open',
             rtspPort: possibleHit.rtspPort,
           });

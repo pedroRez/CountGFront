@@ -499,7 +499,7 @@ const WifiCameraScreen = ({ navigation }) => {
             hostMax: DEFAULT_HOST_MAX,
             allowConnectOnly: false,
             openPorts: [554, 8554, 10554],
-            openPortTimeoutMs: 450,
+            openPortTimeoutMs: 400,
             refusedRetries: 1,
             refusedRetryDelayMs: 200,
             onStage: (stage, payload) => {
@@ -514,13 +514,17 @@ const WifiCameraScreen = ({ navigation }) => {
               logCameraDiscovery('rtsp_host_result', result);
               if (result?.result === 'hit') {
                 metrics.hits += 1;
-              } else if (result?.result === 'possible') {
+              } else if (result?.result === 'possible_camera') {
                 metrics.possible += 1;
               } else {
                 metrics.misses += 1;
                 const reason = result?.reason || 'unknown';
                 metrics.reasons[reason] = (metrics.reasons[reason] || 0) + 1;
               }
+            },
+            onPortOpenResult: (data) => {
+              if (!isCameraDiscoveryDebugEnabled()) return;
+              logCameraDiscovery('rtsp_port_open_result', data);
             },
           });
           logCameraDiscovery('rtsp_scan_metrics', {
@@ -640,7 +644,11 @@ const WifiCameraScreen = ({ navigation }) => {
   };
 
   const openAuthModal = (device) => {
-    setSelectedDevice(device);
+    if (device?.possibleCamera && !device?.rtspPath) {
+      setSelectedDevice({ ...device, rtspPath: '/onvif1' });
+    } else {
+      setSelectedDevice(device);
+    }
     setShowAdvanced(false);
     setUsername(DEFAULT_ONVIF_USERNAME);
     setPassword('');
