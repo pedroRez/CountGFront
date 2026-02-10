@@ -19,7 +19,6 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Clipboard from 'expo-clipboard';
-import TcpSocket from 'react-native-tcp-socket';
 
 import BigButton from '../components/BigButton';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
@@ -37,10 +36,11 @@ const DEFAULT_ONVIF_USERNAME = 'admin';
 const COMMON_PREFIXES = ['192.168.0'];
 const DEFAULT_HOST_MIN = 1;
 const DEFAULT_HOST_MAX = 254;
-const PRIMARY_CAMERA_IP = '192.168.0.14';
 const PRIMARY_PREFIX = '192.168.0';
 const WIFI_CAMERA_CREDENTIALS_KEY = '@wifi_camera_credentials';
 const WIFI_CAMERA_LAST_PASSWORD_KEY = '@wifi_camera_last_password';
+const WIFI_CAMERA_LAST_IPS_KEY = '@wifi_camera_last_ips';
+const WIFI_CAMERA_LAST_IPS_LIMIT = 8;
 const CAMERA_DISCOVERY_DEBUG_UI =
   String(process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG || '') === '1';
 
@@ -53,6 +53,41 @@ const isValidIp = (value) => {
     const num = Number(part);
     return num >= 0 && num <= 255;
   });
+};
+
+const normalizeIpList = (values, limit = null) => {
+  if (!Array.isArray(values)) return [];
+  const output = [];
+  const seen = new Set();
+  values.forEach((value) => {
+    if (typeof value !== 'string') return;
+    const ip = value.trim();
+    if (!isValidIp(ip)) return;
+    if (seen.has(ip)) return;
+    seen.add(ip);
+    output.push(ip);
+  });
+  if (limit && output.length > limit) {
+    return output.slice(0, limit);
+  }
+  return output;
+};
+
+const mergeIpLists = (...lists) => {
+  const output = [];
+  const seen = new Set();
+  lists.forEach((list) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((value) => {
+      if (typeof value !== 'string') return;
+      const ip = value.trim();
+      if (!isValidIp(ip)) return;
+      if (seen.has(ip)) return;
+      seen.add(ip);
+      output.push(ip);
+    });
+  });
+  return output;
 };
 
 const normalizePrefix = (value) => {
@@ -68,13 +103,6 @@ const normalizePrefix = (value) => {
     }
   }
   return null;
-};
-
-const extractHostSuffix = (ip) => {
-  if (!isValidIp(ip)) return null;
-  const last = ip.split('.').pop();
-  const num = Number(last);
-  return Number.isFinite(num) ? num : null;
 };
 
 const buildBroadcastAddress = (prefix) => {
@@ -133,55 +161,28 @@ const getLocalIp = async () => {
   return null;
 };
 
-const probeTcpPort = (host, port, timeoutMs = 900) =>
-  new Promise((resolve) => {
-    let settled = false;
-    let socket = null;
-    const finish = (ok, reason) => {
-      if (settled) return;
-      settled = true;
-      if (socket) {
-        try {
-          socket.destroy();
-        } catch (error) {
-          // ignore close errors
-        }
-      }
-      resolve({ ok, reason });
-    };
-
-    const timer = setTimeout(() => finish(false, 'timeout'), timeoutMs);
-    try {
-      socket = TcpSocket.createConnection({ host, port }, () => {
-        clearTimeout(timer);
-        finish(true, 'connected');
-      });
-      socket.on('error', (error) => {
-        clearTimeout(timer);
-        finish(false, error?.message || 'error');
-      });
-    } catch (error) {
-      clearTimeout(timer);
-      finish(false, error?.message || 'error');
-    }
-  });
-
-const probeOnvifHttp = async (host, timeoutMs = 1200) => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+const loadLastKnownIps = async () => {
   try {
-    const response = await fetch(`http://${host}/onvif/device_service`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
-      body: '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"></s:Envelope>',
-      signal: controller.signal,
-    });
-    return { ok: true, status: response.status };
+    const raw = await AsyncStorage.getItem(WIFI_CAMERA_LAST_IPS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return normalizeIpList(parsed);
   } catch (error) {
-    return { ok: false, error: error?.message || 'error' };
-  } finally {
-    clearTimeout(timeout);
+    return [];
   }
+};
+
+const saveLastKnownIps = async (ips) => {
+  const normalized = normalizeIpList(ips, WIFI_CAMERA_LAST_IPS_LIMIT);
+  try {
+    await AsyncStorage.setItem(
+      WIFI_CAMERA_LAST_IPS_KEY,
+      JSON.stringify(normalized)
+    );
+  } catch (error) {
+    // ignore storage failures
+  }
+  return normalized;
 };
 
 const buildScanPrefixes = async (
@@ -233,7 +234,6 @@ const WifiCameraScreen = ({ navigation }) => {
     forcedPrefix: null,
     forcedByEnv: false,
     manualPrefix: false,
-    sanityCheck: null,
   });
   const scanLocalOnly = true;
 
@@ -417,6 +417,11 @@ const WifiCameraScreen = ({ navigation }) => {
       } catch (error) {
         lastPassword = null;
       }
+      const lastKnownIps = await loadLastKnownIps();
+      logCameraDiscovery('last_known_ips_loaded', {
+        count: lastKnownIps.length,
+        ips: lastKnownIps,
+      });
 
       const preferVerified = (items) => {
         if (!Array.isArray(items) || !items.length) return [];
@@ -470,6 +475,8 @@ const WifiCameraScreen = ({ navigation }) => {
             hostMin: DEFAULT_HOST_MIN,
             hostMax: DEFAULT_HOST_MAX,
             allowConnectOnly: false,
+            refusedRetries: 1,
+            refusedRetryDelayMs: 200,
             onStage: (stage, payload) => {
               if (stage === 'onvif_verify') {
                 setStage(t('wifiCamera.stageOnvifVerify'), payload?.ip || '');
@@ -502,35 +509,16 @@ const WifiCameraScreen = ({ navigation }) => {
       };
 
       let nextDevices = [];
-      const sanityTarget = PRIMARY_CAMERA_IP;
-      const sanityHostSuffix = extractHostSuffix(sanityTarget);
-      let sanityAlive = false;
-      let sanityDetails = null;
-      if (sanityHostSuffix) {
-        logCameraDiscovery('sanity_check_start', { ip: sanityTarget });
-        const sanityStart = Date.now();
-        const tcp80 = await probeTcpPort(sanityTarget, 80, 900);
-        const tcp554 = await probeTcpPort(sanityTarget, 554, 900);
-        const httpOnvif = await probeOnvifHttp(sanityTarget, 1200);
-        sanityAlive = Boolean(tcp80.ok || tcp554.ok || httpOnvif.ok);
-        sanityDetails = {
-          ip: sanityTarget,
-          alive: sanityAlive,
-          tcp80,
-          tcp554,
-          httpOnvif,
-          durationMs: Date.now() - sanityStart,
-        };
-        logCameraDiscovery('sanity_check_result', sanityDetails);
-        setScanMeta((prev) => ({
-          ...prev,
-          sanityCheck: sanityDetails,
-        }));
-      }
-      const priorityIps = [
-        sanityAlive ? sanityTarget : null,
-        isValidIp(manualIp) ? manualIp.trim() : null,
-      ].filter(Boolean);
+      const manualPriorityIp = isValidIp(manualIp) ? manualIp.trim() : null;
+      const priorityIps = mergeIpLists(
+        manualPriorityIp ? [manualPriorityIp] : [],
+        lastKnownIps
+      );
+      logCameraDiscovery('priority_ips', {
+        count: priorityIps.length,
+        ips: priorityIps,
+        manual: manualPriorityIp,
+      });
       try {
         startStageTimer(t('wifiCamera.stageDiscovery'));
         const onvifDevices = await discoverOnvifDevices({
@@ -559,44 +547,6 @@ const WifiCameraScreen = ({ navigation }) => {
       }
 
       if (!nextDevices.length) {
-        if (sanityAlive && sanityHostSuffix) {
-          startStageTimer(t('wifiCamera.stageRtspScan'), sanityTarget);
-          const sanityResults = await scanRtspDevices({
-            subnetPrefix: PRIMARY_PREFIX,
-            timeoutMs: 2000,
-            concurrency: 1,
-            probeDelayMs: 0,
-            priorityIps,
-            matchHint: null,
-            verifyOnvifPort: [80, 5000, 8000, 8080, 8899],
-            username: lastPassword ? DEFAULT_ONVIF_USERNAME : null,
-            password: lastPassword || null,
-            hostMin: sanityHostSuffix,
-            hostMax: sanityHostSuffix,
-            allowConnectOnly: false,
-            onStage: (stage, payload) => {
-              if (stage === 'onvif_verify') {
-                setStage(t('wifiCamera.stageOnvifVerify'), payload?.ip || '');
-              }
-              if (stage === 'rtsp_scan') {
-                setStage(t('wifiCamera.stageRtspScan'), payload?.ip || '');
-              }
-            },
-            onHostResult: (result) => {
-              logCameraDiscovery('rtsp_host_result', result);
-            },
-          });
-          endStageTimer(t('wifiCamera.stageRtspScan'), {
-            results: Array.isArray(sanityResults) ? sanityResults.length : 0,
-            sanityTarget,
-          });
-          logCameraDiscovery('sanity_scan_complete', {
-            target: sanityTarget,
-            results: Array.isArray(sanityResults) ? sanityResults.length : 0,
-            skippedFullScan: true,
-          });
-          nextDevices = Array.isArray(sanityResults) ? sanityResults : [];
-        } else {
         startStageTimer(t('wifiCamera.stageRtspScan'));
         const primaryScan = await runRtspScan(scanLocalOnly, { priorityIps });
         let rtspDevices = primaryScan.results;
@@ -624,10 +574,23 @@ const WifiCameraScreen = ({ navigation }) => {
           return;
         }
         nextDevices = Array.isArray(rtspDevices) ? rtspDevices : [];
-        }
       }
 
       setDevices(nextDevices);
+      if (Array.isArray(nextDevices) && nextDevices.length) {
+        const foundIps = normalizeIpList(
+          nextDevices.map((device) => device?.ip)
+        );
+        if (foundIps.length) {
+          const mergedIps = mergeIpLists(foundIps, lastKnownIps);
+          const storedIps = await saveLastKnownIps(mergedIps);
+          logCameraDiscovery('last_known_ips_saved', {
+            count: storedIps.length,
+            ips: storedIps,
+            found: foundIps,
+          });
+        }
+      }
       logCameraDiscovery('scan_complete', {
         durationMs: Date.now() - scanStartedAt,
         found: Array.isArray(nextDevices) ? nextDevices.length : 0,
@@ -702,18 +665,12 @@ const WifiCameraScreen = ({ navigation }) => {
     const wsCount = Number.isFinite(scanMeta.wsDiscoveryResponses)
       ? scanMeta.wsDiscoveryResponses
       : 0;
-    const sanityLabel = scanMeta.sanityCheck
-      ? scanMeta.sanityCheck.alive
-        ? t('wifiCamera.sanityAlive')
-        : t('wifiCamera.sanityDead')
-      : t('wifiCamera.sanitySkipped');
     return [
       t('wifiCamera.noResultsDetailsLocalIp', {
         ip: scanMeta.localIp || '-',
       }),
       t('wifiCamera.noResultsDetailsPrefixes', { prefixes }),
       t('wifiCamera.noResultsDetailsWsDiscovery', { count: wsCount }),
-      t('wifiCamera.noResultsDetailsSanity', { status: sanityLabel }),
     ];
   };
 

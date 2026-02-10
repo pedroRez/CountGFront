@@ -8,6 +8,8 @@ const DEFAULT_HTTP_TIMEOUT_MS = 900;
 const DEFAULT_CONCURRENCY = 18;
 const DEFAULT_ALLOW_CONNECT_ONLY = false;
 const DEFAULT_DEBUG = false;
+const DEFAULT_REFUSED_RETRIES = 1;
+const DEFAULT_REFUSED_RETRY_DELAY_MS = 150;
 const BASE64_CHARS =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
 const ONVIF_PROBE_BODY = `<?xml version="1.0" encoding="UTF-8"?>
@@ -148,6 +150,17 @@ const normalizePorts = (ports) => {
   if (!ports) return [];
   return Array.isArray(ports) ? ports : [ports];
 };
+
+const isConnectionRefused = (stop) => {
+  if (!stop) return false;
+  const error = String(stop.error || '').toLowerCase();
+  return error.includes('econnrefused') || error.includes('refused');
+};
+
+const sleep = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 const verifyOnvifService = async (ip, ports, timeoutMs) => {
   const candidatePorts = normalizePorts(ports);
@@ -360,6 +373,8 @@ export const scanRtspDevices = async ({
   password = null,
   hostMin = 1,
   hostMax = 254,
+  refusedRetries = DEFAULT_REFUSED_RETRIES,
+  refusedRetryDelayMs = DEFAULT_REFUSED_RETRY_DELAY_MS,
 } = {}) => {
   const log = (...args) => {
     if (debug) {
@@ -400,7 +415,8 @@ export const scanRtspDevices = async ({
     '[rtsp-scan] start',
     `prefix=${prefix}`,
     `range=${safeMin}-${safeMax}`,
-    `priority=${priorityList.length}`
+    `priority=${priorityList.length}`,
+    `refusedRetries=${refusedRetries}`
   );
 
   const worker = async () => {
@@ -409,25 +425,50 @@ export const scanRtspDevices = async ({
       index += 1;
       let lastReason = 'no_response';
       let lastStop = null;
+      let finalHit = null;
       for (const path of normalizedPaths) {
-        log('[rtsp-scan] probe', ip, `path=${path}`);
-        const hit = await probeRtspPath(ip, port, path, timeoutMs, {
-          allowConnectOnly,
-          onLog: (msg, ...rest) => log(msg, ...rest),
-          onStop: (stop) => {
-            lastStop = stop;
-            if (stop?.reason) lastReason = stop.reason;
-          },
-          auth:
-            username || password
-              ? {
-                  username,
-                  password,
-                }
-              : null,
-        });
-        if (hit) {
-          if (hit.connectOnly && verifyConnectOnly) {
+        let attempt = 0;
+        while (attempt <= refusedRetries) {
+          const retryLabel = attempt > 0 ? `retry=${attempt}` : null;
+          log('[rtsp-scan] probe', ip, `path=${path}`, retryLabel || '');
+          let stopSnapshot = null;
+          const hit = await probeRtspPath(ip, port, path, timeoutMs, {
+            allowConnectOnly,
+            onLog: (msg, ...rest) => log(msg, ...rest),
+            onStop: (stop) => {
+              stopSnapshot = stop;
+              lastStop = stop;
+              if (stop?.reason) lastReason = stop.reason;
+            },
+            auth:
+              username || password
+                ? {
+                    username,
+                    password,
+                  }
+                : null,
+          });
+          if (hit) {
+            finalHit = hit;
+            break;
+          }
+          if (isConnectionRefused(stopSnapshot) && attempt < refusedRetries) {
+            attempt += 1;
+            log(
+              '[rtsp-scan] retry_refused',
+              ip,
+              `path=${path}`,
+              `attempt=${attempt}`
+            );
+            if (refusedRetryDelayMs > 0) {
+              await sleep(refusedRetryDelayMs);
+            }
+            continue;
+          }
+          break;
+        }
+        if (finalHit) {
+          if (finalHit.connectOnly && verifyConnectOnly) {
             const verifyHit = await probeRtspPath(
               ip,
               port,
@@ -452,6 +493,7 @@ export const scanRtspDevices = async ({
             if (!verifyHit) {
               log('[rtsp-scan] connectOnly reject', ip);
               lastReason = 'connect_only_reject';
+              finalHit = null;
               continue;
             }
           }
@@ -474,33 +516,39 @@ export const scanRtspDevices = async ({
             }
           }
           if (matchHint) {
-            const realmOk = matchesHint(hit.realm, matchHint);
-            const serverOk = matchesHint(hit.server, matchHint);
-            const hasHintData = Boolean(hit.realm || hit.server);
+            const realmOk = matchesHint(finalHit.realm, matchHint);
+            const serverOk = matchesHint(finalHit.server, matchHint);
+            const hasHintData = Boolean(finalHit.realm || finalHit.server);
             if (hasHintData && !realmOk && !serverOk && !onvifOk) {
-              log('[rtsp-scan] hint reject', ip, hit.realm, hit.server);
+              log(
+                '[rtsp-scan] hint reject',
+                ip,
+                finalHit.realm,
+                finalHit.server
+              );
               lastReason = 'hint_reject';
+              finalHit = null;
               continue;
             }
           }
-          const enrichedHit = { ...hit, onvifOk };
+          const enrichedHit = { ...finalHit, onvifOk };
           log(
             '[rtsp-scan] hit',
             ip,
-            `realm=${hit.realm || '-'}`,
-            `server=${hit.server || '-'}`,
+            `realm=${finalHit.realm || '-'}`,
+            `server=${finalHit.server || '-'}`,
             `onvif=${onvifOk}`,
-            `connectOnly=${hit.connectOnly ? 'yes' : 'no'}`
+            `connectOnly=${finalHit.connectOnly ? 'yes' : 'no'}`
           );
           if (typeof onHostResult === 'function') {
             onHostResult({
               ip,
               result: 'hit',
               reason: 'hit',
-              rtspPath: hit.rtspPath,
-              rtspPort: hit.rtspPort,
-              realm: hit.realm,
-              server: hit.server,
+              rtspPath: finalHit.rtspPath,
+              rtspPort: finalHit.rtspPort,
+              realm: finalHit.realm,
+              server: finalHit.server,
               onvifOk,
             });
           }
@@ -544,6 +592,8 @@ export const filterRtspDevices = async ({
   onHostResult = null,
   username = null,
   password = null,
+  refusedRetries = DEFAULT_REFUSED_RETRIES,
+  refusedRetryDelayMs = DEFAULT_REFUSED_RETRY_DELAY_MS,
 } = {}) => {
   const log = (...args) => {
     if (debug) {
@@ -573,22 +623,40 @@ export const filterRtspDevices = async ({
       index += 1;
       let lastReason = 'no_response';
       let lastStop = null;
+      let finalHit = null;
       for (const path of normalizedPaths) {
-        const hit = await probeRtspPath(ip, port, path, timeoutMs, {
-          allowConnectOnly,
-          onStop: (stop) => {
-            lastStop = stop;
-            if (stop?.reason) lastReason = stop.reason;
-          },
-          auth:
-            username || password
-              ? {
-                  username,
-                  password,
-                }
-              : null,
-        });
-        if (!hit) continue;
+        let attempt = 0;
+        while (attempt <= refusedRetries) {
+          let stopSnapshot = null;
+          const hit = await probeRtspPath(ip, port, path, timeoutMs, {
+            allowConnectOnly,
+            onStop: (stop) => {
+              stopSnapshot = stop;
+              lastStop = stop;
+              if (stop?.reason) lastReason = stop.reason;
+            },
+            auth:
+              username || password
+                ? {
+                    username,
+                    password,
+                  }
+                : null,
+          });
+          if (hit) {
+            finalHit = hit;
+            break;
+          }
+          if (isConnectionRefused(stopSnapshot) && attempt < refusedRetries) {
+            attempt += 1;
+            if (refusedRetryDelayMs > 0) {
+              await sleep(refusedRetryDelayMs);
+            }
+            continue;
+          }
+          break;
+        }
+        if (!finalHit) continue;
         let onvifOk = true;
         if (verifyOnvifPort) {
           onvifOk = await verifyOnvifService(
@@ -602,21 +670,27 @@ export const filterRtspDevices = async ({
           }
         }
         if (matchHint) {
-          const realmOk = matchesHint(hit.realm, matchHint);
-          const serverOk = matchesHint(hit.server, matchHint);
-          const hasHintData = Boolean(hit.realm || hit.server);
+          const realmOk = matchesHint(finalHit.realm, matchHint);
+          const serverOk = matchesHint(finalHit.server, matchHint);
+          const hasHintData = Boolean(finalHit.realm || finalHit.server);
           if (hasHintData && !realmOk && !serverOk && !onvifOk) {
-            log('[rtsp-filter] hint reject', ip, hit.realm, hit.server);
+            log(
+              '[rtsp-filter] hint reject',
+              ip,
+              finalHit.realm,
+              finalHit.server
+            );
             lastReason = 'hint_reject';
+            finalHit = null;
             continue;
           }
         }
-        const enrichedHit = { ...hit, onvifOk };
+        const enrichedHit = { ...finalHit, onvifOk };
         log(
           '[rtsp-filter] hit',
           ip,
-          `realm=${hit.realm || '-'}`,
-          `server=${hit.server || '-'}`,
+          `realm=${finalHit.realm || '-'}`,
+          `server=${finalHit.server || '-'}`,
           `onvif=${onvifOk}`
         );
         if (typeof onHostResult === 'function') {
@@ -624,10 +698,10 @@ export const filterRtspDevices = async ({
             ip,
             result: 'hit',
             reason: 'hit',
-            rtspPath: hit.rtspPath,
-            rtspPort: hit.rtspPort,
-            realm: hit.realm,
-            server: hit.server,
+            rtspPath: finalHit.rtspPath,
+            rtspPort: finalHit.rtspPort,
+            realm: finalHit.realm,
+            server: finalHit.server,
             onvifOk,
           });
         }

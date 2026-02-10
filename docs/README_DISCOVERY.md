@@ -14,7 +14,9 @@
 - `local_network` com o IP local detectado.
 - `ws_discovery_targets` com os destinos enviados.
 - `onvif_discovery_message` para contar respostas.
-- `sanity_check_result` para o host `192.168.0.14`.
+- `last_known_ips_loaded` com os IPs priorizados salvos.
+- `priority_ips` com a ordem de prioridade aplicada no scan.
+- `last_known_ips_saved` com os IPs encontrados mais recentes.
 - `rtsp_scan_prefixes` e `rtsp_scan_metrics` para verificar o scan.
 
 ## Onde colar os logs
