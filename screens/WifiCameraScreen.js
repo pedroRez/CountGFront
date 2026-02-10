@@ -426,7 +426,7 @@ const WifiCameraScreen = ({ navigation }) => {
       const preferVerified = (items) => {
         if (!Array.isArray(items) || !items.length) return [];
         const verified = items.filter(
-          (item) => !item?.connectOnly || item?.onvifOk
+          (item) => item?.possibleCamera || item?.onvifOk || !item?.connectOnly
         );
         const cleaned = (verified.length ? verified : items).filter((item) => {
           if (!item?.ip) return false;
@@ -435,6 +435,27 @@ const WifiCameraScreen = ({ navigation }) => {
           return true;
         });
         return cleaned;
+      };
+
+      const mergeDeviceResults = (current, incoming) => {
+        const map = new Map();
+        (current || []).forEach((item) => {
+          if (item?.ip) {
+            map.set(item.ip, item);
+          }
+        });
+        (incoming || []).forEach((item) => {
+          if (!item?.ip) return;
+          const existing = map.get(item.ip);
+          if (!existing) {
+            map.set(item.ip, item);
+            return;
+          }
+          if (existing?.possibleCamera && !item?.possibleCamera) {
+            map.set(item.ip, item);
+          }
+        });
+        return Array.from(map.values());
       };
 
       const runRtspScan = async (localOnly, options = {}) => {
@@ -453,13 +474,15 @@ const WifiCameraScreen = ({ navigation }) => {
           prefixes,
         }));
         if (!prefixes.length) {
-          return { prefixes, results: [] };
+          return { prefixes, results: [], hasConfirmed: false };
         }
         let rtspDevices = [];
+        let hasConfirmed = false;
         for (const prefix of prefixes) {
           const metrics = {
             hits: 0,
             misses: 0,
+            possible: 0,
             reasons: {},
           };
           const scanResults = await scanRtspDevices({
@@ -475,6 +498,8 @@ const WifiCameraScreen = ({ navigation }) => {
             hostMin: DEFAULT_HOST_MIN,
             hostMax: DEFAULT_HOST_MAX,
             allowConnectOnly: false,
+            openPorts: [554, 8554, 10554],
+            openPortTimeoutMs: 450,
             refusedRetries: 1,
             refusedRetryDelayMs: 200,
             onStage: (stage, payload) => {
@@ -489,6 +514,8 @@ const WifiCameraScreen = ({ navigation }) => {
               logCameraDiscovery('rtsp_host_result', result);
               if (result?.result === 'hit') {
                 metrics.hits += 1;
+              } else if (result?.result === 'possible') {
+                metrics.possible += 1;
               } else {
                 metrics.misses += 1;
                 const reason = result?.reason || 'unknown';
@@ -500,12 +527,17 @@ const WifiCameraScreen = ({ navigation }) => {
             prefix,
             metrics,
           });
-          if (scanResults.length) {
-            rtspDevices = scanResults;
+          const normalizedResults = (scanResults || []).map((item) => ({
+            ...item,
+            discoverySource: item?.possibleCamera ? 'rtsp-port' : 'rtsp-scan',
+          }));
+          rtspDevices = mergeDeviceResults(rtspDevices, normalizedResults);
+          if ((scanResults || []).some((item) => !item?.possibleCamera)) {
+            hasConfirmed = true;
             break;
           }
         }
-        return { prefixes, results: preferVerified(rtspDevices) };
+        return { prefixes, results: preferVerified(rtspDevices), hasConfirmed };
       };
 
       let nextDevices = [];
@@ -537,7 +569,12 @@ const WifiCameraScreen = ({ navigation }) => {
             : 0,
         }));
         if (Array.isArray(onvifDevices) && onvifDevices.length) {
-          nextDevices = onvifDevices;
+          nextDevices = onvifDevices.map((device) => ({
+            ...device,
+            discoverySource: 'ws-discovery',
+            onvifOk: true,
+            possibleCamera: false,
+          }));
         }
       } catch (error) {
         // ignore discovery errors and fallback to RTSP scan
@@ -550,13 +587,15 @@ const WifiCameraScreen = ({ navigation }) => {
         startStageTimer(t('wifiCamera.stageRtspScan'));
         const primaryScan = await runRtspScan(scanLocalOnly, { priorityIps });
         let rtspDevices = primaryScan.results;
+        let hasConfirmed = primaryScan.hasConfirmed;
         endStageTimer(t('wifiCamera.stageRtspScan'), {
           results: Array.isArray(rtspDevices) ? rtspDevices.length : 0,
         });
-        if (!rtspDevices.length && scanLocalOnly) {
+        if (!hasConfirmed && scanLocalOnly) {
           startStageTimer(t('wifiCamera.stageRtspScan'));
           const fallbackScan = await runRtspScan(false, { priorityIps });
-          rtspDevices = fallbackScan.results;
+          rtspDevices = mergeDeviceResults(rtspDevices, fallbackScan.results);
+          hasConfirmed = hasConfirmed || fallbackScan.hasConfirmed;
           endStageTimer(t('wifiCamera.stageRtspScan'), {
             results: Array.isArray(rtspDevices) ? rtspDevices.length : 0,
             fallback: true,
@@ -672,6 +711,17 @@ const WifiCameraScreen = ({ navigation }) => {
       t('wifiCamera.noResultsDetailsPrefixes', { prefixes }),
       t('wifiCamera.noResultsDetailsWsDiscovery', { count: wsCount }),
     ];
+  };
+
+  const getDeviceStatusLabel = (device) => {
+    if (!device) return '';
+    if (device.possibleCamera) {
+      return t('wifiCamera.deviceStatusPossible');
+    }
+    if (device.discoverySource === 'ws-discovery' || device.onvifOk) {
+      return t('wifiCamera.deviceStatusOnvif');
+    }
+    return t('wifiCamera.deviceStatusRtsp');
   };
 
   return (
@@ -820,6 +870,16 @@ const WifiCameraScreen = ({ navigation }) => {
                       </Text>
                     </TouchableOpacity>
                   </View>
+                  <Text
+                    style={[
+                      styles.deviceStatus,
+                      device?.possibleCamera
+                        ? styles.deviceStatusPossible
+                        : styles.deviceStatusConfirmed,
+                    ]}
+                  >
+                    {getDeviceStatusLabel(device)}
+                  </Text>
                   {CAMERA_DISCOVERY_DEBUG_UI
                     ? (device.xaddrs || []).map((url) => (
                         <Text
@@ -1077,6 +1137,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6b7280',
     marginTop: 2,
+  },
+  deviceStatus: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  deviceStatusPossible: {
+    color: '#b45309',
+  },
+  deviceStatusConfirmed: {
+    color: '#047857',
   },
   connectButton: {
     backgroundColor: '#2563eb',
