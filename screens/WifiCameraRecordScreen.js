@@ -16,7 +16,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as ModernFileSystem from 'expo-file-system';
 import { VLCPlayer } from 'react-native-vlc-media-player';
 
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
@@ -221,9 +222,15 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     const expoOs =
       typeof process !== 'undefined' ? process?.env?.EXPO_OS : undefined;
     const sdkVersion = Constants?.expoConfig?.sdkVersion || null;
-    const fileSystemKeys = Object.keys(FileSystem || {})
+    const legacyFileSystemKeys = Object.keys(FileSystem || {})
       .slice(0, 40)
       .join(', ');
+    const modernFileSystemKeys = Object.keys(ModernFileSystem || {})
+      .slice(0, 40)
+      .join(', ');
+    const modernPaths = ModernFileSystem?.Paths;
+    const modernDocumentUri = modernPaths?.document?.uri || '-';
+    const modernCacheUri = modernPaths?.cache?.uri || '-';
     const nativeModuleKeys = Object.keys(nativeModules)
       .filter(
         (key) =>
@@ -238,9 +245,13 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
       expoOs,
       sdkVersion,
       fileSystemType: typeof FileSystem,
-      documentDirectory: FileSystem?.documentDirectory || '-',
-      cacheDirectory: FileSystem?.cacheDirectory || '-',
-      fileSystemKeys,
+      fileSystemApi: 'legacy',
+      legacyDocumentDirectory: FileSystem?.documentDirectory || '-',
+      legacyCacheDirectory: FileSystem?.cacheDirectory || '-',
+      modernDocumentDirectory: modernDocumentUri,
+      modernCacheDirectory: modernCacheUri,
+      legacyFileSystemKeys,
+      modernFileSystemKeys,
       exponentFileSystemExists: Boolean(nativeModules?.ExponentFileSystem),
       nativeModuleKeys,
     };
@@ -252,9 +263,25 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     console.log('[FS][debug] EXPO_OS', debugInfo.expoOs || '-');
     console.log('[FS][debug] sdkVersion', debugInfo.sdkVersion || '-');
     console.log('[FS][debug] typeof FileSystem', debugInfo.fileSystemType);
-    console.log('[FS][debug] documentDirectory', debugInfo.documentDirectory);
-    console.log('[FS][debug] cacheDirectory', debugInfo.cacheDirectory);
-    console.log('[FS][debug] FileSystem keys', debugInfo.fileSystemKeys);
+    console.log('[FS][debug] API in use', debugInfo.fileSystemApi);
+    console.log(
+      '[FS][debug] legacy documentDirectory',
+      debugInfo.legacyDocumentDirectory
+    );
+    console.log(
+      '[FS][debug] legacy cacheDirectory',
+      debugInfo.legacyCacheDirectory
+    );
+    console.log(
+      '[FS][debug] modern documentDirectory',
+      debugInfo.modernDocumentDirectory
+    );
+    console.log(
+      '[FS][debug] modern cacheDirectory',
+      debugInfo.modernCacheDirectory
+    );
+    console.log('[FS][debug] legacy FileSystem keys', debugInfo.legacyFileSystemKeys);
+    console.log('[FS][debug] modern FileSystem keys', debugInfo.modernFileSystemKeys);
     console.log(
       '[FS][debug] ExponentFileSystem exists',
       debugInfo.exponentFileSystemExists
@@ -679,10 +706,14 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                   `EXPO_OS: ${debugInfo.expoOs || '-'}`,
                   `SDK: ${debugInfo.sdkVersion || '-'}`,
                   `typeof FileSystem: ${debugInfo.fileSystemType}`,
-                  `documentDirectory: ${debugInfo.documentDirectory}`,
-                  `cacheDirectory: ${debugInfo.cacheDirectory}`,
+                  `API in use: ${debugInfo.fileSystemApi}`,
+                  `legacy documentDirectory: ${debugInfo.legacyDocumentDirectory}`,
+                  `legacy cacheDirectory: ${debugInfo.legacyCacheDirectory}`,
+                  `modern documentDirectory: ${debugInfo.modernDocumentDirectory}`,
+                  `modern cacheDirectory: ${debugInfo.modernCacheDirectory}`,
                   `ExponentFileSystem: ${debugInfo.exponentFileSystemExists}`,
-                  `FileSystem keys: ${debugInfo.fileSystemKeys || '-'}`,
+                  `legacy FileSystem keys: ${debugInfo.legacyFileSystemKeys || '-'}`,
+                  `modern FileSystem keys: ${debugInfo.modernFileSystemKeys || '-'}`,
                   `NativeModules keys: ${debugInfo.nativeModuleKeys || '-'}`,
                 ].join('\n')}
               </Text>
