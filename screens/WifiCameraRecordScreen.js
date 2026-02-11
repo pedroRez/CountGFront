@@ -3,6 +3,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  PermissionsAndroid,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,6 +20,7 @@ import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ModernFileSystem from 'expo-file-system';
 import * as Clipboard from 'expo-clipboard';
+import * as Network from 'expo-network';
 import TcpSocket from 'react-native-tcp-socket';
 import { VLCPlayer } from 'react-native-vlc-media-player';
 
@@ -38,6 +40,9 @@ const RECORDING_EXTENSION = 'mp4';
 const RECORDING_READY_DELAY_MS = 150;
 const RECORDING_READY_ATTEMPTS = 8;
 const RTSP_USER_AGENT = 'AndroidXMedia3/1.8.0';
+const NETWORK_DIAG_TIMEOUT_MS = 800;
+const NETWORK_HTTP_TIMEOUT_MS = 1500;
+const DEFAULT_BACKEND_DIAG_URL = 'http://192.168.0.17:8000';
 const FILESYSTEM_DEBUG_UI =
   String(process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG || '') === '1';
 
@@ -296,9 +301,10 @@ const resolveMaybePromise = async (value) => {
 
 const getLocalNetworkInfo = async () => {
   const netInfo = NativeModules?.NetworkInfo;
-  if (!netInfo) return { localIp: null, ssid: null };
+  if (!netInfo) return { localIp: null, ssid: null, bssid: null };
   let localIp = null;
   let ssid = null;
+  let bssid = null;
   if (netInfo.getIpAddress) {
     try {
       localIp = await resolveMaybePromise(netInfo.getIpAddress());
@@ -313,7 +319,108 @@ const getLocalNetworkInfo = async () => {
       ssid = null;
     }
   }
-  return { localIp, ssid };
+  if (netInfo.getBSSID) {
+    try {
+      bssid = await resolveMaybePromise(netInfo.getBSSID());
+    } catch (error) {
+      bssid = null;
+    }
+  }
+  return { localIp, ssid, bssid };
+};
+
+const isAndroidApiLevelAtLeast = (level) => {
+  if (Platform.OS !== 'android') return false;
+  const apiLevel = Number(Platform.Version);
+  return Number.isFinite(apiLevel) && apiLevel >= level;
+};
+
+const getBackendDiagnosticBaseUrl = () => {
+  const envUrl = String(process.env.EXPO_PUBLIC_API_URL || '').trim();
+  if (envUrl) return envUrl.replace(/\/+$/, '');
+  return DEFAULT_BACKEND_DIAG_URL;
+};
+
+const ensureAndroidNetworkPermissions = async () => {
+  if (Platform.OS !== 'android') {
+    return {
+      requested: [],
+      results: {},
+      skipped: true,
+    };
+  }
+  const results = {};
+  const requested = [];
+  const perms = [];
+
+  if (isAndroidApiLevelAtLeast(33)) {
+    const nearbyWifi = PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES;
+    if (nearbyWifi) perms.push(nearbyWifi);
+  } else {
+    const fineLocation = PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
+    if (fineLocation) perms.push(fineLocation);
+  }
+
+  for (const perm of perms) {
+    try {
+      const alreadyGranted = await PermissionsAndroid.check(perm);
+      if (alreadyGranted) {
+        results[perm] = 'granted';
+        continue;
+      }
+      requested.push(perm);
+      const requestResult = await PermissionsAndroid.request(perm);
+      results[perm] = requestResult;
+    } catch (error) {
+      results[perm] = `error:${error?.message || 'unknown'}`;
+    }
+  }
+
+  return { requested, results, skipped: false };
+};
+
+const fetchWithTimeout = async (url, timeoutMs) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    return { ok: response.ok, status: response.status };
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const tryBindProcessToWifi = async () => {
+  if (Platform.OS !== 'android') {
+    return { attempted: false, bound: false, reason: 'not_android' };
+  }
+  const candidates = [
+    { name: 'WifiNetworkBinder', method: 'bindToWifi' },
+    { name: 'NetworkBinder', method: 'bindToWifi' },
+    { name: 'WifiBinder', method: 'bindToWifi' },
+    { name: 'ConnectivityManager', method: 'bindProcessToWifi' },
+  ];
+  for (const candidate of candidates) {
+    const module = NativeModules?.[candidate.name];
+    const fn = module?.[candidate.method];
+    if (typeof fn === 'function') {
+      try {
+        const result = await resolveMaybePromise(fn.call(module));
+        return { attempted: true, bound: true, result, module: candidate.name };
+      } catch (error) {
+        return {
+          attempted: true,
+          bound: false,
+          reason: error?.message || 'bind_failed',
+          module: candidate.name,
+        };
+      }
+    }
+  }
+  return { attempted: false, bound: false, reason: 'no_native_binding' };
 };
 
 const getExistingFileInfo = async (path) => {
@@ -430,6 +537,8 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isStreamReady, setIsStreamReady] = useState(false);
   const [connectDiagnostics, setConnectDiagnostics] = useState(null);
+  const [networkSnapshot, setNetworkSnapshot] = useState(null);
+  const [networkDiagnostics, setNetworkDiagnostics] = useState(null);
 
   const timerRef = useRef(null);
   const elapsedRef = useRef(0);
@@ -444,6 +553,10 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   const diagnosticsRef = useRef({
     running: false,
     lastKey: '',
+    lastAt: 0,
+  });
+  const networkDiagRef = useRef({
+    running: false,
     lastAt: 0,
   });
 
@@ -487,6 +600,27 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
       nativeModuleKeys,
     };
   }, []);
+
+  const networkSnapshotText = useMemo(() => {
+    if (!networkSnapshot) return null;
+    const lines = [
+      `Platform.OS: ${networkSnapshot.platform || '-'}`,
+      `Android API: ${networkSnapshot.apiLevel || '-'}`,
+      `Network type: ${networkSnapshot.networkType || '-'}`,
+      `isConnected: ${String(networkSnapshot.isConnected)}`,
+      `isInternetReachable: ${String(networkSnapshot.isInternetReachable)}`,
+      `isWifiEnabled: ${
+        networkSnapshot.isWifiEnabled === undefined
+          ? '-'
+          : String(networkSnapshot.isWifiEnabled)
+      }`,
+      `nativeIp: ${networkSnapshot.nativeIp || '-'}`,
+      `expoIp: ${networkSnapshot.expoIp || '-'}`,
+      `ssid: ${networkSnapshot.ssid || '-'}`,
+      `bssid: ${networkSnapshot.bssid || '-'}`,
+    ];
+    return lines.join('\n');
+  }, [networkSnapshot]);
 
   const runConnectDiagnostics = useCallback(
     async ({ stage, error, rtspUrlOverride } = {}) => {
@@ -621,6 +755,240 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     }
   }, [connectDiagnostics]);
 
+  const loadNetworkSnapshot = useCallback(async () => {
+    if (!FILESYSTEM_DEBUG_UI) return;
+    try {
+      const nativeInfo = await getLocalNetworkInfo();
+      const networkState = await Network.getNetworkStateAsync();
+      let expoIp = null;
+      try {
+        expoIp = await Network.getIpAddressAsync();
+      } catch (error) {
+        expoIp = null;
+      }
+      const details = networkState?.details || {};
+      const ssid =
+        nativeInfo?.ssid || details?.ssid || details?.ssidName || null;
+      const bssid = nativeInfo?.bssid || details?.bssid || null;
+
+      setNetworkSnapshot({
+        platform: Platform.OS,
+        apiLevel: Platform.OS === 'android' ? Platform.Version : null,
+        networkType: networkState?.type || '-',
+        isConnected: networkState?.isConnected,
+        isInternetReachable: networkState?.isInternetReachable,
+        isWifiEnabled: networkState?.isWifiEnabled,
+        expoIp,
+        nativeIp: nativeInfo?.localIp || null,
+        ssid,
+        bssid,
+        details,
+      });
+    } catch (error) {
+      setNetworkSnapshot({
+        platform: Platform.OS,
+        apiLevel: Platform.OS === 'android' ? Platform.Version : null,
+        error: error?.message || 'failed',
+      });
+    }
+  }, []);
+
+  const runNetworkDiagnostics = useCallback(
+    async ({ stage } = {}) => {
+      if (!FILESYSTEM_DEBUG_UI) return;
+      if (networkDiagRef.current.running) return;
+      const now = Date.now();
+      if (now - networkDiagRef.current.lastAt < 1500) return;
+      networkDiagRef.current.running = true;
+      networkDiagRef.current.lastAt = now;
+
+      const startedAt = Date.now();
+      try {
+        const permissionResult = await ensureAndroidNetworkPermissions();
+        const nativeInfo = await getLocalNetworkInfo();
+        const networkState = await Network.getNetworkStateAsync();
+        let expoIp = null;
+        try {
+          expoIp = await Network.getIpAddressAsync();
+        } catch (error) {
+          expoIp = null;
+        }
+        const details = networkState?.details || {};
+        const ssid =
+          nativeInfo?.ssid || details?.ssid || details?.ssidName || null;
+        const bssid = nativeInfo?.bssid || details?.bssid || null;
+        const wifiType =
+          Network?.NetworkStateType?.WIFI || Network?.NetworkStateType?.Wifi || 'WIFI';
+        const wifiConnected =
+          networkState?.type === wifiType && networkState?.isConnected;
+
+        const targetFromUrl = parseRtspTarget(rtspUrl);
+        const targetIp = wifiCamera?.ip || targetFromUrl?.host || '192.168.0.18';
+        const targetPort = wifiCamera?.rtspPort || targetFromUrl?.port || 554;
+        const gatewayIp = targetIp
+          ? `${targetIp.split('.').slice(0, 3).join('.')}.1`
+          : '192.168.0.1';
+
+        const bindResult = await tryBindProcessToWifi();
+
+        const gatewayTcp = await probeTcpConnect(
+          gatewayIp,
+          80,
+          NETWORK_DIAG_TIMEOUT_MS
+        );
+        const cameraTcp = await probeTcpConnect(
+          targetIp,
+          targetPort,
+          NETWORK_DIAG_TIMEOUT_MS
+        );
+
+        const backendBaseUrl = getBackendDiagnosticBaseUrl();
+        const healthUrl = `${backendBaseUrl.replace(/\/+$/, '')}/health`;
+        let backendHealth = null;
+        let backendRoot = null;
+        try {
+          backendHealth = await fetchWithTimeout(
+            healthUrl,
+            NETWORK_HTTP_TIMEOUT_MS
+          );
+        } catch (error) {
+          backendHealth = { ok: false, error: error?.message || 'error' };
+        }
+        if (!backendHealth?.ok) {
+          try {
+            backendRoot = await fetchWithTimeout(
+              backendBaseUrl,
+              NETWORK_HTTP_TIMEOUT_MS
+            );
+          } catch (error) {
+            backendRoot = { ok: false, error: error?.message || 'error' };
+          }
+        }
+
+        const nativeIp = nativeInfo?.localIp || null;
+        const isLocalIp =
+          typeof nativeIp === 'string' && nativeIp.startsWith('192.168.');
+        const suspectIsolation =
+          isLocalIp && !gatewayTcp.ok && !cameraTcp.ok;
+        const suspectMobileRouting =
+          wifiConnected &&
+          (!nativeIp || !nativeIp.startsWith('192.168.')) &&
+          !cameraTcp.ok;
+
+        const lines = [
+          `[Network Diagnostics] ${new Date().toISOString()}`,
+          `stage: ${stage || '-'}`,
+          '',
+          'platform:',
+          `  os: ${Platform.OS}`,
+          `  apiLevel: ${Platform.OS === 'android' ? Platform.Version : '-'}`,
+          '',
+          'permissions:',
+          `  requested: ${
+            permissionResult.requested?.length
+              ? permissionResult.requested.join(', ')
+              : '-'
+          }`,
+          `  results: ${
+            Object.keys(permissionResult.results || {}).length
+              ? JSON.stringify(permissionResult.results)
+              : '-'
+          }`,
+          '',
+          'connectivity:',
+          `  type: ${networkState?.type || '-'}`,
+          `  isConnected: ${String(networkState?.isConnected)}`,
+          `  isInternetReachable: ${String(
+            networkState?.isInternetReachable
+          )}`,
+          `  isWifiEnabled: ${
+            networkState?.isWifiEnabled === undefined
+              ? '-'
+              : String(networkState?.isWifiEnabled)
+          }`,
+          '',
+          'ip/ssid:',
+          `  nativeIp: ${nativeIp || '-'}`,
+          `  expoIp: ${expoIp || '-'}`,
+          `  ssid: ${ssid || '-'}`,
+          `  bssid: ${bssid || '-'}`,
+          '',
+          'binding:',
+          `  attempted: ${bindResult.attempted ? 'yes' : 'no'}`,
+          `  bound: ${bindResult.bound ? 'yes' : 'no'}`,
+          `  module: ${bindResult.module || '-'}`,
+          `  reason: ${bindResult.reason || '-'}`,
+          '',
+          'tcp:',
+          `  gateway ${gatewayIp}:80 => ${
+            gatewayTcp.ok ? 'connected' : 'fail'
+          } (${gatewayTcp.reason}) ${gatewayTcp.elapsedMs}ms`,
+          `  camera ${targetIp}:${targetPort} => ${
+            cameraTcp.ok ? 'connected' : 'fail'
+          } (${cameraTcp.reason}) ${cameraTcp.elapsedMs}ms`,
+          '',
+          'http:',
+          `  ${healthUrl} => ${
+            backendHealth?.ok ? 'ok' : 'fail'
+          } ${backendHealth?.status || backendHealth?.error || '-'}`,
+          backendRoot
+            ? `  ${backendBaseUrl} => ${
+                backendRoot?.ok ? 'ok' : 'fail'
+              } ${backendRoot?.status || backendRoot?.error || '-'}`
+            : null,
+          '',
+          suspectIsolation
+            ? 'suspect: AP isolation / guest network (device cannot reach gateway or camera)'
+            : null,
+          suspectMobileRouting
+            ? 'suspect: Wi-Fi connected but traffic routing via mobile data (disable mobile data to test)'
+            : null,
+          '',
+          `details: ${JSON.stringify(details || {})}`,
+          `totalMs: ${Date.now() - startedAt}`,
+        ].filter(Boolean);
+
+        const text = lines.join('\n');
+        setNetworkDiagnostics({ text, ts: Date.now(), stage: stage || null });
+        setNetworkSnapshot({
+          platform: Platform.OS,
+          apiLevel: Platform.OS === 'android' ? Platform.Version : null,
+          networkType: networkState?.type || '-',
+          isConnected: networkState?.isConnected,
+          isInternetReachable: networkState?.isInternetReachable,
+          isWifiEnabled: networkState?.isWifiEnabled,
+          expoIp,
+          nativeIp,
+          ssid,
+          bssid,
+          details,
+        });
+        console.log('[Network][diagnostics]\n' + text);
+      } catch (error) {
+        const text = [
+          `[Network Diagnostics] ${new Date().toISOString()}`,
+          `stage: ${stage || '-'}`,
+          `error: ${error?.message || error || 'unknown'}`,
+        ].join('\n');
+        setNetworkDiagnostics({ text, ts: Date.now(), stage: stage || null });
+        console.log('[Network][diagnostics]\n' + text);
+      } finally {
+        networkDiagRef.current.running = false;
+      }
+    },
+    [rtspUrl, wifiCamera]
+  );
+
+  const handleCopyNetworkDiagnostics = useCallback(async () => {
+    if (!networkDiagnostics?.text) return;
+    try {
+      await Clipboard.setStringAsync(networkDiagnostics.text);
+      Alert.alert('Diagnostico copiado', 'O log de rede foi copiado.');
+    } catch (error) {
+      Alert.alert('Erro ao copiar', 'Nao foi possivel copiar o log.');
+    }
+  }, [networkDiagnostics]);
+
   useEffect(() => {
     if (!FILESYSTEM_DEBUG_UI || !debugInfo) return;
     console.log('[FS][debug] Platform.OS', debugInfo.platform);
@@ -652,6 +1020,11 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     );
     console.log('[FS][debug] NativeModules keys', debugInfo.nativeModuleKeys);
   }, [debugInfo]);
+
+  useEffect(() => {
+    if (!FILESYSTEM_DEBUG_UI) return;
+    void loadNetworkSnapshot();
+  }, [loadNetworkSnapshot]);
 
   const buildRecordErrorMessage = useCallback(
     (details) => {
@@ -875,6 +1248,13 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   }, [isConnecting, rtspUrl]);
 
   useEffect(() => {
+    if (!FILESYSTEM_DEBUG_UI) return;
+    if (connectError) {
+      void runNetworkDiagnostics({ stage: 'connect-error' });
+    }
+  }, [connectError, runNetworkDiagnostics]);
+
+  useEffect(() => {
     return () => {
       stopTimer();
       if (stopFallbackRef.current) {
@@ -1084,6 +1464,34 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                   `NativeModules keys: ${debugInfo.nativeModuleKeys || '-'}`,
                 ].join('\n')}
               </Text>
+              <Text style={styles.debugTitle}>Network Sanity</Text>
+              <Text style={styles.debugText}>
+                {networkSnapshotText || 'Carregando...'}
+              </Text>
+              <TouchableOpacity
+                style={styles.debugCopyButton}
+                onPress={() => runNetworkDiagnostics({ stage: 'manual' })}
+              >
+                <Text style={styles.debugCopyText}>
+                  Rodar diagnostico de rede
+                </Text>
+              </TouchableOpacity>
+              {networkDiagnostics?.text ? (
+                <>
+                  <Text style={styles.debugTitle}>Network Diagnostics</Text>
+                  <Text style={styles.debugText} selectable>
+                    {networkDiagnostics.text}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.debugCopyButton}
+                    onPress={handleCopyNetworkDiagnostics}
+                  >
+                    <Text style={styles.debugCopyText}>
+                      Copiar diagnostico de rede
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : null}
               {connectDiagnostics?.text ? (
                 <>
                   <Text style={styles.debugTitle}>Connect Diagnostics</Text>

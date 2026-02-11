@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
   Switch,
+  PermissionsAndroid,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -237,6 +238,44 @@ const WifiCameraScreen = ({ navigation }) => {
   });
   const scanLocalOnly = true;
 
+  const ensureWifiPermissions = useCallback(async () => {
+    if (Platform.OS !== 'android') return { granted: true };
+    const isApi33Plus = Number(Platform.Version) >= 33;
+    const perm = isApi33Plus
+      ? PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES
+      : PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
+    if (!perm) return { granted: false, reason: 'permission_unavailable' };
+    try {
+      const alreadyGranted = await PermissionsAndroid.check(perm);
+      if (alreadyGranted) {
+        if (CAMERA_DISCOVERY_DEBUG_UI) {
+          logCameraDiscovery('wifi_permission_status', {
+            permission: perm,
+            status: 'granted',
+          });
+        }
+        return { granted: true };
+      }
+      const result = await PermissionsAndroid.request(perm);
+      if (CAMERA_DISCOVERY_DEBUG_UI) {
+        logCameraDiscovery('wifi_permission_status', {
+          permission: perm,
+          status: result,
+        });
+      }
+      return { granted: result === PermissionsAndroid.RESULTS.GRANTED };
+    } catch (error) {
+      if (CAMERA_DISCOVERY_DEBUG_UI) {
+        logCameraDiscovery('wifi_permission_status', {
+          permission: perm,
+          status: 'error',
+          error: error?.message || 'unknown',
+        });
+      }
+      return { granted: false, reason: error?.message || 'error' };
+    }
+  }, []);
+
   const loadSavedCredentials = useCallback(async (ip) => {
     setHasSavedCredentials(false);
     if (!ip) return;
@@ -345,6 +384,7 @@ const WifiCameraScreen = ({ navigation }) => {
     setErrorMessage('');
     setDevices([]);
     clearCameraDiscoveryLogs();
+    await ensureWifiPermissions();
     const scanStartedAt = Date.now();
     const stageTimers = {};
     const startStageTimer = (label, detail = '') => {

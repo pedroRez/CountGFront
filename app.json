@@ -26,8 +26,11 @@
       },
       "permissions": [
         "INTERNET",
+        "ACCESS_NETWORK_STATE",
         "ACCESS_WIFI_STATE",
         "CHANGE_WIFI_MULTICAST_STATE",
+        "ACCESS_FINE_LOCATION",
+        "NEARBY_WIFI_DEVICES",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
       ],
