@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  AppState,
   KeyboardAvoidingView,
   Platform,
   PermissionsAndroid,
@@ -23,6 +24,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Network from 'expo-network';
 import TcpSocket from 'react-native-tcp-socket';
 import { VLCPlayer } from 'react-native-vlc-media-player';
+import { useFocusEffect } from '@react-navigation/native';
 
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
@@ -539,6 +541,9 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   const [connectDiagnostics, setConnectDiagnostics] = useState(null);
   const [networkSnapshot, setNetworkSnapshot] = useState(null);
   const [networkDiagnostics, setNetworkDiagnostics] = useState(null);
+  const [previewEnabled, setPreviewEnabled] = useState(true);
+  const [isPlayerMounted, setIsPlayerMounted] = useState(false);
+  const [playerDisabledReason, setPlayerDisabledReason] = useState('');
 
   const timerRef = useRef(null);
   const elapsedRef = useRef(0);
@@ -550,6 +555,8 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   const recordingFileRef = useRef(null);
   const recordingStartRef = useRef(0);
   const recordingPendingRef = useRef(false);
+  const playerMountTimerRef = useRef(null);
+  const appStateRef = useRef(AppState.currentState);
   const diagnosticsRef = useRef({
     running: false,
     lastKey: '',
@@ -621,6 +628,45 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     ];
     return lines.join('\n');
   }, [networkSnapshot]);
+
+  const logPlayerStage = useCallback((stage, payload) => {
+    if (!FILESYSTEM_DEBUG_UI) return;
+    if (payload !== undefined) {
+      console.log('[VLC][lifecycle]', stage, payload);
+    } else {
+      console.log('[VLC][lifecycle]', stage);
+    }
+  }, []);
+
+  const unmountPlayer = useCallback(
+    (reason) => {
+      if (playerMountTimerRef.current) {
+        clearTimeout(playerMountTimerRef.current);
+        playerMountTimerRef.current = null;
+      }
+      setIsPlayerMounted(false);
+      if (reason) {
+        setPlayerDisabledReason(reason);
+      }
+    },
+    []
+  );
+
+  const showSafeAlert = useCallback(
+    (title, message, buttons, options) => {
+      if (isPlayerMounted) {
+        setPreviewEnabled(false);
+        unmountPlayer(t('wifiCameraRecord.previewPaused'));
+      }
+      Alert.alert(title, message, buttons, options);
+    },
+    [isPlayerMounted, t, unmountPlayer]
+  );
+
+  const requestPreviewStart = useCallback(() => {
+    setPlayerDisabledReason('');
+    setPreviewEnabled(true);
+  }, []);
 
   const runConnectDiagnostics = useCallback(
     async ({ stage, error, rtspUrlOverride } = {}) => {
@@ -749,11 +795,11 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     if (!connectDiagnostics?.text) return;
     try {
       await Clipboard.setStringAsync(connectDiagnostics.text);
-      Alert.alert('Diagnostico copiado', 'O log foi copiado.');
+      showSafeAlert('Diagnostico copiado', 'O log foi copiado.');
     } catch (error) {
-      Alert.alert('Erro ao copiar', 'Nao foi possivel copiar o log.');
+      showSafeAlert('Erro ao copiar', 'Nao foi possivel copiar o log.');
     }
-  }, [connectDiagnostics]);
+  }, [connectDiagnostics, showSafeAlert]);
 
   const loadNetworkSnapshot = useCallback(async () => {
     if (!FILESYSTEM_DEBUG_UI) return;
@@ -983,11 +1029,11 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     if (!networkDiagnostics?.text) return;
     try {
       await Clipboard.setStringAsync(networkDiagnostics.text);
-      Alert.alert('Diagnostico copiado', 'O log de rede foi copiado.');
+      showSafeAlert('Diagnostico copiado', 'O log de rede foi copiado.');
     } catch (error) {
-      Alert.alert('Erro ao copiar', 'Nao foi possivel copiar o log.');
+      showSafeAlert('Erro ao copiar', 'Nao foi possivel copiar o log.');
     }
-  }, [networkDiagnostics]);
+  }, [networkDiagnostics, showSafeAlert]);
 
   useEffect(() => {
     if (!FILESYSTEM_DEBUG_UI || !debugInfo) return;
@@ -1025,6 +1071,54 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     if (!FILESYSTEM_DEBUG_UI) return;
     void loadNetworkSnapshot();
   }, [loadNetworkSnapshot]);
+
+  useEffect(() => {
+    if (previewEnabled && rtspUrl && !isConnecting) {
+      if (playerMountTimerRef.current) {
+        clearTimeout(playerMountTimerRef.current);
+      }
+      setIsPlayerMounted(false);
+      playerMountTimerRef.current = setTimeout(() => {
+        setIsPlayerMounted(true);
+        logPlayerStage('player_mounted');
+      }, 150);
+      return () => {
+        if (playerMountTimerRef.current) {
+          clearTimeout(playerMountTimerRef.current);
+          playerMountTimerRef.current = null;
+        }
+      };
+    }
+    unmountPlayer();
+    return undefined;
+  }, [previewEnabled, rtspUrl, isConnecting, unmountPlayer, logPlayerStage]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        logPlayerStage('appstate_pause', nextState);
+        setPreviewEnabled(false);
+        unmountPlayer(t('wifiCameraRecord.previewPaused'));
+      }
+      if (nextState === 'active') {
+        logPlayerStage('appstate_active');
+      }
+      appStateRef.current = nextState;
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [logPlayerStage, t, unmountPlayer]);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        logPlayerStage('screen_blur');
+        setPreviewEnabled(false);
+        unmountPlayer(t('wifiCameraRecord.previewPaused'));
+      };
+    }, [logPlayerStage, t, unmountPlayer])
+  );
 
   const buildRecordErrorMessage = useCallback(
     (details) => {
@@ -1119,7 +1213,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
 
       if (!fileResult) {
         if (!wasCancelled) {
-          Alert.alert(
+          showSafeAlert(
             t('wifiCameraRecord.recordErrorTitle'),
             buildRecordErrorMessage(
               `Arquivo nao encontrado. Pasta: ${recordingDirRef.current || '-'}`
@@ -1150,7 +1244,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
         }
       }
       if (!info?.exists || !info.size || info.size < MIN_FILE_BYTES) {
-        Alert.alert(
+        showSafeAlert(
           t('wifiCameraRecord.recordTooShortTitle'),
           t('wifiCameraRecord.recordTooShortMessage')
         );
@@ -1168,7 +1262,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
       navigation.replace('VideoEditor', { asset: recordedAsset });
       isFinalizingRef.current = false;
     },
-    [buildRecordErrorMessage, navigation, stopTimer, t]
+    [buildRecordErrorMessage, navigation, showSafeAlert, stopTimer, t]
   );
 
   const handleRecordingCreated = useCallback(
@@ -1181,11 +1275,13 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   );
 
   const handleConnectOnvif = useCallback(async () => {
+    logPlayerStage('connect_onvif_start');
     if (!wifiCamera?.ip) {
       setConnectError(t('wifiCameraRecord.missingCamera'));
       setIsConnecting(false);
       return;
     }
+    requestPreviewStart();
     const fallbackUrl = buildRtspUrlFromPath({
       ip: wifiCamera?.ip,
       path: wifiCamera?.rtspPath || DEFAULT_RTSP_PATH,
@@ -1215,6 +1311,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
       }
       setRtspUrl(resolved);
     } catch (error) {
+      logPlayerStage('connect_onvif_error', error?.message || 'unknown');
       setConnectError(t('wifiCameraRecord.connectError'));
       setRtspUrl('');
       if (FILESYSTEM_DEBUG_UI) {
@@ -1235,7 +1332,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     } finally {
       setIsConnecting(false);
     }
-  }, [t, wifiCamera]);
+  }, [logPlayerStage, requestPreviewStart, runConnectDiagnostics, t, wifiCamera]);
 
   useEffect(() => {
     handleConnectOnvif();
@@ -1275,6 +1372,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   }, [dispatchVlcCommand, stopTimer]);
 
   const handleManualConnect = () => {
+    logPlayerStage('manual_connect');
     const trimmedInput = manualInput.trim();
     const fallbackUrl = buildRtspUrlFromPath({
       ip: wifiCamera?.ip,
@@ -1292,12 +1390,13 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
         })
       : fallbackUrl;
     if (!manualUrl) {
-      Alert.alert(
+      showSafeAlert(
         t('common.error'),
         t('wifiCameraRecord.manualInvalidMessage')
       );
       return;
     }
+    requestPreviewStart();
     if (!trimmedInput && fallbackUrl) {
       setManualInput(fallbackUrl);
     }
@@ -1306,15 +1405,16 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   };
 
   const startRecording = async () => {
+    logPlayerStage('start_recording');
     if (!rtspUrl) {
-      Alert.alert(
+      showSafeAlert(
         t('common.error'),
         t('wifiCameraRecord.missingRtspMessage')
       );
       return;
     }
     if (!isStreamReady) {
-      Alert.alert(
+      showSafeAlert(
         t('wifiCameraRecord.recordNotReadyTitle'),
         t('wifiCameraRecord.recordNotReadyMessage')
       );
@@ -1335,7 +1435,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
             FileSystem.cacheDirectory || '-'
           }`
         : '';
-      Alert.alert(
+      showSafeAlert(
         t('wifiCameraRecord.recordErrorTitle'),
         `${t('wifiCameraRecord.fileSystemUnavailable')}${details}`
       );
@@ -1344,7 +1444,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     }
     const recorderReady = await waitForRecorderReady();
     if (!recorderReady) {
-      Alert.alert(
+      showSafeAlert(
         t('wifiCameraRecord.recordUnsupportedTitle'),
         t('wifiCameraRecord.recordUnsupportedMessage')
       );
@@ -1360,7 +1460,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
             recordingResolution?.debug?.cacheDir || '-'
           }`
         : '';
-      Alert.alert(
+      showSafeAlert(
         t('wifiCameraRecord.recordErrorTitle'),
         `${t('wifiCameraRecord.fileSystemUnavailable')}${details}`
       );
@@ -1382,9 +1482,10 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
         vlcRef.current.startRecording(normalizedDir);
       }
     } catch (error) {
+      logPlayerStage('start_recording_error', error?.message || 'unknown');
       stopTimer();
       setIsRecording(false);
-      Alert.alert(
+      showSafeAlert(
         t('wifiCameraRecord.recordErrorTitle'),
         buildRecordErrorMessage(error?.message || 'Falha ao iniciar gravacao.')
       );
@@ -1394,6 +1495,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   };
 
   const stopRecording = async () => {
+    logPlayerStage('stop_recording');
     const { commandId, target } = getVlcCommand('stopRecording');
     const canDispatchStop = typeof commandId === 'number' && target;
     if (!canDispatchStop && !vlcRef.current?.stopRecording) {
@@ -1423,6 +1525,8 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
       startRecording();
     }
   };
+
+  const shouldShowPlayer = Boolean(rtspUrl) && previewEnabled && isPlayerMounted;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1524,44 +1628,75 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                 </Text>
               </View>
             ) : rtspUrl ? (
-              <>
-                <VLCPlayer
-                  ref={vlcRef}
-                  source={{
-                    uri: rtspUrl,
-                    initType: 2,
-                    initOptions: VLC_INIT_OPTIONS,
-                    mediaOptions: VLC_MEDIA_OPTIONS,
-                  }}
-                  style={styles.preview}
-                  autoplay={true}
-                  paused={false}
-                  onError={(event) => {
-                    setIsStreamReady(false);
-                    setConnectError(t('wifiCameraRecord.previewError'));
-                    setRtspUrl('');
-                    if (FILESYSTEM_DEBUG_UI) {
-                      void runConnectDiagnostics({
-                        stage: 'vlc-player',
-                        error: event,
-                        rtspUrlOverride: rtspUrl,
-                      });
-                    }
-                  }}
-                  onPlaying={() => {
-                    setIsStreamReady(true);
-                  }}
-                  onRecordingCreated={handleRecordingCreated}
-                />
-                {isRecording && (
-                  <View style={styles.timerBadge}>
-                    <View style={styles.recordingDot} />
-                    <Text style={styles.timerText}>
-                      {formatSecondsToMMSS(elapsedTime)}
-                    </Text>
-                  </View>
-                )}
-              </>
+              shouldShowPlayer ? (
+                <>
+                  <VLCPlayer
+                    ref={vlcRef}
+                    source={{
+                      uri: rtspUrl,
+                      initType: 2,
+                      initOptions: VLC_INIT_OPTIONS,
+                      mediaOptions: VLC_MEDIA_OPTIONS,
+                    }}
+                    style={styles.preview}
+                    autoplay={true}
+                    paused={false}
+                    onError={(event) => {
+                      logPlayerStage('player_error', event);
+                      setIsStreamReady(false);
+                      setConnectError(t('wifiCameraRecord.previewError'));
+                      setRtspUrl('');
+                      setPreviewEnabled(false);
+                      unmountPlayer(t('wifiCameraRecord.previewPaused'));
+                      if (FILESYSTEM_DEBUG_UI) {
+                        void runConnectDiagnostics({
+                          stage: 'vlc-player',
+                          error: event,
+                          rtspUrlOverride: rtspUrl,
+                        });
+                      }
+                    }}
+                    onPlaying={() => {
+                      setIsStreamReady(true);
+                    }}
+                    onRecordingCreated={handleRecordingCreated}
+                  />
+                  {isRecording && (
+                    <View style={styles.timerBadge}>
+                      <View style={styles.recordingDot} />
+                      <Text style={styles.timerText}>
+                        {formatSecondsToMMSS(elapsedTime)}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              ) : (
+                <View style={styles.centered}>
+                  {previewEnabled ? (
+                    <>
+                      <CustomActivityIndicator size="large" color="#fff" />
+                      <Text style={styles.statusText}>
+                        {t('wifiCameraRecord.connecting')}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.statusText}>
+                        {playerDisabledReason ||
+                          t('wifiCameraRecord.previewPaused')}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.previewButton}
+                        onPress={requestPreviewStart}
+                      >
+                        <Text style={styles.previewButtonText}>
+                          {t('wifiCameraRecord.startPreview')}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              )
             ) : (
               <View style={styles.centered}>
                 <Text style={styles.errorText}>{connectError}</Text>
@@ -1667,6 +1802,14 @@ const styles = StyleSheet.create({
   },
   statusText: { color: '#e5e7eb', marginTop: 10 },
   errorText: { color: '#f87171', textAlign: 'center' },
+  previewButton: {
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#2563eb',
+  },
+  previewButtonText: { color: '#fff', fontWeight: '600' },
   timerBadge: {
     position: 'absolute',
     top: 12,
