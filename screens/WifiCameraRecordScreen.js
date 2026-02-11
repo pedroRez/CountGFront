@@ -544,6 +544,9 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   const [previewEnabled, setPreviewEnabled] = useState(true);
   const [isPlayerMounted, setIsPlayerMounted] = useState(false);
   const [playerDisabledReason, setPlayerDisabledReason] = useState('');
+  const [stableRtspUrl, setStableRtspUrl] = useState('');
+  const [playerSessionId, setPlayerSessionId] = useState(0);
+  const [debugActionMessage, setDebugActionMessage] = useState('');
 
   const timerRef = useRef(null);
   const elapsedRef = useRef(0);
@@ -556,7 +559,10 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   const recordingStartRef = useRef(0);
   const recordingPendingRef = useRef(false);
   const playerMountTimerRef = useRef(null);
+  const stableUrlTimerRef = useRef(null);
   const appStateRef = useRef(AppState.currentState);
+  const playerSessionRef = useRef(0);
+  const debugActionTimerRef = useRef(null);
   const diagnosticsRef = useRef({
     running: false,
     lastKey: '',
@@ -629,12 +635,38 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     return lines.join('\n');
   }, [networkSnapshot]);
 
+  const vlcSource = useMemo(() => {
+    if (!stableRtspUrl) return null;
+    return {
+      uri: stableRtspUrl,
+      initType: 2,
+      initOptions: VLC_INIT_OPTIONS,
+      mediaOptions: VLC_MEDIA_OPTIONS,
+    };
+  }, [stableRtspUrl]);
+
+  const flashDebugMessage = useCallback((message) => {
+    if (!FILESYSTEM_DEBUG_UI) return;
+    if (debugActionTimerRef.current) {
+      clearTimeout(debugActionTimerRef.current);
+    }
+    setDebugActionMessage(message);
+    debugActionTimerRef.current = setTimeout(() => {
+      setDebugActionMessage('');
+    }, 2500);
+  }, []);
+
   const logPlayerStage = useCallback((stage, payload) => {
     if (!FILESYSTEM_DEBUG_UI) return;
+    const meta = {
+      ts: new Date().toISOString(),
+      stage,
+      sessionId: playerSessionRef.current,
+    };
     if (payload !== undefined) {
-      console.log('[VLC][lifecycle]', stage, payload);
+      console.log('[VLC][lifecycle]', { ...meta, payload });
     } else {
-      console.log('[VLC][lifecycle]', stage);
+      console.log('[VLC][lifecycle]', meta);
     }
   }, []);
 
@@ -644,12 +676,15 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
         clearTimeout(playerMountTimerRef.current);
         playerMountTimerRef.current = null;
       }
+      if (isPlayerMounted) {
+        logPlayerStage('vlc_unmount', { reason: reason || '-' });
+      }
       setIsPlayerMounted(false);
       if (reason) {
         setPlayerDisabledReason(reason);
       }
     },
-    []
+    [isPlayerMounted, logPlayerStage]
   );
 
   const showSafeAlert = useCallback(
@@ -666,11 +701,16 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   const requestPreviewStart = useCallback(() => {
     setPlayerDisabledReason('');
     setPreviewEnabled(true);
-  }, []);
+    logPlayerStage('preview_start_request');
+  }, [logPlayerStage]);
 
   const runConnectDiagnostics = useCallback(
     async ({ stage, error, rtspUrlOverride } = {}) => {
       if (!FILESYSTEM_DEBUG_UI) return;
+      logPlayerStage('debug_action', {
+        action: 'run_connect_diagnostics',
+        stage: stage || '-',
+      });
       const targetFromUrl = parseRtspTarget(rtspUrlOverride || rtspUrl);
       const targetIp = wifiCamera?.ip || targetFromUrl?.host || null;
       const targetPort =
@@ -788,18 +828,19 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
         diagnosticsRef.current.running = false;
       }
     },
-    [rtspUrl, wifiCamera]
+    [logPlayerStage, rtspUrl, wifiCamera]
   );
 
   const handleCopyDiagnostics = useCallback(async () => {
     if (!connectDiagnostics?.text) return;
+    logPlayerStage('debug_action', { action: 'copy_connect_logs' });
     try {
       await Clipboard.setStringAsync(connectDiagnostics.text);
-      showSafeAlert('Diagnostico copiado', 'O log foi copiado.');
+      flashDebugMessage('Log de conexao copiado.');
     } catch (error) {
-      showSafeAlert('Erro ao copiar', 'Nao foi possivel copiar o log.');
+      flashDebugMessage('Falha ao copiar log.');
     }
-  }, [connectDiagnostics, showSafeAlert]);
+  }, [connectDiagnostics, flashDebugMessage, logPlayerStage]);
 
   const loadNetworkSnapshot = useCallback(async () => {
     if (!FILESYSTEM_DEBUG_UI) return;
@@ -842,6 +883,10 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   const runNetworkDiagnostics = useCallback(
     async ({ stage } = {}) => {
       if (!FILESYSTEM_DEBUG_UI) return;
+      logPlayerStage('debug_action', {
+        action: 'run_network_diagnostics',
+        stage: stage || '-',
+      });
       if (networkDiagRef.current.running) return;
       const now = Date.now();
       if (now - networkDiagRef.current.lastAt < 1500) return;
@@ -1022,18 +1067,19 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
         networkDiagRef.current.running = false;
       }
     },
-    [rtspUrl, wifiCamera]
+    [logPlayerStage, rtspUrl, wifiCamera]
   );
 
   const handleCopyNetworkDiagnostics = useCallback(async () => {
     if (!networkDiagnostics?.text) return;
+    logPlayerStage('debug_action', { action: 'copy_network_logs' });
     try {
       await Clipboard.setStringAsync(networkDiagnostics.text);
-      showSafeAlert('Diagnostico copiado', 'O log de rede foi copiado.');
+      flashDebugMessage('Log de rede copiado.');
     } catch (error) {
-      showSafeAlert('Erro ao copiar', 'Nao foi possivel copiar o log.');
+      flashDebugMessage('Falha ao copiar log.');
     }
-  }, [networkDiagnostics, showSafeAlert]);
+  }, [networkDiagnostics, flashDebugMessage, logPlayerStage]);
 
   useEffect(() => {
     if (!FILESYSTEM_DEBUG_UI || !debugInfo) return;
@@ -1073,14 +1119,37 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   }, [loadNetworkSnapshot]);
 
   useEffect(() => {
-    if (previewEnabled && rtspUrl && !isConnecting) {
+    if (stableUrlTimerRef.current) {
+      clearTimeout(stableUrlTimerRef.current);
+      stableUrlTimerRef.current = null;
+    }
+    if (!rtspUrl) {
+      setStableRtspUrl('');
+      return;
+    }
+    stableUrlTimerRef.current = setTimeout(() => {
+      setStableRtspUrl(rtspUrl);
+    }, 300);
+    return () => {
+      if (stableUrlTimerRef.current) {
+        clearTimeout(stableUrlTimerRef.current);
+        stableUrlTimerRef.current = null;
+      }
+    };
+  }, [rtspUrl]);
+
+  useEffect(() => {
+    if (previewEnabled && stableRtspUrl && !isConnecting) {
       if (playerMountTimerRef.current) {
         clearTimeout(playerMountTimerRef.current);
       }
       setIsPlayerMounted(false);
       playerMountTimerRef.current = setTimeout(() => {
+        playerSessionRef.current += 1;
+        const nextSession = playerSessionRef.current;
+        setPlayerSessionId(nextSession);
         setIsPlayerMounted(true);
-        logPlayerStage('player_mounted');
+        logPlayerStage('vlc_mount', { url: stableRtspUrl });
       }, 150);
       return () => {
         if (playerMountTimerRef.current) {
@@ -1091,12 +1160,13 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     }
     unmountPlayer();
     return undefined;
-  }, [previewEnabled, rtspUrl, isConnecting, unmountPlayer, logPlayerStage]);
+  }, [previewEnabled, stableRtspUrl, isConnecting, unmountPlayer, logPlayerStage]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
+      logPlayerStage('appstate_change', { state: nextState });
       if (nextState === 'background' || nextState === 'inactive') {
-        logPlayerStage('appstate_pause', nextState);
+        logPlayerStage('appstate_pause', { state: nextState });
         setPreviewEnabled(false);
         unmountPlayer(t('wifiCameraRecord.previewPaused'));
       }
@@ -1112,6 +1182,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
 
   useFocusEffect(
     useCallback(() => {
+      logPlayerStage('screen_focus');
       return () => {
         logPlayerStage('screen_blur');
         setPreviewEnabled(false);
@@ -1526,7 +1597,8 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     }
   };
 
-  const shouldShowPlayer = Boolean(rtspUrl) && previewEnabled && isPlayerMounted;
+  const shouldShowPlayer =
+    Boolean(stableRtspUrl) && previewEnabled && isPlayerMounted;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1566,6 +1638,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                   `legacy FileSystem keys: ${debugInfo.legacyFileSystemKeys || '-'}`,
                   `modern FileSystem keys: ${debugInfo.modernFileSystemKeys || '-'}`,
                   `NativeModules keys: ${debugInfo.nativeModuleKeys || '-'}`,
+                  `VLC sessionId: ${playerSessionId}`,
                 ].join('\n')}
               </Text>
               <Text style={styles.debugTitle}>Network Sanity</Text>
@@ -1616,6 +1689,9 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                   Diagnostico aparece apos falha de conexao RTSP.
                 </Text>
               )}
+              {debugActionMessage ? (
+                <Text style={styles.debugHint}>{debugActionMessage}</Text>
+              ) : null}
             </View>
           ) : null}
 
@@ -1627,17 +1703,12 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                   {t('wifiCameraRecord.connecting')}
                 </Text>
               </View>
-            ) : rtspUrl ? (
+            ) : stableRtspUrl ? (
               shouldShowPlayer ? (
                 <>
                   <VLCPlayer
                     ref={vlcRef}
-                    source={{
-                      uri: rtspUrl,
-                      initType: 2,
-                      initOptions: VLC_INIT_OPTIONS,
-                      mediaOptions: VLC_MEDIA_OPTIONS,
-                    }}
+                    source={vlcSource}
                     style={styles.preview}
                     autoplay={true}
                     paused={false}
@@ -1652,7 +1723,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                         void runConnectDiagnostics({
                           stage: 'vlc-player',
                           error: event,
-                          rtspUrlOverride: rtspUrl,
+                          rtspUrlOverride: stableRtspUrl,
                         });
                       }
                     }}
