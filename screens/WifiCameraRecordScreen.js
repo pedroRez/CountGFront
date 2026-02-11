@@ -699,7 +699,9 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   );
 
   const requestPreviewStart = useCallback(() => {
+    setConnectError('');
     setPlayerDisabledReason('');
+    setIsStreamReady(false);
     setPreviewEnabled(true);
     logPlayerStage('preview_start_request');
   }, [logPlayerStage]);
@@ -1716,9 +1718,8 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                       logPlayerStage('player_error', event);
                       setIsStreamReady(false);
                       setConnectError(t('wifiCameraRecord.previewError'));
-                      setRtspUrl('');
                       setPreviewEnabled(false);
-                      unmountPlayer(t('wifiCameraRecord.previewPaused'));
+                      unmountPlayer(t('wifiCameraRecord.previewError'));
                       if (FILESYSTEM_DEBUG_UI) {
                         void runConnectDiagnostics({
                           stage: 'vlc-player',
@@ -1729,6 +1730,8 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                     }}
                     onPlaying={() => {
                       setIsStreamReady(true);
+                      setConnectError('');
+                      setPlayerDisabledReason('');
                     }}
                     onRecordingCreated={handleRecordingCreated}
                   />
@@ -1753,7 +1756,8 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                   ) : (
                     <>
                       <Text style={styles.statusText}>
-                        {playerDisabledReason ||
+                        {connectError ||
+                          playerDisabledReason ||
                           t('wifiCameraRecord.previewPaused')}
                       </Text>
                       <TouchableOpacity

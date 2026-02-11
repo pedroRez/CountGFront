@@ -451,6 +451,7 @@ export const scanRtspDevices = async ({
   openPorts = DEFAULT_OPEN_PORTS,
   openPortTimeoutMs = DEFAULT_OPEN_PORT_TIMEOUT_MS,
   onPortOpenResult = null,
+  signal = null,
 } = {}) => {
   const log = (...args) => {
     if (debug) {
@@ -465,6 +466,7 @@ export const scanRtspDevices = async ({
     log('[rtsp-scan] tcp-socket unavailable');
     return [];
   }
+  if (signal?.aborted) return [];
   const prefix = await getSubnetPrefix(subnetPrefix);
   if (!prefix) return [];
 
@@ -491,6 +493,7 @@ export const scanRtspDevices = async ({
 
   const results = [];
   let index = 0;
+  const isAborted = () => Boolean(signal?.aborted);
 
   log(
     '[rtsp-scan] start',
@@ -503,6 +506,7 @@ export const scanRtspDevices = async ({
 
   const worker = async () => {
     while (index < orderedIps.length) {
+      if (isAborted()) break;
       const ip = orderedIps[index];
       index += 1;
       const hostStart = Date.now();
@@ -516,6 +520,7 @@ export const scanRtspDevices = async ({
       let rtspResponse = false;
       if (openPortsList.length) {
         for (const candidatePort of openPortsList) {
+          if (isAborted()) break;
           const openResult = await probeTcpConnect(
             ip,
             candidatePort,
@@ -552,9 +557,12 @@ export const scanRtspDevices = async ({
         ? [openPort, ...probePortsBase.filter((item) => item !== openPort)]
         : probePortsBase;
       for (const probePort of probePorts) {
+        if (isAborted()) break;
         for (const path of normalizedPaths) {
+          if (isAborted()) break;
           let attempt = 0;
           while (attempt <= refusedRetries) {
+            if (isAborted()) break;
             const retryLabel = attempt > 0 ? `retry=${attempt}` : null;
             log(
               '[rtsp-scan] probe',
@@ -613,6 +621,7 @@ export const scanRtspDevices = async ({
           }
           if (finalHit) {
             if (finalHit.connectOnly && verifyConnectOnly) {
+              if (isAborted()) break;
               const verifyHit = await probeRtspPath(
                 ip,
                 probePort,
@@ -647,6 +656,7 @@ export const scanRtspDevices = async ({
             }
             let onvifOk = true;
             if (verifyOnvifPort) {
+              if (isAborted()) break;
               if (typeof onStage === 'function') {
                 onStage('onvif_verify', { ip });
               }
@@ -689,6 +699,7 @@ export const scanRtspDevices = async ({
               `connectOnly=${finalHit.connectOnly ? 'yes' : 'no'}`
             );
             if (typeof onHostResult === 'function') {
+              if (isAborted()) break;
               onHostResult({
                 ip,
                 result: 'hit',
@@ -709,7 +720,7 @@ export const scanRtspDevices = async ({
         }
       }
       if (!finalHit && possibleHit) {
-        if (typeof onHostResult === 'function') {
+        if (typeof onHostResult === 'function' && !isAborted()) {
           onHostResult({
             ip,
             result: 'possible_camera',
@@ -720,7 +731,8 @@ export const scanRtspDevices = async ({
         results.push(possibleHit);
       } else if (
         typeof onHostResult === 'function' &&
-        !results.some((r) => r.ip === ip)
+        !results.some((r) => r.ip === ip) &&
+        !isAborted()
       ) {
         const elapsedMs = Date.now() - hostStart;
         if (elapsedMs < ENFORCED_HOST_MIN_TIME_MS) {

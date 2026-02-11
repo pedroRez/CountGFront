@@ -1,3 +1,34 @@
+diff --git a/node_modules/react-native-vlc-media-player/VLCPlayer.js b/node_modules/react-native-vlc-media-player/VLCPlayer.js
+index 9b91442..1dc6d88 100644
+--- a/node_modules/react-native-vlc-media-player/VLCPlayer.js
++++ b/node_modules/react-native-vlc-media-player/VLCPlayer.js
+@@ -171,7 +171,16 @@ export default class VLCPlayer extends Component {
+     /* const {
+      source
+      } = this.props;*/
+-    const source = resolveAssetSource(this.props.source) || {};
++    const resolvedSource = resolveAssetSource(this.props.source) || {};
++    const source = {
++      ...resolvedSource,
++      initOptions: Array.isArray(resolvedSource.initOptions)
++        ? [...resolvedSource.initOptions]
++        : [],
++      mediaOptions: Array.isArray(resolvedSource.mediaOptions)
++        ? [...resolvedSource.mediaOptions]
++        : resolvedSource.mediaOptions,
++    };
+ 
+     let uri = source.uri || "";
+     if (uri && uri.match(/^\//)) {
+@@ -190,8 +199,6 @@ export default class VLCPlayer extends Component {
+     }
+     source.isNetwork = isNetwork;
+     source.autoplay = this.props.autoplay;
+-    source.initOptions = source.initOptions || [];
+-
+     if (this.props.repeat) { 
+       const existingRepeat = source.initOptions.find(item => item.startsWith('--repeat') || item.startsWith('--input-repeat'));
+       if (!existingRepeat) {
 diff --git a/node_modules/react-native-vlc-media-player/android/build/.transforms/4e0ab6327865495b31e0a61e6416dfaf/results.bin b/node_modules/react-native-vlc-media-player/android/build/.transforms/4e0ab6327865495b31e0a61e6416dfaf/results.bin
 new file mode 100644
 index 0000000..0d259dd
@@ -9,6 +40,17 @@ diff --git a/node_modules/react-native-vlc-media-player/android/build/.transform
 new file mode 100644
 index 0000000..030d063
 Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/.transforms/4e0ab6327865495b31e0a61e6416dfaf/transformed/classes/classes_dex/classes.dex differ
+diff --git a/node_modules/react-native-vlc-media-player/android/build/.transforms/55f888c5542cbd9112c75caa18432eb1/results.bin b/node_modules/react-native-vlc-media-player/android/build/.transforms/55f888c5542cbd9112c75caa18432eb1/results.bin
+new file mode 100644
+index 0000000..0d259dd
+--- /dev/null
++++ b/node_modules/react-native-vlc-media-player/android/build/.transforms/55f888c5542cbd9112c75caa18432eb1/results.bin
+@@ -0,0 +1 @@
++o/classes
+diff --git a/node_modules/react-native-vlc-media-player/android/build/.transforms/55f888c5542cbd9112c75caa18432eb1/transformed/classes/classes_dex/classes.dex b/node_modules/react-native-vlc-media-player/android/build/.transforms/55f888c5542cbd9112c75caa18432eb1/transformed/classes/classes_dex/classes.dex
+new file mode 100644
+index 0000000..f371e5f
+Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/.transforms/55f888c5542cbd9112c75caa18432eb1/transformed/classes/classes_dex/classes.dex differ
 diff --git a/node_modules/react-native-vlc-media-player/android/build/generated/source/buildConfig/debug/com/yuanzhou/vlc/BuildConfig.java b/node_modules/react-native-vlc-media-player/android/build/generated/source/buildConfig/debug/com/yuanzhou/vlc/BuildConfig.java
 new file mode 100644
 index 0000000..ce0636a
@@ -91,7 +133,7 @@ index 0000000..9e26dfe
 \ No newline at end of file
 diff --git a/node_modules/react-native-vlc-media-player/android/build/intermediates/compile_library_classes_jar/debug/bundleLibCompileToJarDebug/classes.jar b/node_modules/react-native-vlc-media-player/android/build/intermediates/compile_library_classes_jar/debug/bundleLibCompileToJarDebug/classes.jar
 new file mode 100644
-index 0000000..91a0c65
+index 0000000..61ea4a3
 Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/intermediates/compile_library_classes_jar/debug/bundleLibCompileToJarDebug/classes.jar differ
 diff --git a/node_modules/react-native-vlc-media-player/android/build/intermediates/compile_r_class_jar/debug/generateDebugRFile/R.jar b/node_modules/react-native-vlc-media-player/android/build/intermediates/compile_r_class_jar/debug/generateDebugRFile/R.jar
 new file mode 100644
@@ -168,39 +210,39 @@ index 0000000..b533c72
 Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/ReactVlcPlayerPackage.class differ
 diff --git a/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$1$1.class b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$1$1.class
 new file mode 100644
-index 0000000..420fce0
+index 0000000..79c969b
 Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$1$1.class differ
 diff --git a/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$1.class b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$1.class
 new file mode 100644
-index 0000000..0bfd58d
+index 0000000..1253764
 Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$1.class differ
 diff --git a/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$2.class b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$2.class
 new file mode 100644
-index 0000000..dd174bc
+index 0000000..6e17cdf
 Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$2.class differ
 diff --git a/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$3.class b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$3.class
 new file mode 100644
-index 0000000..f809981
+index 0000000..d647f41
 Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$3.class differ
 diff --git a/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$4.class b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$4.class
 new file mode 100644
-index 0000000..720ff45
+index 0000000..c72dc9e
 Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$4.class differ
 diff --git a/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$5.class b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$5.class
 new file mode 100644
-index 0000000..754ff91
+index 0000000..f152a2a
 Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$5.class differ
 diff --git a/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$6.class b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$6.class
 new file mode 100644
-index 0000000..ba43ba3
+index 0000000..7b64c6c
 Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$6.class differ
 diff --git a/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$7.class b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$7.class
 new file mode 100644
-index 0000000..d2e1d4c
+index 0000000..7bd2167
 Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView$7.class differ
 diff --git a/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.class b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.class
 new file mode 100644
-index 0000000..6a0a2f9
+index 0000000..2852692
 Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.class differ
 diff --git a/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerViewManager.class b/node_modules/react-native-vlc-media-player/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerViewManager.class
 new file mode 100644
@@ -292,7 +334,7 @@ index 0000000..c3c5af1
 \ No newline at end of file
 diff --git a/node_modules/react-native-vlc-media-player/android/build/intermediates/runtime_library_classes_jar/debug/bundleLibRuntimeToJarDebug/classes.jar b/node_modules/react-native-vlc-media-player/android/build/intermediates/runtime_library_classes_jar/debug/bundleLibRuntimeToJarDebug/classes.jar
 new file mode 100644
-index 0000000..98e93ef
+index 0000000..ec85ee5
 Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/intermediates/runtime_library_classes_jar/debug/bundleLibRuntimeToJarDebug/classes.jar differ
 diff --git a/node_modules/react-native-vlc-media-player/android/build/intermediates/symbol_list_with_package_name/debug/generateDebugRFile/package-aware-r.txt b/node_modules/react-native-vlc-media-player/android/build/intermediates/symbol_list_with_package_name/debug/generateDebugRFile/package-aware-r.txt
 new file mode 100644
@@ -330,9 +372,53 @@ index 0000000..d97568e
 +		INJECTED from C:\Users\User\source\repos\CountGFront\node_modules\react-native-vlc-media-player\android\src\main\AndroidManifest.xml
 +	android:minSdkVersion
 +		INJECTED from C:\Users\User\source\repos\CountGFront\node_modules\react-native-vlc-media-player\android\src\main\AndroidManifest.xml
+diff --git a/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerPackage.class.uniqueId2 b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerPackage.class.uniqueId2
+new file mode 100644
+index 0000000..b533c72
+Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerPackage.class.uniqueId2 differ
+diff --git a/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$1$1.class.uniqueId3 b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$1$1.class.uniqueId3
+new file mode 100644
+index 0000000..420fce0
+Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$1$1.class.uniqueId3 differ
+diff --git a/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$1.class.uniqueId6 b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$1.class.uniqueId6
+new file mode 100644
+index 0000000..0bfd58d
+Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$1.class.uniqueId6 differ
+diff --git a/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$2.class.uniqueId1 b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$2.class.uniqueId1
+new file mode 100644
+index 0000000..dd174bc
+Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$2.class.uniqueId1 differ
+diff --git a/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$3.class.uniqueId10 b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$3.class.uniqueId10
+new file mode 100644
+index 0000000..f809981
+Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$3.class.uniqueId10 differ
+diff --git a/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$4.class.uniqueId7 b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$4.class.uniqueId7
+new file mode 100644
+index 0000000..720ff45
+Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$4.class.uniqueId7 differ
+diff --git a/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$5.class.uniqueId9 b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$5.class.uniqueId9
+new file mode 100644
+index 0000000..754ff91
+Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$5.class.uniqueId9 differ
+diff --git a/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$6.class.uniqueId4 b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$6.class.uniqueId4
+new file mode 100644
+index 0000000..ba43ba3
+Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$6.class.uniqueId4 differ
+diff --git a/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$7.class.uniqueId8 b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$7.class.uniqueId8
+new file mode 100644
+index 0000000..d2e1d4c
+Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView$7.class.uniqueId8 differ
+diff --git a/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView.class.uniqueId5 b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView.class.uniqueId5
+new file mode 100644
+index 0000000..6a0a2f9
+Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerView.class.uniqueId5 differ
+diff --git a/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerViewManager.class.uniqueId0 b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerViewManager.class.uniqueId0
+new file mode 100644
+index 0000000..ae44967
+Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/compileTransaction/stash-dir/ReactVlcPlayerViewManager.class.uniqueId0 differ
 diff --git a/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/previous-compilation-data.bin b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/previous-compilation-data.bin
 new file mode 100644
-index 0000000..f1b2f6b
+index 0000000..9b514ed
 Binary files /dev/null and b/node_modules/react-native-vlc-media-player/android/build/tmp/compileDebugJavaWithJavac/previous-compilation-data.bin differ
 diff --git a/node_modules/react-native-vlc-media-player/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java b/node_modules/react-native-vlc-media-player/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
 index 8c7acdf..e90f191 100644

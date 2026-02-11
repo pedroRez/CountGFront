@@ -38,12 +38,12 @@ CountGFront is the mobile interface for the CountG project. Built with React Nat
   carrega automaticamente o `.env` ao rodar `npx expo start`.
   Exemplo para habilitar logs de descoberta de camera:
   ```bash
-  EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG=1
+  EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG_LOGS=1
   ```
 
   No codigo, acesse assim:
   ```js
-  const enabled = process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG === '1';
+  const enabled = process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG_LOGS === '1';
   ```
 
 ## Media Dependencies
@@ -81,6 +81,25 @@ RTSP preview/recording or UDP discovery).
    ngrok http 8000
    ```
    Use the generated URL in the app configuration.
+
+## Wi-Fi Camera Discovery (Incremental)
+
+The Wi-Fi camera scan streams results as soon as a device is detected. You can
+connect to any camera while the scan continues in the background, and cancel
+the scan instantly with the **Parar busca** button.
+
+Status counters:
+
+- **Found**: total devices detected so far.
+- **Checked**: IPs already verified in the RTSP scan.
+- **Elapsed**: time since the scan started.
+
+Tips for testing:
+
+- Keep the phone and camera on the same Wi-Fi network (e.g. 192.168.0.x).
+- Enable ONVIF on the camera when available.
+- If no camera appears, try connecting manually by IP or forcing the prefix
+  in the debug panel.
 
 ## Screenshots
 

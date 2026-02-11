@@ -112,6 +112,8 @@ export const discoverOnvifDevices = ({
   retries = 2,
   broadcastAddresses = [],
   onLog,
+  onDevice,
+  signal,
 } = {}) =>
   new Promise((resolve, reject) => {
     let socket = null;
@@ -135,11 +137,19 @@ export const discoverOnvifDevices = ({
           new Set([...(existing.xaddrs || []), ...xaddrs].filter(Boolean))
         );
         if (mergedXaddrs.length !== (existing.xaddrs || []).length) {
-          devices.set(ip, { ...existing, xaddrs: mergedXaddrs });
+          const updated = { ...existing, xaddrs: mergedXaddrs };
+          devices.set(ip, updated);
+          if (typeof onDevice === 'function') {
+            onDevice(updated);
+          }
         }
         return;
       }
-      devices.set(ip, { ip, xaddrs });
+      const device = { ip, xaddrs };
+      devices.set(ip, device);
+      if (typeof onDevice === 'function') {
+        onDevice(device);
+      }
     };
 
     const releaseLockOnce = () => {
@@ -152,6 +162,9 @@ export const discoverOnvifDevices = ({
       if (finished) return;
       finished = true;
       releaseLockOnce();
+      if (signal && typeof signal.removeEventListener === 'function') {
+        signal.removeEventListener('abort', handleAbort);
+      }
       if (socket) {
         try {
           socket.close();
@@ -167,6 +180,10 @@ export const discoverOnvifDevices = ({
     };
 
     const handleMessage = (message, rinfo) => {
+      if (signal?.aborted) {
+        finish();
+        return;
+      }
       responseCount += 1;
       log('onvif_discovery_message', {
         from: rinfo?.address,
@@ -223,23 +240,14 @@ export const discoverOnvifDevices = ({
       }
     };
 
-    socket.on('message', handleMessage);
-    socket.on('error', (error) => {
+    const handleAbort = () => {
       if (finished) return;
-      const message = error?.message || '';
-      if (message.toLowerCase().includes('socket is closed')) {
-        finish();
-        return;
-      }
-      finished = true;
-      releaseLockOnce();
-      try {
-        socket.close();
-      } catch (closeError) {
-        // ignore close errors
-      }
-      reject(error);
-    });
+      finish();
+    };
+
+    if (signal && typeof signal.addEventListener === 'function') {
+      signal.addEventListener('abort', handleAbort);
+    }
 
     const start = async () => {
       await acquireMulticastLock();
@@ -282,6 +290,11 @@ export const discoverOnvifDevices = ({
         setTimeout(finish, timeoutMs);
       });
     };
+
+    if (signal?.aborted) {
+      finish();
+      return;
+    }
 
     start().catch((error) => {
       releaseLockOnce();

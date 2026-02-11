@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -24,8 +24,7 @@ import * as Clipboard from 'expo-clipboard';
 import BigButton from '../components/BigButton';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
-import { discoverOnvifDevices } from '../utils/onvifDiscovery';
-import { scanRtspDevices } from '../utils/rtspScan';
+import { startScan } from '../utils/cameraDiscoveryService';
 import {
   clearCameraDiscoveryLogs,
   getCameraDiscoveryLogsText,
@@ -42,6 +41,8 @@ const WIFI_CAMERA_CREDENTIALS_KEY = '@wifi_camera_credentials';
 const WIFI_CAMERA_LAST_PASSWORD_KEY = '@wifi_camera_last_password';
 const WIFI_CAMERA_LAST_IPS_KEY = '@wifi_camera_last_ips';
 const WIFI_CAMERA_LAST_IPS_LIMIT = 8;
+const WIFI_CAMERA_LAST_DEVICES_KEY = '@wifi_camera_last_devices';
+const WIFI_CAMERA_LAST_DEVICES_LIMIT = 12;
 const CAMERA_DISCOVERY_DEBUG_UI =
   String(process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG || '') === '1';
 
@@ -186,6 +187,97 @@ const saveLastKnownIps = async (ips) => {
   return normalized;
 };
 
+const formatElapsed = (elapsedMs) => {
+  if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) return '00:00';
+  const totalSeconds = Math.floor(elapsedMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${pad(minutes)}:${pad(seconds)}`;
+};
+
+const normalizeStoredDevice = (device) => {
+  if (!device?.ip) return null;
+  const key =
+    device.id ||
+    `${device.ip}:${device.rtspPort || ''}`.toLowerCase();
+  return {
+    id: key,
+    ip: device.ip,
+    rtspPort: device.rtspPort || null,
+    rtspPath: device.rtspPath || null,
+    discoverySource: device.discoverySource || null,
+    possibleCamera: Boolean(device.possibleCamera),
+    onvifOk: Boolean(device.onvifOk),
+    xaddrs: Array.isArray(device.xaddrs) ? device.xaddrs : [],
+    name: device.name || null,
+    manufacturer: device.manufacturer || null,
+    model: device.model || null,
+    lastSeenAt: Number.isFinite(Number(device.lastSeenAt))
+      ? Number(device.lastSeenAt)
+      : Date.now(),
+  };
+};
+
+const loadLastKnownDevices = async () => {
+  try {
+    const raw = await AsyncStorage.getItem(WIFI_CAMERA_LAST_DEVICES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeStoredDevice).filter(Boolean);
+  } catch (error) {
+    return [];
+  }
+};
+
+const saveLastKnownDevices = async (devices) => {
+  const normalized = (Array.isArray(devices) ? devices : [])
+    .map(normalizeStoredDevice)
+    .filter(Boolean)
+    .sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0))
+    .slice(0, WIFI_CAMERA_LAST_DEVICES_LIMIT);
+  try {
+    await AsyncStorage.setItem(
+      WIFI_CAMERA_LAST_DEVICES_KEY,
+      JSON.stringify(normalized)
+    );
+  } catch (error) {
+    // ignore storage failures
+  }
+  return normalized;
+};
+
+const mergeDeviceLists = (current, incoming) => {
+  const map = new Map();
+  (current || []).forEach((device) => {
+    if (!device) return;
+    const key = device.id || device.ip;
+    if (key) map.set(key, device);
+  });
+  (incoming || []).forEach((device) => {
+    if (!device) return;
+    const key = device.id || device.ip;
+    if (!key) return;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, device);
+      return;
+    }
+    map.set(key, {
+      ...existing,
+      ...device,
+      xaddrs: Array.from(
+        new Set([...(existing.xaddrs || []), ...(device.xaddrs || [])])
+      ),
+      lastSeenAt: Math.max(existing.lastSeenAt || 0, device.lastSeenAt || 0),
+    });
+  });
+  return Array.from(map.values()).sort(
+    (a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0)
+  );
+};
+
 const buildScanPrefixes = async (
   manualIp,
   scanLocalOnly = false,
@@ -228,6 +320,14 @@ const WifiCameraScreen = ({ navigation }) => {
   const [forceLocalPrefix, setForceLocalPrefix] = useState(false);
   const [scanStage, setScanStage] = useState('');
   const [scanStageDetail, setScanStageDetail] = useState('');
+  const [scanStatus, setScanStatus] = useState('idle');
+  const [scanProgress, setScanProgress] = useState({
+    found: 0,
+    checked: 0,
+    elapsedMs: 0,
+    wsDiscoveryResponses: 0,
+    state: 'idle',
+  });
   const [scanMeta, setScanMeta] = useState({
     localIp: null,
     prefixes: [],
@@ -237,6 +337,34 @@ const WifiCameraScreen = ({ navigation }) => {
     manualPrefix: false,
   });
   const scanLocalOnly = true;
+  const scanHandleRef = useRef(null);
+  const pendingDevicesRef = useRef([]);
+  const flushTimerRef = useRef(null);
+  const persistTimerRef = useRef(null);
+
+  const stageLabelMap = useMemo(
+    () => ({
+      ws_discovery: t('wifiCamera.stageDiscovery'),
+      rtsp_scan: t('wifiCamera.stageRtspScan'),
+      onvif_verify: t('wifiCamera.stageOnvifVerify'),
+    }),
+    [t]
+  );
+
+  const statusLabel = useMemo(() => {
+    switch (scanStatus) {
+      case 'scanning':
+        return t('wifiCamera.statusScanning');
+      case 'completed':
+        return t('wifiCamera.statusCompleted');
+      case 'cancelled':
+        return t('wifiCamera.statusCancelled');
+      case 'error':
+        return t('wifiCamera.statusError');
+      default:
+        return t('wifiCamera.statusIdle');
+    }
+  }, [scanStatus, t]);
 
   const ensureWifiPermissions = useCallback(async () => {
     if (Platform.OS !== 'android') return { granted: true };
@@ -349,13 +477,44 @@ const WifiCameraScreen = ({ navigation }) => {
     void loadSavedCredentials(selectedDevice.ip);
   }, [isAuthVisible, loadSavedCredentials, selectedDevice?.ip]);
 
+  useEffect(() => {
+    let mounted = true;
+    loadLastKnownDevices().then((cached) => {
+      if (!mounted) return;
+      if (Array.isArray(cached) && cached.length) {
+        setDevices(cached);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scanHandleRef.current) {
+        scanHandleRef.current.cancel();
+        scanHandleRef.current = null;
+      }
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const setStage = useCallback(
-    (stage, detail = '') => {
-      setScanStage(stage);
+    (stageKey, detail = '') => {
+      const label = stageLabelMap[stageKey] || stageKey || '';
+      setScanStage(label);
       setScanStageDetail(detail);
-      logCameraDiscovery('scan_stage', { stage, detail });
+      logCameraDiscovery('scan_stage', { stage: stageKey, detail });
     },
-    []
+    [stageLabelMap]
   );
 
   const handleCopyLogs = useCallback(async () => {
@@ -378,29 +537,60 @@ const WifiCameraScreen = ({ navigation }) => {
     }
   }, [t]);
 
+  const schedulePersistDevices = useCallback((nextDevices) => {
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+    }
+    persistTimerRef.current = setTimeout(() => {
+      saveLastKnownDevices(nextDevices);
+      persistTimerRef.current = null;
+    }, 800);
+  }, []);
+
+  const flushPendingDevices = useCallback(() => {
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+    }
+    const pending = pendingDevicesRef.current;
+    if (!pending.length) {
+      flushTimerRef.current = null;
+      return;
+    }
+    pendingDevicesRef.current = [];
+    flushTimerRef.current = null;
+    setDevices((prev) => {
+      const merged = mergeDeviceLists(prev, pending);
+      schedulePersistDevices(merged);
+      return merged;
+    });
+  }, [schedulePersistDevices]);
+
   const handleScan = async () => {
     if (isScanning) return;
+    if (scanHandleRef.current) {
+      scanHandleRef.current.cancel();
+      scanHandleRef.current = null;
+    }
     setIsScanning(true);
     setErrorMessage('');
-    setDevices([]);
+    setScanStatus('scanning');
+    setScanStage('');
+    setScanStageDetail('');
+    setScanMeta((prev) => ({
+      ...prev,
+      wsDiscoveryResponses: 0,
+      prefixes: [],
+    }));
+    setScanProgress({
+      found: 0,
+      checked: 0,
+      elapsedMs: 0,
+      wsDiscoveryResponses: 0,
+      state: 'scanning',
+    });
     clearCameraDiscoveryLogs();
     await ensureWifiPermissions();
     const scanStartedAt = Date.now();
-    const stageTimers = {};
-    const startStageTimer = (label, detail = '') => {
-      stageTimers[label] = Date.now();
-      setStage(label, detail);
-    };
-    const endStageTimer = (label, extra = {}) => {
-      const startedAt = stageTimers[label];
-      const durationMs =
-        typeof startedAt === 'number' ? Date.now() - startedAt : null;
-      logCameraDiscovery('stage_complete', {
-        stage: label,
-        durationMs,
-        ...extra,
-      });
-    };
     logCameraDiscovery('scan_start', {
       debugEnabled: isCameraDiscoveryDebugEnabled(),
     });
@@ -463,128 +653,6 @@ const WifiCameraScreen = ({ navigation }) => {
         ips: lastKnownIps,
       });
 
-      const preferVerified = (items) => {
-        if (!Array.isArray(items) || !items.length) return [];
-        const verified = items.filter(
-          (item) => item?.possibleCamera || item?.onvifOk || !item?.connectOnly
-        );
-        const cleaned = (verified.length ? verified : items).filter((item) => {
-          if (!item?.ip) return false;
-          if (item.ip === localIp) return false;
-          if (devServerIp && item.ip === devServerIp) return false;
-          return true;
-        });
-        return cleaned;
-      };
-
-      const mergeDeviceResults = (current, incoming) => {
-        const map = new Map();
-        (current || []).forEach((item) => {
-          if (item?.ip) {
-            map.set(item.ip, item);
-          }
-        });
-        (incoming || []).forEach((item) => {
-          if (!item?.ip) return;
-          const existing = map.get(item.ip);
-          if (!existing) {
-            map.set(item.ip, item);
-            return;
-          }
-          if (existing?.possibleCamera && !item?.possibleCamera) {
-            map.set(item.ip, item);
-          }
-        });
-        return Array.from(map.values());
-      };
-
-      const runRtspScan = async (localOnly, options = {}) => {
-        const prefixes = await buildScanPrefixes(manualIp, localOnly, {
-          forcePrefix: forcedPrefix,
-          preferPrefix: localPrefix === PRIMARY_PREFIX ? PRIMARY_PREFIX : null,
-          includeCommon: !forcedPrefix,
-          ...options,
-        });
-        logCameraDiscovery('rtsp_scan_prefixes', {
-          prefixes,
-          localOnly,
-        });
-        setScanMeta((prev) => ({
-          ...prev,
-          prefixes,
-        }));
-        if (!prefixes.length) {
-          return { prefixes, results: [], hasConfirmed: false };
-        }
-        let rtspDevices = [];
-        let hasConfirmed = false;
-        for (const prefix of prefixes) {
-          const metrics = {
-            hits: 0,
-            misses: 0,
-            possible: 0,
-            reasons: {},
-          };
-          const scanResults = await scanRtspDevices({
-            subnetPrefix: prefix,
-            timeoutMs: 1800,
-            concurrency: 10,
-            probeDelayMs: 60,
-            priorityIps: options.priorityIps || [],
-            matchHint: null,
-            verifyOnvifPort: [80, 5000, 8000, 8080, 8899],
-            username: lastPassword ? DEFAULT_ONVIF_USERNAME : null,
-            password: lastPassword || null,
-            hostMin: DEFAULT_HOST_MIN,
-            hostMax: DEFAULT_HOST_MAX,
-            allowConnectOnly: false,
-            openPorts: [554, 8554, 10554],
-            openPortTimeoutMs: 500,
-            refusedRetries: 1,
-            refusedRetryDelayMs: 200,
-            onStage: (stage, payload) => {
-              if (stage === 'onvif_verify') {
-                setStage(t('wifiCamera.stageOnvifVerify'), payload?.ip || '');
-              }
-              if (stage === 'rtsp_scan') {
-                setStage(t('wifiCamera.stageRtspScan'), payload?.ip || '');
-              }
-            },
-            onHostResult: (result) => {
-              logCameraDiscovery('rtsp_host_result', result);
-              if (result?.result === 'hit') {
-                metrics.hits += 1;
-              } else if (result?.result === 'possible_camera') {
-                metrics.possible += 1;
-              } else {
-                metrics.misses += 1;
-                const reason = result?.reason || 'unknown';
-                metrics.reasons[reason] = (metrics.reasons[reason] || 0) + 1;
-              }
-            },
-            onPortOpenResult: (data) => {
-              if (!isCameraDiscoveryDebugEnabled()) return;
-              logCameraDiscovery('rtsp_port_open_result', data);
-            },
-          });
-          logCameraDiscovery('rtsp_scan_metrics', {
-            prefix,
-            metrics,
-          });
-          const normalizedResults = (scanResults || []).map((item) => ({
-            ...item,
-            discoverySource: item?.possibleCamera ? 'rtsp-port' : 'rtsp-scan',
-          }));
-          rtspDevices = mergeDeviceResults(rtspDevices, normalizedResults);
-          if ((scanResults || []).some((item) => !item?.possibleCamera)) {
-            hasConfirmed = true;
-            break;
-          }
-        }
-        return { prefixes, results: preferVerified(rtspDevices), hasConfirmed };
-      };
-
-      let nextDevices = [];
       const manualPriorityIp = isValidIp(manualIp) ? manualIp.trim() : null;
       const priorityIps = mergeIpLists(
         manualPriorityIp ? [manualPriorityIp] : [],
@@ -595,92 +663,147 @@ const WifiCameraScreen = ({ navigation }) => {
         ips: priorityIps,
         manual: manualPriorityIp,
       });
-      try {
-        startStageTimer(t('wifiCamera.stageDiscovery'));
-        const onvifDevices = await discoverOnvifDevices({
-          timeoutMs: 4500,
-          retries: 3,
-          broadcastAddresses,
-          onLog: logCameraDiscovery,
-        });
-        endStageTimer(t('wifiCamera.stageDiscovery'), {
-          responses: Array.isArray(onvifDevices) ? onvifDevices.length : 0,
-        });
-        setScanMeta((prev) => ({
+
+      const primaryPrefixes = await buildScanPrefixes(manualIp, scanLocalOnly, {
+        forcePrefix: forcedPrefix,
+        preferPrefix: localPrefix === PRIMARY_PREFIX ? PRIMARY_PREFIX : null,
+        includeCommon: !forcedPrefix,
+      });
+      const fallbackPrefixes = scanLocalOnly
+        ? await buildScanPrefixes(manualIp, false, {
+            forcePrefix: forcedPrefix,
+            preferPrefix: localPrefix === PRIMARY_PREFIX ? PRIMARY_PREFIX : null,
+            includeCommon: !forcedPrefix,
+          })
+        : [];
+      const allPrefixes = Array.from(
+        new Set([...(primaryPrefixes || []), ...(fallbackPrefixes || [])])
+      );
+      logCameraDiscovery('rtsp_scan_prefixes', {
+        prefixes: allPrefixes,
+        localOnly: scanLocalOnly,
+      });
+      setScanMeta((prev) => ({
+        ...prev,
+        prefixes: allPrefixes,
+      }));
+
+      const scanHandle = startScan({
+        broadcastAddresses,
+        prefixes: primaryPrefixes,
+        fallbackPrefixes,
+        priorityIps,
+        excludeIps: [localIp, devServerIp],
+        lastPassword,
+        username: lastPassword ? DEFAULT_ONVIF_USERNAME : null,
+        password: lastPassword || null,
+        scanLocalOnly,
+        hostMin: DEFAULT_HOST_MIN,
+        hostMax: DEFAULT_HOST_MAX,
+        concurrency: 10,
+        probeDelayMs: 60,
+        allowConnectOnly: false,
+        verifyOnvifPort: [80, 5000, 8000, 8080, 8899],
+        openPorts: [554, 8554, 10554],
+        openPortTimeoutMs: 500,
+        stopAfterConfirmed: scanLocalOnly,
+        onStage: (stageKey, detail) => setStage(stageKey, detail),
+      });
+      scanHandleRef.current = scanHandle;
+
+      const removeFound = scanHandle.on('found', (device) => {
+        if (!device) return;
+        pendingDevicesRef.current.push(device);
+        if (!flushTimerRef.current) {
+          flushTimerRef.current = setTimeout(flushPendingDevices, 150);
+        }
+      });
+
+      const removeProgress = scanHandle.on('progress', (progress) => {
+        if (!progress) return;
+        setScanProgress((prev) => ({
           ...prev,
-          wsDiscoveryResponses: Array.isArray(onvifDevices)
-            ? onvifDevices.length
-            : 0,
+          ...progress,
         }));
-        if (Array.isArray(onvifDevices) && onvifDevices.length) {
-          nextDevices = onvifDevices.map((device) => ({
-            ...device,
-            discoverySource: 'ws-discovery',
-            onvifOk: true,
-            possibleCamera: false,
+        if (progress.state) {
+          setScanStatus(progress.state);
+        }
+        if (Number.isFinite(progress.wsDiscoveryResponses)) {
+          setScanMeta((prev) => ({
+            ...prev,
+            wsDiscoveryResponses: progress.wsDiscoveryResponses,
           }));
         }
-      } catch (error) {
-        // ignore discovery errors and fallback to RTSP scan
-        endStageTimer(t('wifiCamera.stageDiscovery'), {
-          error: error?.message || 'unknown',
-        });
-      }
+      });
 
-      if (!nextDevices.length) {
-        startStageTimer(t('wifiCamera.stageRtspScan'));
-        const primaryScan = await runRtspScan(scanLocalOnly, { priorityIps });
-        let rtspDevices = primaryScan.results;
-        let hasConfirmed = primaryScan.hasConfirmed;
-        endStageTimer(t('wifiCamera.stageRtspScan'), {
-          results: Array.isArray(rtspDevices) ? rtspDevices.length : 0,
-        });
-        if (!hasConfirmed && scanLocalOnly) {
-          startStageTimer(t('wifiCamera.stageRtspScan'));
-          const fallbackScan = await runRtspScan(false, { priorityIps });
-          rtspDevices = mergeDeviceResults(rtspDevices, fallbackScan.results);
-          hasConfirmed = hasConfirmed || fallbackScan.hasConfirmed;
-          endStageTimer(t('wifiCamera.stageRtspScan'), {
-            results: Array.isArray(rtspDevices) ? rtspDevices.length : 0,
-            fallback: true,
+      const finalizeScan = async (payload) => {
+        const finalState = payload?.state || 'completed';
+        const finalDevices = Array.isArray(payload?.devices)
+          ? payload.devices
+          : [];
+        setIsScanning(false);
+        setScanStatus(finalState);
+        setScanProgress((prev) => ({
+          ...prev,
+          found: Math.max(prev.found || 0, finalDevices.length),
+          state: finalState,
+        }));
+        flushPendingDevices();
+        if (finalDevices.length) {
+          setDevices((prev) => {
+            const merged = mergeDeviceLists(prev, finalDevices);
+            schedulePersistDevices(merged);
+            return merged;
           });
-          if (
-            !rtspDevices.length &&
-            !primaryScan.prefixes.length &&
-            !fallbackScan.prefixes.length
-          ) {
-            setErrorMessage(t('wifiCamera.networkNotDetected'));
-            return;
+          const foundIps = normalizeIpList(
+            finalDevices.map((device) => device?.ip)
+          );
+          if (foundIps.length) {
+            const mergedIps = mergeIpLists(foundIps, lastKnownIps);
+            const storedIps = await saveLastKnownIps(mergedIps);
+            logCameraDiscovery('last_known_ips_saved', {
+              count: storedIps.length,
+              ips: storedIps,
+              found: foundIps,
+            });
           }
-        } else if (!rtspDevices.length && !primaryScan.prefixes.length) {
-          setErrorMessage(t('wifiCamera.networkNotDetected'));
-          return;
         }
-        nextDevices = Array.isArray(rtspDevices) ? rtspDevices : [];
-      }
+        logCameraDiscovery('scan_complete', {
+          durationMs: Date.now() - scanStartedAt,
+          found: finalDevices.length,
+          state: finalState,
+        });
+        removeFound();
+        removeProgress();
+        removeDone();
+        scanHandleRef.current = null;
+      };
 
-      setDevices(nextDevices);
-      if (Array.isArray(nextDevices) && nextDevices.length) {
-        const foundIps = normalizeIpList(
-          nextDevices.map((device) => device?.ip)
-        );
-        if (foundIps.length) {
-          const mergedIps = mergeIpLists(foundIps, lastKnownIps);
-          const storedIps = await saveLastKnownIps(mergedIps);
-          logCameraDiscovery('last_known_ips_saved', {
-            count: storedIps.length,
-            ips: storedIps,
-            found: foundIps,
-          });
-        }
-      }
-      logCameraDiscovery('scan_complete', {
-        durationMs: Date.now() - scanStartedAt,
-        found: Array.isArray(nextDevices) ? nextDevices.length : 0,
+      const removeDone = scanHandle.on('done', finalizeScan);
+      const removeError = scanHandle.on('error', (error) => {
+        setErrorMessage(error?.message || 'unknown');
+        setIsScanning(false);
+        setScanStatus('error');
+        setScanProgress((prev) => ({ ...prev, state: 'error' }));
+        flushPendingDevices();
+        removeFound();
+        removeProgress();
+        removeDone();
+        scanHandleRef.current = null;
       });
     } finally {
-      setIsScanning(false);
+      // service handles completion
     }
+  };
+
+  const handleCancelScan = () => {
+    if (!scanHandleRef.current) return;
+    scanHandleRef.current.cancel();
+    scanHandleRef.current = null;
+    setIsScanning(false);
+    setScanStatus('cancelled');
+    setScanProgress((prev) => ({ ...prev, state: 'cancelled' }));
+    flushPendingDevices();
   };
 
   const openAuthModal = (device) => {
@@ -867,21 +990,55 @@ const WifiCameraScreen = ({ navigation }) => {
             <Text style={styles.sectionTitle}>
               {t('wifiCamera.resultsTitle')}
             </Text>
-            {!isScanning && devices.length > 0 ? (
-              <Text style={styles.metaText}>
-                {t('wifiCamera.foundCount', { count: devices.length })}
-              </Text>
-            ) : null}
+            <Text style={styles.metaText}>
+              {t('wifiCamera.foundCount', {
+                count: Math.max(scanProgress.found || 0, devices.length),
+              })}
+            </Text>
           </View>
 
           {isScanning && (
             <View style={styles.scanningRow}>
               <CustomActivityIndicator size="large" color="#007AFF" />
-              <Text style={styles.scanningText}>
-                {t('wifiCamera.scanning')}
-              </Text>
+              <View style={styles.scanningTextBlock}>
+                <Text style={styles.scanningText}>
+                  {t('wifiCamera.scanning')}
+                </Text>
+                {scanStage ? (
+                  <Text style={styles.statusDetail}>{scanStage}</Text>
+                ) : null}
+                {scanStageDetail ? (
+                  <Text style={styles.statusDetail}>{scanStageDetail}</Text>
+                ) : null}
+              </View>
+              <TouchableOpacity
+                style={styles.cancelScanButton}
+                onPress={handleCancelScan}
+              >
+                <Text style={styles.cancelScanText}>
+                  {t('wifiCamera.cancelScan')}
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
+
+          <View style={styles.scanMetaRow}>
+            <Text style={styles.metaText}>
+              {t('wifiCamera.verifiedCount', {
+                count: Number.isFinite(scanProgress.checked)
+                  ? scanProgress.checked
+                  : 0,
+              })}
+            </Text>
+            <Text style={styles.metaText}>
+              {t('wifiCamera.elapsedTime', {
+                time: formatElapsed(scanProgress.elapsedMs),
+              })}
+            </Text>
+          </View>
+          <Text style={styles.statusBadge}>
+            {t('wifiCamera.scanStatusLabel', { status: statusLabel })}
+          </Text>
 
           {!isScanning && errorMessage ? (
             <Text style={styles.errorText}>
@@ -907,7 +1064,7 @@ const WifiCameraScreen = ({ navigation }) => {
             </View>
           ) : null}
 
-          {!isScanning && devices.length > 0 ? (
+          {devices.length > 0 ? (
             <>
               {devices.map((device) => (
                 <View key={device.ip} style={styles.resultCard}>
@@ -1155,6 +1312,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   scanningRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     marginVertical: 10,
@@ -1162,6 +1320,32 @@ const styles = StyleSheet.create({
   scanningText: {
     fontSize: 13,
     color: '#374151',
+    fontWeight: '600',
+  },
+  scanningTextBlock: {
+    flex: 1,
+  },
+  cancelScanButton: {
+    backgroundColor: '#ef4444',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  cancelScanText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  scanMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  statusBadge: {
+    marginTop: 4,
+    marginBottom: 8,
+    fontSize: 12,
+    color: '#2563eb',
     fontWeight: '600',
   },
   resultCard: {

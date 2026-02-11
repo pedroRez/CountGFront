@@ -1,8 +1,14 @@
-const MAX_LOGS = 800;
 const DEBUG_FLAG = String(
-  process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG || ''
+  process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG_LOGS ||
+    process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG ||
+    process.env.DEBUG_DISCOVERY_LOGS ||
+    ''
 ).toLowerCase();
 const DEBUG_ENABLED = ['1', 'true', 'yes', 'on'].includes(DEBUG_FLAG);
+const MAX_LOGS = DEBUG_ENABLED ? 800 : 240;
+const THROTTLE_MS = DEBUG_ENABLED ? 0 : 200;
+
+const lastLogTimes = new Map();
 
 const logs = [];
 
@@ -51,6 +57,15 @@ const sanitizeObject = (obj) => {
 };
 
 export const logCameraDiscovery = (message, data = null, level = 'info') => {
+  const now = Date.now();
+  if (THROTTLE_MS > 0) {
+    const key = String(message);
+    const last = lastLogTimes.get(key);
+    if (last && now - last < THROTTLE_MS) {
+      return;
+    }
+    lastLogTimes.set(key, now);
+  }
   const entry = {
     ts: new Date().toISOString(),
     level,
@@ -72,6 +87,7 @@ export const logCameraDiscovery = (message, data = null, level = 'info') => {
 
 export const clearCameraDiscoveryLogs = () => {
   logs.length = 0;
+  lastLogTimes.clear();
 };
 
 export const getCameraDiscoveryLogsText = () => {
