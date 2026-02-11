@@ -29,8 +29,6 @@ import { useOrientationMap } from '../context/OrientationMapContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useCounts } from '../context/CountsContext';
 
-const { MediaTypeOptions } = ImagePicker;
-
 const BackendProgressBar = ({ progress, text }) => (
   <View style={styles.backendProgressContainer}>
     <Text style={styles.processingInfoText}>{text}</Text>
@@ -92,6 +90,39 @@ const sanitizeFileName = (value) => {
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 24);
+};
+
+const buildSafeVideoAsset = (asset, fallbackName) => {
+  if (!asset) return null;
+  const uri = asset?.uri || asset?.localUri;
+  if (!uri) return null;
+  const fileName =
+    asset?.fileName || fallbackName || uri.split('/').pop();
+  return {
+    uri,
+    fileName,
+    mimeType: asset?.mimeType || 'video/mp4',
+    duration: asset?.duration ?? 0,
+    width: asset?.width,
+    height: asset?.height,
+    fileSize: asset?.fileSize || asset?.size,
+    orientation: asset?.orientation || null,
+  };
+};
+
+const ensureLocalVideoUri = async (asset) => {
+  if (!asset?.uri) return asset;
+  if (!asset.uri.startsWith('content://')) return asset;
+  try {
+    const fileName = asset.fileName || asset.uri.split('/').pop() || 'video.mp4';
+    const safeName = fileName.includes('.') ? fileName : `${fileName}.mp4`;
+    const targetUri = `${FileSystem.cacheDirectory}${Date.now()}_${safeName}`;
+    await FileSystem.copyAsync({ from: asset.uri, to: targetUri });
+    return { ...asset, uri: targetUri };
+  } catch (error) {
+    console.warn('Failed to copy video from content uri:', error);
+    return asset;
+  }
 };
 
 const PROCESSING_STATE_KEY = '@processing_state';
@@ -303,11 +334,18 @@ const HomeScreen = ({ route }) => {
         return;
       }
       let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: MediaTypeOptions.Videos,
+        mediaTypes: ImagePicker.MediaType.Videos,
         quality: 0.8,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        navigation.navigate('VideoEditor', { asset: result.assets[0] });
+        const rawAsset = buildSafeVideoAsset(result.assets[0]);
+        const safeAsset = await ensureLocalVideoUri(rawAsset);
+        if (!safeAsset?.uri) {
+          Alert.alert(t('common.error'), t('home.errors.galleryLoadFailed'));
+          resetAllStates();
+          return;
+        }
+        navigation.navigate('VideoEditor', { asset: safeAsset });
       } else {
         resetAllStates();
       }

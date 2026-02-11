@@ -147,6 +147,7 @@ const buildOrientationOptions = (
  */
 export default function VideoEditorScreen({ route, navigation }) {
   const { asset } = route.params || {};
+  const assetUri = asset?.localUri || asset?.uri;
   const { orientationMap, fetchOrientationMap } = useOrientationMap();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
@@ -492,7 +493,7 @@ export default function VideoEditorScreen({ route, navigation }) {
   );
 
   const handleConfirm = () => {
-    if (!asset?.uri) {
+    if (!assetUri) {
       Alert.alert(t('common.error'), t('videoEditor.videoNotFoundMessage'));
       return;
     }
@@ -506,9 +507,9 @@ export default function VideoEditorScreen({ route, navigation }) {
     }
 
     const trimmedAsset = {
-      uri: asset.uri,
+      uri: assetUri,
       duration: durationSecondsValue * 1000,
-      fileName: asset?.fileName || asset.uri.split('/').pop(),
+      fileName: asset?.fileName || assetUri.split('/').pop(),
       mimeType: asset?.mimeType || 'video/mp4',
       orientation: selectedOrientationId,
       linePositionRatio: clampRatio(Number(linePositionRatio.toFixed(2))),
@@ -604,7 +605,7 @@ export default function VideoEditorScreen({ route, navigation }) {
         >
           <Video
             ref={videoRef}
-            source={{ uri: asset?.uri }}
+            source={{ uri: assetUri }}
             style={styles.editor}
             resizeMode={ResizeMode.CONTAIN}
             shouldPlay={false}
