@@ -12,6 +12,15 @@ const DEFAULT_REFUSED_RETRIES = 1;
 const DEFAULT_REFUSED_RETRY_DELAY_MS = 150;
 const DEFAULT_OPEN_PORTS = [554, 8554, 10554];
 const DEFAULT_OPEN_PORT_TIMEOUT_MS = 500;
+const ENFORCED_HOST_MIN = 2;
+const ENFORCED_HOST_MAX = 50;
+const ENFORCED_CONCURRENCY = 3;
+const ENFORCED_TCP_TIMEOUT_MS = 2000;
+const ENFORCED_RTSP_TIMEOUT_MS = 2500;
+const ENFORCED_HOST_MIN_TIME_MS = 3000;
+const ENFORCED_CONNECT_DELAY_MS = 300;
+const ENFORCED_RTSP_PATH = '/onvif1';
+const ENFORCED_RTSP_PORT = 554;
 const BASE64_CHARS =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
 const ONVIF_PROBE_BODY = `<?xml version="1.0" encoding="UTF-8"?>
@@ -163,6 +172,7 @@ const probeTcpConnect = (host, port, timeoutMs = 400, onLog = null) =>
   new Promise((resolve) => {
     let settled = false;
     let socket = null;
+    const startedAt = Date.now();
     const finish = (ok, reason) => {
       if (settled) return;
       settled = true;
@@ -173,7 +183,7 @@ const probeTcpConnect = (host, port, timeoutMs = 400, onLog = null) =>
           // ignore close errors
         }
       }
-      resolve({ ok, reason, port });
+      resolve({ ok, reason, port, elapsedMs: Date.now() - startedAt });
     };
 
     const timer = setTimeout(() => finish(false, 'timeout'), timeoutMs);
@@ -253,7 +263,7 @@ const probeRtspPath = (
   port,
   path,
   timeoutMs,
-  { allowConnectOnly, onLog, onStop, auth } = {}
+  { allowConnectOnly, onLog, onStop, auth, connectDelayMs = 0 } = {}
 ) =>
   new Promise((resolve) => {
     let done = false;
@@ -263,6 +273,7 @@ const probeRtspPath = (
     let followupTimer = null;
     let sawResponse = false;
     let connected = false;
+    let sawRtspResponse = false;
 
     const finish = (result, reason, details = {}) => {
       if (done) return;
@@ -284,6 +295,7 @@ const probeRtspPath = (
           reason,
           connected,
           sawResponse,
+          rtspResponse: sawRtspResponse,
           ...details,
         });
       }
@@ -297,10 +309,20 @@ const probeRtspPath = (
         onLog('[rtsp-scan] connected', ip, port);
       }
       const request = buildOptionsRequest(ip, port, path, auth);
-      try {
-        socket.write(request);
-      } catch (error) {
-        finish(null, 'write_error', { error: error?.message || 'write_error' });
+      const sendRequest = () => {
+        if (done) return;
+        try {
+          socket.write(request);
+        } catch (error) {
+          finish(null, 'write_error', {
+            error: error?.message || 'write_error',
+          });
+        }
+      };
+      if (connectDelayMs > 0) {
+        setTimeout(sendRequest, connectDelayMs);
+      } else {
+        sendRequest();
       }
     });
 
@@ -335,21 +357,24 @@ const probeRtspPath = (
         onLog('[rtsp-scan] response', ip, port);
       }
       buffer += data?.toString ? data.toString('utf8') : String(data);
-      if (buffer.length > 0) {
-        const hints = extractMatchHints(buffer);
-        finish(
-          {
-            ip,
-            rtspPath: path,
-            rtspPort: port,
-            realm: hints.realm,
-            server: hints.server,
-            source: 'rtsp-scan',
-            rtspResponse: buffer.includes('RTSP/1.0'),
-          },
-          'hit'
-        );
+      if (!buffer.length) return;
+      if (!buffer.includes('RTSP/1.0')) {
+        return;
       }
+      sawRtspResponse = true;
+      const hints = extractMatchHints(buffer);
+      finish(
+        {
+          ip,
+          rtspPath: path,
+          rtspPort: port,
+          realm: hints.realm,
+          server: hints.server,
+          source: 'rtsp-scan',
+          rtspResponse: true,
+        },
+        'hit'
+      );
     });
 
     socket.on('error', (error) => {
@@ -443,17 +468,16 @@ export const scanRtspDevices = async ({
   const prefix = await getSubnetPrefix(subnetPrefix);
   if (!prefix) return [];
 
-  const normalizedPaths = Array.isArray(paths)
-    ? paths.map(normalizePath)
-    : [normalizePath(paths)];
+  const normalizedPaths = [normalizePath(ENFORCED_RTSP_PATH)];
   const preferredPath = selectPreferredPath(normalizedPaths);
-  const basePorts = normalizePorts(port);
-  const probePortsBase = basePorts.length ? basePorts : [DEFAULT_PORT];
-  const openPortsList = normalizePorts(openPorts);
+  const probePortsBase = [ENFORCED_RTSP_PORT];
+  const openPortsList = [ENFORCED_RTSP_PORT];
   const safeMin = Math.min(Math.max(1, hostMin), 254);
   const safeMax = Math.min(Math.max(safeMin, hostMax), 254);
+  const enforcedMin = Math.max(safeMin, ENFORCED_HOST_MIN);
+  const enforcedMax = Math.min(safeMax, ENFORCED_HOST_MAX);
   const ips = [];
-  for (let i = safeMin; i <= safeMax; i += 1) {
+  for (let i = enforcedMin; i <= enforcedMax; i += 1) {
     ips.push(`${prefix}.${i}`);
   }
   const priorityList = Array.from(
@@ -471,7 +495,7 @@ export const scanRtspDevices = async ({
   log(
     '[rtsp-scan] start',
     `prefix=${prefix}`,
-    `range=${safeMin}-${safeMax}`,
+    `range=${enforcedMin}-${enforcedMax}`,
     `priority=${priorityList.length}`,
     `refusedRetries=${refusedRetries}`,
     `openPorts=${openPortsList.length ? openPortsList.join(',') : 'none'}`
@@ -481,19 +505,25 @@ export const scanRtspDevices = async ({
     while (index < orderedIps.length) {
       const ip = orderedIps[index];
       index += 1;
+      const hostStart = Date.now();
       let lastReason = 'no_response';
       let lastStop = null;
       let finalHit = null;
       let possibleHit = null;
       let openPort = null;
+      let tcpConnected = false;
+      let tcpTimeMs = null;
+      let rtspResponse = false;
       if (openPortsList.length) {
         for (const candidatePort of openPortsList) {
           const openResult = await probeTcpConnect(
             ip,
             candidatePort,
-            openPortTimeoutMs,
+            ENFORCED_TCP_TIMEOUT_MS,
             (msg, ...rest) => log(msg, ...rest)
           );
+          tcpConnected = openResult.ok;
+          tcpTimeMs = openResult.elapsedMs;
           if (typeof onPortOpenResult === 'function') {
             onPortOpenResult({
               ip,
@@ -534,13 +564,22 @@ export const scanRtspDevices = async ({
               retryLabel || ''
             );
             let stopSnapshot = null;
-            const hit = await probeRtspPath(ip, probePort, path, timeoutMs, {
+            const hit = await probeRtspPath(
+              ip,
+              probePort,
+              path,
+              ENFORCED_RTSP_TIMEOUT_MS,
+              {
               allowConnectOnly,
+              connectDelayMs: ENFORCED_CONNECT_DELAY_MS,
               onLog: (msg, ...rest) => log(msg, ...rest),
               onStop: (stop) => {
                 stopSnapshot = stop;
                 lastStop = stop;
                 if (stop?.reason) lastReason = stop.reason;
+                if (stop?.rtspResponse) {
+                  rtspResponse = true;
+                }
               },
               auth:
                 username || password
@@ -549,9 +588,11 @@ export const scanRtspDevices = async ({
                       password,
                     }
                   : null,
-            });
+              }
+            );
             if (hit) {
               finalHit = hit;
+              if (hit?.rtspResponse) rtspResponse = true;
               break;
             }
             if (isConnectionRefused(stopSnapshot) && attempt < refusedRetries) {
@@ -576,13 +617,17 @@ export const scanRtspDevices = async ({
                 ip,
                 probePort,
                 path,
-                Math.max(timeoutMs * 2, 2500),
+                Math.max(ENFORCED_RTSP_TIMEOUT_MS * 2, 2500),
                 {
                   allowConnectOnly: false,
+                  connectDelayMs: ENFORCED_CONNECT_DELAY_MS,
                   onLog: (msg, ...rest) => log(msg, ...rest),
                   onStop: (stop) => {
                     lastStop = stop;
                     if (stop?.reason) lastReason = stop.reason;
+                    if (stop?.rtspResponse) {
+                      rtspResponse = true;
+                    }
                   },
                   auth:
                     username || password
@@ -677,6 +722,10 @@ export const scanRtspDevices = async ({
         typeof onHostResult === 'function' &&
         !results.some((r) => r.ip === ip)
       ) {
+        const elapsedMs = Date.now() - hostStart;
+        if (elapsedMs < ENFORCED_HOST_MIN_TIME_MS) {
+          await sleep(ENFORCED_HOST_MIN_TIME_MS - elapsedMs);
+        }
         onHostResult({
           ip,
           result: 'miss',
@@ -684,13 +733,25 @@ export const scanRtspDevices = async ({
           lastStop,
         });
       }
+      const totalTimeMs = Date.now() - hostStart;
+      log(
+        '[RTSP_SCAN]',
+        `ip=${ip}`,
+        `tcpConnected=${tcpConnected ? 'yes' : 'no'}`,
+        `tcpTime=${tcpTimeMs != null ? tcpTimeMs : '-'}`,
+        `rtspResponse=${rtspResponse ? 'yes' : 'no'}`,
+        `totalTime=${totalTimeMs}`
+      );
       if (probeDelayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, probeDelayMs));
       }
     }
   };
 
-  const workerCount = Math.min(concurrency, orderedIps.length);
+  const workerCount = Math.min(
+    Math.max(1, Math.min(concurrency, ENFORCED_CONCURRENCY)),
+    orderedIps.length
+  );
   const workers = Array.from({ length: workerCount }, () => worker());
   await Promise.all(workers);
   log('[rtsp-scan] done', `found=${results.length}`);
