@@ -1,4 +1,10 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useMemo,
+  useCallback,
+} from 'react';
 import {
   View,
   Text,
@@ -11,10 +17,14 @@ import {
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useOrientationMap } from '../context/OrientationMapContext';
 import { useLanguage } from '../context/LanguageContext';
+import { resolveVideoMimeType } from '../utils/videoMime';
 
 const MIN_GAP_SECONDS = 0.1;
 const LINE_RATIO_STEP = 0.05;
@@ -151,8 +161,7 @@ export default function VideoEditorScreen({ route, navigation }) {
   const { orientationMap, fetchOrientationMap } = useOrientationMap();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
-  const initialDuration =
-    asset?.originalDurationMs ?? asset?.duration ?? 0;
+  const initialDuration = asset?.originalDurationMs ?? asset?.duration ?? 0;
   const initialDurationSeconds =
     initialDuration > 1000 ? initialDuration / 1000 : initialDuration;
 
@@ -198,7 +207,9 @@ export default function VideoEditorScreen({ route, navigation }) {
     [orientationStyleMap]
   );
 
-  const [durationSeconds, setDurationSeconds] = useState(initialDurationSeconds);
+  const [durationSeconds, setDurationSeconds] = useState(
+    initialDurationSeconds
+  );
   const [startTime, setStartTime] = useState(safeInitialStart);
   const [endTime, setEndTime] = useState(safeInitialEnd);
   const [currentTime, setCurrentTime] = useState(0);
@@ -372,9 +383,7 @@ export default function VideoEditorScreen({ route, navigation }) {
       (option) => option.id === selectedOrientationId
     );
     const nextIndex =
-      currentIndex >= 0
-        ? (currentIndex + 1) % orientationOptions.length
-        : 0;
+      currentIndex >= 0 ? (currentIndex + 1) % orientationOptions.length : 0;
     setSelectedOrientationId(orientationOptions[nextIndex].id);
   };
 
@@ -499,7 +508,11 @@ export default function VideoEditorScreen({ route, navigation }) {
     }
 
     const safeStart = clamp(startTime, 0, safeDurationSeconds);
-    const safeEnd = clamp(endTime, safeStart + MIN_GAP_SECONDS, safeDurationSeconds);
+    const safeEnd = clamp(
+      endTime,
+      safeStart + MIN_GAP_SECONDS,
+      safeDurationSeconds
+    );
     const durationSecondsValue = safeEnd - safeStart;
     if (durationSecondsValue <= 0) {
       Alert.alert(t('common.error'), t('videoEditor.invalidTrimMessage'));
@@ -510,7 +523,7 @@ export default function VideoEditorScreen({ route, navigation }) {
       uri: assetUri,
       duration: durationSecondsValue * 1000,
       fileName: asset?.fileName || assetUri.split('/').pop(),
-      mimeType: asset?.mimeType || 'video/mp4',
+      mimeType: resolveVideoMimeType(assetUri, asset?.mimeType || 'video/mp4'),
       orientation: selectedOrientationId,
       linePositionRatio: clampRatio(Number(linePositionRatio.toFixed(2))),
       originalDurationMs: Math.round(safeDurationSeconds * 1000),
@@ -529,8 +542,7 @@ export default function VideoEditorScreen({ route, navigation }) {
     ) {
       return null;
     }
-    const containerRatio =
-      videoContainerSize.width / videoContainerSize.height;
+    const containerRatio = videoContainerSize.width / videoContainerSize.height;
     if (videoAspectRatio >= containerRatio) {
       const width = videoContainerSize.width;
       const height = width / videoAspectRatio;
@@ -567,8 +579,10 @@ export default function VideoEditorScreen({ route, navigation }) {
           left: '50%',
           transform: [{ translateX: -24 }, { translateY: -24 }],
         };
-  const decrementIcon = lineStyle === 'vertical' ? 'chevron-left' : 'chevron-up';
-  const incrementIcon = lineStyle === 'vertical' ? 'chevron-right' : 'chevron-down';
+  const decrementIcon =
+    lineStyle === 'vertical' ? 'chevron-left' : 'chevron-up';
+  const incrementIcon =
+    lineStyle === 'vertical' ? 'chevron-right' : 'chevron-down';
   const scrubRatio = safeDurationSeconds
     ? clampRatio(currentTime / safeDurationSeconds)
     : 0;
@@ -721,7 +735,8 @@ export default function VideoEditorScreen({ route, navigation }) {
               style={styles.orientationIcon}
             />
             <Text style={styles.orientationButtonText}>
-              {orientationLabel}{orientationArrowText}
+              {orientationLabel}
+              {orientationArrowText}
             </Text>
           </TouchableOpacity>
         </View>

@@ -19,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
+import { resolveVideoMimeType } from '../utils/videoMime';
 
 import BigButton from '../components/BigButton';
 import VideoUploadSender from '../components/VideoUploadSender';
@@ -96,12 +97,11 @@ const buildSafeVideoAsset = (asset, fallbackName) => {
   if (!asset) return null;
   const uri = asset?.uri || asset?.localUri;
   if (!uri) return null;
-  const fileName =
-    asset?.fileName || fallbackName || uri.split('/').pop();
+  const fileName = asset?.fileName || fallbackName || uri.split('/').pop();
   return {
     uri,
     fileName,
-    mimeType: asset?.mimeType || 'video/mp4',
+    mimeType: resolveVideoMimeType(uri, asset?.mimeType || 'video/mp4'),
     duration: asset?.duration ?? 0,
     width: asset?.width,
     height: asset?.height,
@@ -114,7 +114,8 @@ const ensureLocalVideoUri = async (asset) => {
   if (!asset?.uri) return asset;
   if (!asset.uri.startsWith('content://')) return asset;
   try {
-    const fileName = asset.fileName || asset.uri.split('/').pop() || 'video.mp4';
+    const fileName =
+      asset.fileName || asset.uri.split('/').pop() || 'video.mp4';
     const safeName = fileName.includes('.') ? fileName : `${fileName}.mp4`;
     const targetUri = `${FileSystem.cacheDirectory}${Date.now()}_${safeName}`;
     await FileSystem.copyAsync({ from: asset.uri, to: targetUri });
@@ -231,7 +232,8 @@ const HomeScreen = ({ route }) => {
 
   useFocusEffect(
     React.useCallback(() => {
-      const { trimmedVideo, newlyRecordedVideo, resetHome } = route.params || {};
+      const { trimmedVideo, newlyRecordedVideo, resetHome } =
+        route.params || {};
       if (resetHome) {
         resetAllStates();
         navigation.setParams({ resetHome: null });
@@ -244,7 +246,10 @@ const HomeScreen = ({ route }) => {
         const enrichedVideo = {
           uri: rawVideo.uri,
           fileName: rawVideo.fileName || rawVideo.uri.split('/').pop(),
-          mimeType: rawVideo.mimeType || 'video/mp4',
+          mimeType: resolveVideoMimeType(
+            rawVideo.uri,
+            rawVideo.mimeType || 'video/mp4'
+          ),
           duration: rawVideo.duration ?? 0,
           originalDurationMs:
             rawVideo.originalDurationMs ??
@@ -950,9 +955,7 @@ const HomeScreen = ({ route }) => {
       case 'polling_progress':
         return (
           <View style={styles.processingContainerFull}>
-            <Text style={styles.statusTitle}>
-              {t('home.processing.title')}
-            </Text>
+            <Text style={styles.statusTitle}>{t('home.processing.title')}</Text>
             {renderProcessingContent()}
             <BigButton
               title={t('home.processing.cancel')}
@@ -961,23 +964,22 @@ const HomeScreen = ({ route }) => {
             />
           </View>
         );
-      case 'saving_result':
-        {
-          const safeDownloadProgress = Number.isFinite(downloadProgress)
-            ? downloadProgress
-            : 0;
-          return (
-            <View style={styles.processingContainerFull}>
-              <Text style={styles.statusTitle}>
-                {t('home.processing.downloadingTitle')}
-              </Text>
-              <BackendProgressBar
-                progress={safeDownloadProgress}
-                text={t('home.processing.downloading')}
-              />
-            </View>
-          );
-        }
+      case 'saving_result': {
+        const safeDownloadProgress = Number.isFinite(downloadProgress)
+          ? downloadProgress
+          : 0;
+        return (
+          <View style={styles.processingContainerFull}>
+            <Text style={styles.statusTitle}>
+              {t('home.processing.downloadingTitle')}
+            </Text>
+            <BackendProgressBar
+              progress={safeDownloadProgress}
+              text={t('home.processing.downloading')}
+            />
+          </View>
+        );
+      }
       default:
         return null;
     }
