@@ -14,6 +14,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
 import { useCameraPermissions } from '../hooks/useCameraPermissions';
+import { resolveVideoMimeType } from '../utils/videoMime';
 
 // Function to format time
 const formatSecondsToMMSS = (totalSeconds) => {
@@ -135,13 +136,15 @@ export default function RecordVideoScreen({ navigation, route }) {
     startRecordingTimer();
 
     try {
-      const data = await cameraRef.current.recordAsync();
+      const data = await cameraRef.current.recordAsync({
+        maxDuration: 180,
+      });
 
       const currentOrientation = guideOrientations[guideOrientationIndex];
       const recordedVideoAsset = {
         uri: data.uri,
         fileName: data.uri.split('/').pop(),
-        mimeType: Platform.OS === 'ios' ? 'video/quicktime' : 'video/mp4',
+        mimeType: resolveVideoMimeType(data.uri),
         duration: elapsedTime * 1000,
         orientation: currentOrientation.id, // <<< ENVIA A ORIENTACAO SELECIONADA
       };
@@ -173,18 +176,14 @@ export default function RecordVideoScreen({ navigation, route }) {
     return (
       <View style={styles.centered}>
         <CustomActivityIndicator size="large" color="#FFF" />
-        <Text style={styles.infoText}>
-          {t('record.loadingPermissions')}
-        </Text>
+        <Text style={styles.infoText}>{t('record.loadingPermissions')}</Text>
       </View>
     );
   }
   if (hasPermission === false) {
     return (
       <SafeAreaView style={styles.centered}>
-        <Text style={styles.infoText}>
-          {t('record.permissionDenied')}
-        </Text>
+        <Text style={styles.infoText}>{t('record.permissionDenied')}</Text>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backButton}
