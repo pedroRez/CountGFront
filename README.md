@@ -30,21 +30,34 @@ CountGFront is the mobile interface for the CountG project. Built with React Nat
    cd CountGFront
    npm install
    ```
-  Configure o arquivo `.env` para apontar para o backend local:
-  ```bash
-  EXPO_PUBLIC_API_URL="http://<seu-ip-local>:8000"
-  ```
-  Variaveis publicas do Expo devem usar o prefixo `EXPO_PUBLIC_`. O Expo CLI
-  carrega automaticamente o `.env` ao rodar `npx expo start`.
-  Exemplo para habilitar logs de descoberta de camera:
-  ```bash
-  EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG_LOGS=1
-  ```
+   Configure o arquivo `.env` para apontar para o backend local:
 
-  No codigo, acesse assim:
-  ```js
-  const enabled = process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG_LOGS === '1';
-  ```
+```bash
+EXPO_PUBLIC_API_URL="http://<seu-ip-local>:8000"
+```
+
+Variaveis publicas do Expo devem usar o prefixo `EXPO_PUBLIC_`. O Expo CLI
+carrega automaticamente o `.env` ao rodar `npx expo start`.
+Exemplo para habilitar logs de descoberta de camera:
+
+```bash
+EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG_LOGS=1
+```
+
+Configuracao do wake-up automatico do backend (App lifecycle):
+
+```bash
+# 1/true habilita, 0/false desabilita
+EXPO_PUBLIC_WAKEUP_ENABLED=1
+# Janela minima entre tentativas de wake-up (em ms)
+EXPO_PUBLIC_WAKEUP_MIN_INTERVAL_MS=30000
+```
+
+No codigo, acesse assim:
+
+```js
+const enabled = process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG_LOGS === '1';
+```
 
 ## Media Dependencies
 
