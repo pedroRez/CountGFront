@@ -5,8 +5,8 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  withSequence,
 } from 'react-native-reanimated';
+import tokens from '../theme/tokens';
 
 const MenuButton = ({ label, icon, onPress, index }) => {
   // Animation values
@@ -16,11 +16,9 @@ const MenuButton = ({ label, icon, onPress, index }) => {
   // Entry animation with delay
   useEffect(() => {
     const delay = index * 100; // 100ms delay for each button
-    scale.value = withTiming(1, { duration: 500 }, () => {
-      // Optional callback at the end
-    });
-    opacity.value = withTiming(1, { duration: 700 });
-  }, []);
+    scale.value = withTiming(1, { duration: 500, delay });
+    opacity.value = withTiming(1, { duration: 700, delay });
+  }, [index, opacity, scale]);
 
   // Press animation
   const animatedStyle = useAnimatedStyle(() => {
@@ -30,21 +28,19 @@ const MenuButton = ({ label, icon, onPress, index }) => {
     };
   });
 
-  const pressingStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: withTiming(scale.value, { duration: 50 }) }],
-    };
-  });
-
   return (
     <Animated.View style={[styles.container, animatedStyle]}>
       <Pressable
         onPress={onPress}
         onPressIn={() => (scale.value = withTiming(0.9, { duration: 100 }))}
         onPressOut={() => (scale.value = withTiming(1, { duration: 100 }))}
-        style={({ pressed }) => [styles.pressable]}
+        style={styles.pressable}
       >
-        <MaterialCommunityIcons name={icon} size={48} color="#007AFF" />
+        <MaterialCommunityIcons
+          name={icon}
+          size={48}
+          color={tokens.colors.primary}
+        />
         <Text style={styles.label}>{label}</Text>
       </Pressable>
     </Animated.View>
@@ -59,21 +55,20 @@ const styles = StyleSheet.create({
   },
   pressable: {
     flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 20,
+    backgroundColor: tokens.colors.surface,
+    borderRadius: tokens.radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 3.84,
     elevation: 5,
   },
   label: {
-    marginTop: 10,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    marginTop: tokens.spacing.md,
+    ...tokens.typography.body,
+    color: tokens.colors.textSecondary,
     textAlign: 'center',
   },
 });
