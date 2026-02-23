@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -199,8 +205,7 @@ const formatElapsed = (elapsedMs) => {
 const normalizeStoredDevice = (device) => {
   if (!device?.ip) return null;
   const key =
-    device.id ||
-    `${device.ip}:${device.rtspPort || ''}`.toLowerCase();
+    device.id || `${device.ip}:${device.rtspPort || ''}`.toLowerCase();
   return {
     id: key,
     ip: device.ip,
@@ -520,7 +525,10 @@ const WifiCameraScreen = ({ navigation }) => {
   const handleCopyLogs = useCallback(async () => {
     const text = getCameraDiscoveryLogsText();
     if (!text) {
-      Alert.alert(t('wifiCamera.copyLogsEmptyTitle'), t('wifiCamera.copyLogsEmptyMessage'));
+      Alert.alert(
+        t('wifiCamera.copyLogsEmptyTitle'),
+        t('wifiCamera.copyLogsEmptyMessage')
+      );
       return;
     }
     try {
@@ -643,7 +651,9 @@ const WifiCameraScreen = ({ navigation }) => {
         addresses: broadcastAddresses,
       });
       try {
-        lastPassword = await AsyncStorage.getItem(WIFI_CAMERA_LAST_PASSWORD_KEY);
+        lastPassword = await AsyncStorage.getItem(
+          WIFI_CAMERA_LAST_PASSWORD_KEY
+        );
       } catch (error) {
         lastPassword = null;
       }
@@ -672,7 +682,8 @@ const WifiCameraScreen = ({ navigation }) => {
       const fallbackPrefixes = scanLocalOnly
         ? await buildScanPrefixes(manualIp, false, {
             forcePrefix: forcedPrefix,
-            preferPrefix: localPrefix === PRIMARY_PREFIX ? PRIMARY_PREFIX : null,
+            preferPrefix:
+              localPrefix === PRIMARY_PREFIX ? PRIMARY_PREFIX : null,
             includeCommon: !forcedPrefix,
           })
         : [];
@@ -917,6 +928,9 @@ const WifiCameraScreen = ({ navigation }) => {
             title={isScanning ? t('wifiCamera.scanning') : t('wifiCamera.scan')}
             onPress={handleScan}
             disabled={isScanning}
+            accessibilityRole="button"
+            accessibilityLabel={t('wifiCamera.a11y.scan')}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           />
           <View style={styles.manualBlock}>
             <Text style={styles.inputLabel}>
@@ -935,6 +949,9 @@ const WifiCameraScreen = ({ navigation }) => {
             <TouchableOpacity
               style={styles.secondaryButton}
               onPress={handleManualConnect}
+              accessibilityRole="button"
+              accessibilityLabel={t('wifiCamera.a11y.manualConnect')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Text style={styles.secondaryButtonText}>
                 {t('wifiCamera.manualIpTitle')}
@@ -974,10 +991,7 @@ const WifiCameraScreen = ({ navigation }) => {
                 {t('wifiCamera.forcePrefixEnv')}
               </Text>
             ) : null}
-            <TouchableOpacity
-              style={styles.logButton}
-              onPress={handleCopyLogs}
-            >
+            <TouchableOpacity style={styles.logButton} onPress={handleCopyLogs}>
               <Text style={styles.logButtonText}>
                 {t('wifiCamera.copyLogs')}
               </Text>
@@ -1014,6 +1028,9 @@ const WifiCameraScreen = ({ navigation }) => {
               <TouchableOpacity
                 style={styles.cancelScanButton}
                 onPress={handleCancelScan}
+                accessibilityRole="button"
+                accessibilityLabel={t('wifiCamera.a11y.cancelScan')}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <Text style={styles.cancelScanText}>
                   {t('wifiCamera.cancelScan')}
@@ -1075,6 +1092,11 @@ const WifiCameraScreen = ({ navigation }) => {
                     <TouchableOpacity
                       style={styles.connectButton}
                       onPress={() => openAuthModal(device)}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('wifiCamera.a11y.connectDevice', {
+                        ip: device.ip,
+                      })}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <Text style={styles.connectButtonText}>
                         {t('wifiCamera.connect')}
@@ -1207,6 +1229,9 @@ const WifiCameraScreen = ({ navigation }) => {
                 <TouchableOpacity
                   style={[styles.modalButton, styles.modalPrimaryButton]}
                   onPress={handleStartRecording}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('wifiCamera.a11y.startRecording')}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <Text style={styles.modalPrimaryText}>
                     {t('wifiCamera.startRecording')}

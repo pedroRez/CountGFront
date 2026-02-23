@@ -14,6 +14,8 @@ const BigButton = ({
   iconSize = 22,
   iconColor = tokens.colors.onPrimary,
   disabled = false,
+  hitSlop = { top: 8, bottom: 8, left: 8, right: 8 },
+  ...pressableProps
 }) => {
   // const IconComponent = iconFamily; // e.g., MaterialCommunityIcons
 
@@ -21,12 +23,14 @@ const BigButton = ({
     <Pressable
       onPress={onPress}
       disabled={disabled}
+      hitSlop={hitSlop}
       style={({ pressed }) => [
         styles.button,
         buttonStyle,
         disabled && styles.buttonDisabled,
         pressed && !disabled && styles.buttonPressed,
       ]}
+      {...pressableProps}
     >
       {/* {IconComponent && iconName && (
         <IconComponent name={iconName} size={iconSize} color={iconColor} style={styles.icon} />

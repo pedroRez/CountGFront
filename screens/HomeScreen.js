@@ -219,6 +219,9 @@ const HomeScreen = ({ route }) => {
         <TouchableOpacity
           onPress={() => navigation.navigate('Settings')}
           style={{ marginRight: 15 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('home.a11y.openSettings')}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <MaterialCommunityIcons
             name="cog-outline"
@@ -725,30 +728,35 @@ const HomeScreen = ({ route }) => {
                 icon="counter"
                 onPress={() => navigation.navigate('Counts')}
                 index={0}
+                accessibilityLabel={t('home.a11y.openCounts')}
               />
               <MenuButton
                 label={t('home.menu.recordVideo')}
                 icon="camera-outline"
                 onPress={() => navigation.navigate('RecordVideo')}
                 index={1}
+                accessibilityLabel={t('home.a11y.openRecordVideo')}
               />
               <MenuButton
                 label={t('home.menu.galleryVideo')}
                 icon="image-multiple-outline"
                 onPress={handlePickFromGallery}
                 index={2}
+                accessibilityLabel={t('home.a11y.openGalleryVideo')}
               />
               <MenuButton
                 label={t('home.menu.wifiCamera')}
                 icon="wifi-strength-4"
                 onPress={() => navigation.navigate('WifiCamera')}
                 index={3}
+                accessibilityLabel={t('home.a11y.openWifiCamera')}
               />
               <MenuButton
                 label={t('home.menu.tutorial')}
                 icon="help-circle-outline"
                 onPress={() => navigation.navigate('OnboardingTutorial')}
                 index={4}
+                accessibilityLabel={t('home.a11y.openTutorial')}
               />
             </View>
           </>
@@ -961,6 +969,9 @@ const HomeScreen = ({ route }) => {
               title={t('home.processing.cancel')}
               onPress={handleCancelProcessing}
               buttonStyle={styles.cancelAnalysisButton}
+              accessibilityRole="button"
+              accessibilityLabel={t('home.a11y.cancelAnalysis')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             />
           </View>
         );

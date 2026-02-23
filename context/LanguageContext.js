@@ -79,6 +79,9 @@ const translations = {
       languageDescription: 'Escolha o idioma do app',
       languagePortuguese: 'Portugues',
       languageEnglish: 'Ingles',
+      a11y: {
+        testConnection: 'Testar conexao com servidor',
+      },
     },
     home: {
       subtitleIdle: 'Selecione uma opcao para comecar',
@@ -113,6 +116,15 @@ const translations = {
         countNamePlaceholder: 'Ex: Lote 3 - curral A',
         countDescriptionLabel: 'Descricao (opcional)',
         countDescriptionPlaceholder: 'Descreva esta contagem (opcional)',
+      },
+      a11y: {
+        openSettings: 'Abrir configuracoes',
+        openCounts: 'Abrir contagens',
+        openRecordVideo: 'Abrir gravacao de video',
+        openGalleryVideo: 'Selecionar video da galeria',
+        openWifiCamera: 'Abrir camera Wi-Fi',
+        openTutorial: 'Abrir tutorial',
+        cancelAnalysis: 'Cancelar analise em andamento',
       },
       counts: {
         title: 'Contagens',
@@ -238,6 +250,13 @@ const translations = {
       noDeviceSelected: 'Selecione uma camera para continuar.',
       errorMessage: 'Nao foi possivel buscar cameras. {{details}}',
       cancelScan: 'Parar busca',
+      a11y: {
+        scan: 'Buscar cameras na rede',
+        manualConnect: 'Conectar camera por IP manual',
+        cancelScan: 'Cancelar busca de cameras',
+        connectDevice: 'Conectar camera no IP {{ip}}',
+        startRecording: 'Iniciar gravacao na camera selecionada',
+      },
     },
     wifiCameraRecord: {
       title: 'Camera Wi-Fi',
@@ -483,6 +502,9 @@ const translations = {
       languageDescription: 'Choose the app language',
       languagePortuguese: 'Portuguese',
       languageEnglish: 'English',
+      a11y: {
+        testConnection: 'Test server connection',
+      },
     },
     home: {
       subtitleIdle: 'Select an option to start',
@@ -517,6 +539,15 @@ const translations = {
         countNamePlaceholder: 'Example: Lot 3 - corral A',
         countDescriptionLabel: 'Description (optional)',
         countDescriptionPlaceholder: 'Describe this count (optional)',
+      },
+      a11y: {
+        openSettings: 'Open settings',
+        openCounts: 'Open counts',
+        openRecordVideo: 'Open video recording',
+        openGalleryVideo: 'Pick video from gallery',
+        openWifiCamera: 'Open Wi-Fi camera',
+        openTutorial: 'Open tutorial',
+        cancelAnalysis: 'Cancel ongoing analysis',
       },
       counts: {
         title: 'Counts',
@@ -639,6 +670,13 @@ const translations = {
       noDeviceSelected: 'Select a camera to continue.',
       errorMessage: 'Could not scan for cameras. {{details}}',
       cancelScan: 'Stop scan',
+      a11y: {
+        scan: 'Scan cameras on the network',
+        manualConnect: 'Connect camera using manual IP',
+        cancelScan: 'Cancel camera scan',
+        connectDevice: 'Connect camera at IP {{ip}}',
+        startRecording: 'Start recording on selected camera',
+      },
     },
     wifiCameraRecord: {
       title: 'Wi-Fi Camera',

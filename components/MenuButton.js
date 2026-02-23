@@ -8,7 +8,14 @@ import Animated, {
 } from 'react-native-reanimated';
 import tokens from '../theme/tokens';
 
-const MenuButton = ({ label, icon, onPress, index }) => {
+const MenuButton = ({
+  label,
+  icon,
+  onPress,
+  index,
+  accessibilityLabel,
+  hitSlop = { top: 8, bottom: 8, left: 8, right: 8 },
+}) => {
   // Animation values
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
@@ -35,6 +42,9 @@ const MenuButton = ({ label, icon, onPress, index }) => {
         onPressIn={() => (scale.value = withTiming(0.9, { duration: 100 }))}
         onPressOut={() => (scale.value = withTiming(1, { duration: 100 }))}
         style={styles.pressable}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel || label}
+        hitSlop={hitSlop}
       >
         <MaterialCommunityIcons
           name={icon}
