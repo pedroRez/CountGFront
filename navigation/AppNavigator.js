@@ -62,7 +62,7 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
               // --- MAIN FIX HERE ---
               // The 'header' property completely replaces the default header
               options={{
-                header: () => <CustomHeader title="KYO DAY GadoCount" />,
+                header: () => <CustomHeader title={t('nav.homeTitle')} />,
               }}
             />
             <Stack.Screen
