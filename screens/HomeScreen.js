@@ -130,7 +130,7 @@ const PROCESSING_STATE_KEY = '@processing_state';
 
 const HomeScreen = ({ route }) => {
   const navigation = useNavigation();
-  const { apiUrl } = useApi();
+  const { apiUrl, apiHeaders } = useApi();
   const { orientationMap, fetchOrientationMap } = useOrientationMap();
   const { t } = useLanguage();
   const { addCount } = useCounts();
@@ -574,7 +574,9 @@ const HomeScreen = ({ route }) => {
       return;
     }
     try {
-      const response = await axios.get(`${apiUrl}/progresso/${videoName}`);
+      const response = await axios.get(`${apiUrl}/progresso/${videoName}`, {
+        headers: apiHeaders,
+      });
       const progressData = response.data;
       setBackendProgressData(progressData);
       if (progressData.finalizado) {
@@ -626,7 +628,8 @@ const HomeScreen = ({ route }) => {
     if (processingVideoName) {
       try {
         await axios.get(
-          `${apiUrl}/cancelar-processamento/${processingVideoName}`
+          `${apiUrl}/cancelar-processamento/${processingVideoName}`,
+          { headers: apiHeaders }
         );
         Alert.alert(
           t('home.alerts.cancelledTitle'),

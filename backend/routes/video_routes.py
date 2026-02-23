@@ -5,7 +5,7 @@ import shutil
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from schemas import VideoRequest
@@ -21,6 +21,23 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 progresso_manager = ProgressoManager()
 
 logger = logging.getLogger(__name__)
+
+API_KEY_HEADER_NAME = "X-API-Key"
+
+
+def _get_expected_api_key() -> str:
+    return (os.getenv("BACKEND_API_KEY") or os.getenv("API_KEY") or "").strip()
+
+
+def _validate_api_key(x_api_key: Optional[str]) -> None:
+    expected_api_key = _get_expected_api_key()
+    if not expected_api_key:
+        logger.warning("[SECURITY] BACKEND_API_KEY/API_KEY not configured; skipping API key protection.")
+        return
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="Missing API key.")
+    if x_api_key != expected_api_key:
+        raise HTTPException(status_code=403, detail="Invalid API key.")
 
 
 def _get_env_int(name: str, default: int) -> int:
@@ -71,7 +88,10 @@ def _process_video_job(video_name: str, request_payload: dict) -> None:
 
 
 @router.post("/upload-video/")
-async def upload_video_endpoint(file: UploadFile = File(...)):
+async def upload_video_endpoint(
+    file: UploadFile = File(...),
+    x_api_key: Optional[str] = Header(default=None, alias=API_KEY_HEADER_NAME),
+):
     """Português:
         Recebe um vídeo do frontend, valida e salva temporariamente no servidor.
 
@@ -98,6 +118,8 @@ async def upload_video_endpoint(file: UploadFile = File(...)):
             >>> curl -X POST -F "file=@my_video.mp4" \\
             ...     http://localhost:8000/upload-video/
     """
+    _validate_api_key(x_api_key)
+
     file_extension = os.path.splitext(file.filename)[1].lower()
 
     if file_extension not in ALLOWED_EXTENSIONS:
@@ -146,7 +168,10 @@ async def upload_video_endpoint(file: UploadFile = File(...)):
 
 
 @router.post("/predict-video/")
-async def predict_video_endpoint(request: VideoRequest):
+async def predict_video_endpoint(
+    request: VideoRequest,
+    x_api_key: Optional[str] = Header(default=None, alias=API_KEY_HEADER_NAME),
+):
     """Português:
         Inicia o processamento de um vídeo previamente enviado para contar o gado.
 
@@ -175,6 +200,8 @@ async def predict_video_endpoint(request: VideoRequest):
             ...     -d '{"nome_arquivo":"video.mp4"}' \\
             ...     http://localhost:8000/predict-video/
     """
+    _validate_api_key(x_api_key)
+
     video_name_on_server = request.nome_arquivo
 
     # Validação do nome do arquivo para evitar path traversal e caracteres inválidos
@@ -248,7 +275,10 @@ async def predict_video_endpoint(request: VideoRequest):
 
 
 @router.get("/progresso/{video_name}")
-async def progresso_endpoint(video_name: str):
+async def progresso_endpoint(
+    video_name: str,
+    x_api_key: Optional[str] = Header(default=None, alias=API_KEY_HEADER_NAME),
+):
     """Português:
         Consulta o progresso do processamento de um vídeo.
 
@@ -273,6 +303,8 @@ async def progresso_endpoint(video_name: str):
         Example:
             >>> curl http://localhost:8000/progresso/video.mp4
     """
+    _validate_api_key(x_api_key)
+
     status = progresso_manager.status(video_name)
     job = video_queue.get(video_name)
     if job:
@@ -283,7 +315,10 @@ async def progresso_endpoint(video_name: str):
 
 
 @router.get("/cancelar-processamento/{video_name}")
-async def cancelar_endpoint(video_name: str):
+async def cancelar_endpoint(
+    video_name: str,
+    x_api_key: Optional[str] = Header(default=None, alias=API_KEY_HEADER_NAME),
+):
     """Português:
         Solicita o cancelamento do processamento de um vídeo.
 
@@ -308,6 +343,8 @@ async def cancelar_endpoint(video_name: str):
         Example:
             >>> curl http://localhost:8000/cancelar-processamento/video.mp4
     """
+    _validate_api_key(x_api_key)
+
     queue_cancelled = video_queue.cancel(video_name)
     db_cancelled = progresso_manager.cancelar(video_name)
     if db_cancelled or queue_cancelled:

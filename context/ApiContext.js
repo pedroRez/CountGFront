@@ -24,6 +24,13 @@ const DEFAULT_API_URL = normalizeUrl(
 );
 const STORAGE_KEY = '@api_settings';
 
+const DEFAULT_API_KEY = (process.env.EXPO_PUBLIC_API_KEY || '').trim();
+
+const buildApiHeaders = (apiKey) => {
+  if (!apiKey) return {};
+  return { 'X-API-Key': apiKey };
+};
+
 // Create the context
 export const ApiContext = createContext();
 
@@ -33,6 +40,7 @@ export const ApiProvider = ({ children }) => {
   const [isCustomUrlEnabled, setIsCustomUrlEnabled] = useState(false);
   const [customUrls, setCustomUrls] = useState([]);
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
+  const [apiKey] = useState(DEFAULT_API_KEY);
 
   // Load saved settings when the app starts
   useEffect(() => {
@@ -81,7 +89,10 @@ export const ApiProvider = ({ children }) => {
   const updateApiUrl = (newUrl) => {
     const normalized = normalizeUrl(newUrl);
     if (!normalized) return;
-    const nextUrls = [normalized, ...customUrls.filter((item) => item !== normalized)];
+    const nextUrls = [
+      normalized,
+      ...customUrls.filter((item) => item !== normalized),
+    ];
     applySettings(nextUrls, isCustomUrlEnabled);
   };
 
@@ -92,7 +103,10 @@ export const ApiProvider = ({ children }) => {
   const addCustomServer = (newUrl) => {
     const normalized = normalizeUrl(newUrl);
     if (!normalized) return false;
-    const nextUrls = [normalized, ...customUrls.filter((item) => item !== normalized)];
+    const nextUrls = [
+      normalized,
+      ...customUrls.filter((item) => item !== normalized),
+    ];
     applySettings(nextUrls, isCustomUrlEnabled);
     return true;
   };
@@ -112,6 +126,8 @@ export const ApiProvider = ({ children }) => {
     removeCustomServer,
     isLoading: isSettingsLoading,
     DEFAULT_API_URL,
+    apiKey,
+    apiHeaders: buildApiHeaders(apiKey),
   };
 
   // Show a loader while the API settings are loaded from AsyncStorage

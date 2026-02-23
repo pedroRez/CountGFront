@@ -32,7 +32,7 @@ export default function VideoUploadSender({
   onProcessingStarted,
   onUploadError,
 }) {
-  const { apiUrl } = useApi();
+  const { apiUrl, apiHeaders } = useApi();
   const { t } = useLanguage();
   const [isUploading, setIsUploading] = useState(false);
   const [isQueued, setIsQueued] = useState(false);
@@ -153,10 +153,7 @@ export default function VideoUploadSender({
     safeSetUploadProgress(0);
     safeSetStatus({ key: 'upload.waitingForConnection', params: {} });
     if (showAlert) {
-      Alert.alert(
-        t('upload.noInternetTitle'),
-        t('upload.noInternetMessage')
-      );
+      Alert.alert(t('upload.noInternetTitle'), t('upload.noInternetMessage'));
     }
     scheduleRetry();
   };
@@ -192,10 +189,7 @@ export default function VideoUploadSender({
       return;
     }
     if (!assetUri || !finalOrientation || !modelChoice) {
-      Alert.alert(
-        t('upload.missingDataTitle'),
-        t('upload.missingDataMessage')
-      );
+      Alert.alert(t('upload.missingDataTitle'), t('upload.missingDataMessage'));
       return;
     }
     if (!apiUrl) {
@@ -257,13 +251,19 @@ export default function VideoUploadSender({
 
     safeSetIsUploading(true);
     safeSetUploadProgress(0);
-    safeSetStatus({ key: 'upload.uploadingWithPercent', params: { percent: 0 } });
+    safeSetStatus({
+      key: 'upload.uploadingWithPercent',
+      params: { percent: 0 },
+    });
 
     try {
       const responseData = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         uploadRequestRef.current = xhr;
         xhr.open('POST', `${apiUrl}/upload-video/`);
+        Object.entries(apiHeaders || {}).forEach(([key, value]) => {
+          if (value) xhr.setRequestHeader(key, value);
+        });
         xhr.timeout = 600000;
 
         xhr.upload.onprogress = (event) => {
@@ -276,7 +276,10 @@ export default function VideoUploadSender({
             return;
           }
           if (!uploadTotalRef.current) {
-            const inferredTotal = pickUploadTotal(event.total, payload.fileSize);
+            const inferredTotal = pickUploadTotal(
+              event.total,
+              payload.fileSize
+            );
             if (inferredTotal > 0) {
               uploadTotalRef.current = inferredTotal;
             }
@@ -349,14 +352,16 @@ export default function VideoUploadSender({
             }
           : {}),
         target_classes:
-          Array.isArray(payload.targetClasses) && payload.targetClasses.length > 0
+          Array.isArray(payload.targetClasses) &&
+          payload.targetClasses.length > 0
             ? payload.targetClasses
             : null,
       };
 
       const predictResponse = await axios.post(
         `${apiUrl}/predict-video/`,
-        predictPayload
+        predictPayload,
+        { headers: apiHeaders }
       );
 
       safeSetUploadProgress(1);
