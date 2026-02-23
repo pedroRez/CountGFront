@@ -14,7 +14,10 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "postinstall": "patch-package",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "lint": "eslint App.js components context hooks navigation screens utils --ext .js,.jsx",
+    "test": "node -e \"console.log('No automated tests configured yet.')\"",
+    "format:check": "prettier --check App.js README.md package.json eslint.config.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -54,6 +57,8 @@
   },
   "devDependencies": {
     "@babel/core": "^7.28.6",
+    "eslint": "^9.39.3",
+    "eslint-config-expo": "^10.0.0",
     "patch-package": "^8.0.1",
     "prettier": "^3.8.0"
   },
