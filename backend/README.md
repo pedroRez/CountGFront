@@ -120,6 +120,12 @@ curl http://localhost:8000/progresso/video.mp4
 curl http://localhost:8000/cancelar-processamento/video.mp4
 ```
 
+### Persistência de jobs/fila
+
+A fila de processamento agora salva estado durável em `data/video_queue_state.json`.
+Após reinício do backend, jobs não-terminais (`queued`/`running`) são marcados como
+`failed` com mensagem de recuperação para que continuem rastreáveis.
+
 ### CORS por ambiente
 
 - `BACKEND_ENV=development`: se `CORS_ALLOWED_ORIGINS` estiver vazio, o backend usa `*`.
@@ -283,6 +289,12 @@ curl http://localhost:8000/progresso/video.mp4
 ```bash
 curl http://localhost:8000/cancelar-processamento/video.mp4
 ```
+
+### Job/queue persistence
+
+The processing queue now stores durable state in `data/video_queue_state.json`.
+After backend restart, non-terminal jobs (`queued`/`running`) are marked as
+`failed` with a recovery message so they remain traceable.
 
 ### Environment-based CORS
 

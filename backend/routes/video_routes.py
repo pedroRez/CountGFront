@@ -65,7 +65,12 @@ def _get_env_int(name: str, default: int) -> int:
 
 
 VIDEO_QUEUE_WORKERS = _get_env_int("VIDEO_QUEUE_WORKERS", 1)
-video_queue = TaskQueue(name="video-processing", max_workers=VIDEO_QUEUE_WORKERS)
+VIDEO_QUEUE_STATE_PATH = os.path.join(DATA_DIR, "video_queue_state.json")
+video_queue = TaskQueue(
+    name="video-processing",
+    max_workers=VIDEO_QUEUE_WORKERS,
+    persistence_path=VIDEO_QUEUE_STATE_PATH,
+)
 
 # Configurações de upload
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
