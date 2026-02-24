@@ -430,6 +430,28 @@ export default function VideoEditorScreen({ route, navigation }) {
     setEndTime(nextEnd);
   };
 
+  const handleAdjustStart = (deltaSeconds) => {
+    setStartTime((prevStart) => {
+      const proposed = clamp(
+        prevStart + deltaSeconds,
+        0,
+        Math.max(0, endTime - MIN_GAP_SECONDS)
+      );
+      return proposed;
+    });
+  };
+
+  const handleAdjustEnd = (deltaSeconds) => {
+    setEndTime((prevEnd) => {
+      const proposed = clamp(
+        prevEnd + deltaSeconds,
+        Math.min(safeDurationSeconds, startTime + MIN_GAP_SECONDS),
+        safeDurationSeconds
+      );
+      return proposed;
+    });
+  };
+
   const handleCycleOrientation = () => {
     if (!orientationOptions.length) return;
     const currentIndex = orientationOptions.findIndex(
@@ -802,6 +824,56 @@ export default function VideoEditorScreen({ route, navigation }) {
             <Text style={styles.markValue}>{formatTime(endTime)}</Text>
           </TouchableOpacity>
         </View>
+        <View style={styles.trimFineRow}>
+          <View style={styles.trimFineGroup}>
+            <Text style={styles.trimFineLabel}>
+              {t('videoEditor.markStart')}
+            </Text>
+            <View style={styles.trimFineButtons}>
+              <TouchableOpacity
+                style={styles.trimFineButton}
+                onPress={() => handleAdjustStart(-FINE_SEEK_STEP_SECONDS)}
+                accessibilityRole="button"
+                accessibilityLabel={t('videoEditor.trimStartBack')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.trimFineButtonText}>-0.25s</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.trimFineButton}
+                onPress={() => handleAdjustStart(FINE_SEEK_STEP_SECONDS)}
+                accessibilityRole="button"
+                accessibilityLabel={t('videoEditor.trimStartForward')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.trimFineButtonText}>+0.25s</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.trimFineGroup}>
+            <Text style={styles.trimFineLabel}>{t('videoEditor.markEnd')}</Text>
+            <View style={styles.trimFineButtons}>
+              <TouchableOpacity
+                style={styles.trimFineButton}
+                onPress={() => handleAdjustEnd(-FINE_SEEK_STEP_SECONDS)}
+                accessibilityRole="button"
+                accessibilityLabel={t('videoEditor.trimEndBack')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.trimFineButtonText}>-0.25s</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.trimFineButton}
+                onPress={() => handleAdjustEnd(FINE_SEEK_STEP_SECONDS)}
+                accessibilityRole="button"
+                accessibilityLabel={t('videoEditor.trimEndForward')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.trimFineButtonText}>+0.25s</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
         <View style={styles.adjustmentsRow}>
           <View style={styles.lineAdjustGroup}>
             <TouchableOpacity
@@ -1059,6 +1131,38 @@ const styles = StyleSheet.create({
   lineAdjustText: {
     color: '#fff',
     fontSize: 13,
+    fontWeight: '600',
+  },
+  trimFineRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  trimFineGroup: {
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  trimFineLabel: {
+    color: '#9ca3af',
+    fontSize: 12,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  trimFineButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  trimFineButton: {
+    flex: 1,
+    backgroundColor: '#111827',
+    borderRadius: 8,
+    paddingVertical: 7,
+    marginHorizontal: 2,
+    alignItems: 'center',
+  },
+  trimFineButtonText: {
+    color: '#fff',
+    fontSize: 12,
     fontWeight: '600',
   },
   adjustmentsRow: {
