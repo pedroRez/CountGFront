@@ -14,8 +14,10 @@ import {
   Alert,
   Pressable,
   PanResponder,
+  Image,
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   SafeAreaView,
@@ -30,6 +32,8 @@ const MIN_GAP_SECONDS = 0.1;
 const LINE_RATIO_STEP = 0.05;
 const DOUBLE_TAP_DELAY_MS = 260;
 const SEEK_STEP_SECONDS = 10;
+const FINE_SEEK_STEP_SECONDS = 0.25;
+const THUMBNAIL_COUNT = 5;
 const VIDEO_FRAME_PADDING = 12;
 const SCRUB_KNOB_SIZE = 14;
 const SCRUB_LINE_INSET = 10;
@@ -225,6 +229,8 @@ export default function VideoEditorScreen({ route, navigation }) {
   });
   const [videoWidth, setVideoWidth] = useState(0);
   const [scrubBarWidth, setScrubBarWidth] = useState(0);
+  const [thumbnails, setThumbnails] = useState([]);
+  const [isGeneratingThumbnails, setIsGeneratingThumbnails] = useState(false);
 
   const safeDurationSeconds = Math.max(0, durationSeconds);
   const videoRef = useRef(null);
@@ -316,6 +322,45 @@ export default function VideoEditorScreen({ route, navigation }) {
     );
   }, [safeDurationSeconds]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadThumbnails = async () => {
+      if (!assetUri || !safeDurationSeconds || safeDurationSeconds <= 0) {
+        setThumbnails([]);
+        return;
+      }
+
+      try {
+        setIsGeneratingThumbnails(true);
+        const stepMs =
+          (safeDurationSeconds * 1000) / Math.max(THUMBNAIL_COUNT, 1);
+        const requests = Array.from({ length: THUMBNAIL_COUNT }, (_, index) => {
+          const time = Math.round(stepMs * index + stepMs / 2);
+          return VideoThumbnails.getThumbnailAsync(assetUri, { time });
+        });
+        const results = await Promise.all(requests);
+        if (!cancelled) {
+          setThumbnails(results.map((item) => item.uri));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setThumbnails([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsGeneratingThumbnails(false);
+        }
+      }
+    };
+
+    void loadThumbnails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assetUri, safeDurationSeconds]);
+
   const handleCancel = () => {
     void stopPlayback();
     navigation.navigate('Home', { resetHome: true });
@@ -352,6 +397,14 @@ export default function VideoEditorScreen({ route, navigation }) {
     },
     [safeDurationSeconds, seekToSeconds]
   );
+
+  const handleSeekBackwardFine = () => {
+    void handleSeekBy(-FINE_SEEK_STEP_SECONDS);
+  };
+
+  const handleSeekForwardFine = () => {
+    void handleSeekBy(FINE_SEEK_STEP_SECONDS);
+  };
 
   const handleMarkStart = () => {
     const nextStart = clamp(currentTime, 0, safeDurationSeconds);
@@ -656,6 +709,43 @@ export default function VideoEditorScreen({ route, navigation }) {
             total: formatTime(safeDurationSeconds),
           })}
         </Text>
+        <View style={styles.thumbnailRow}>
+          {thumbnails.length > 0 ? (
+            thumbnails.map((uri, index) => (
+              <Image
+                key={`${uri}-${index}`}
+                source={{ uri }}
+                style={styles.thumbnailImage}
+              />
+            ))
+          ) : (
+            <View style={styles.thumbnailPlaceholder}>
+              <Text style={styles.thumbnailPlaceholderText}>
+                {isGeneratingThumbnails
+                  ? t('videoEditor.generatingThumbnails')
+                  : t('videoEditor.noThumbnails')}
+              </Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.seekFineRow}>
+          <TouchableOpacity
+            style={styles.seekFineButton}
+            onPress={handleSeekBackwardFine}
+          >
+            <Text style={styles.seekFineButtonText}>
+              {t('videoEditor.seekFineBack')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.seekFineButton}
+            onPress={handleSeekForwardFine}
+          >
+            <Text style={styles.seekFineButtonText}>
+              {t('videoEditor.seekFineForward')}
+            </Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.scrubRow}>
           <View
             style={styles.scrubBar}
@@ -830,6 +920,48 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 8,
     fontSize: 14,
+  },
+  thumbnailRow: {
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  thumbnailImage: {
+    width: '18%',
+    aspectRatio: 1.4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  thumbnailPlaceholder: {
+    width: '100%',
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+  },
+  thumbnailPlaceholderText: {
+    color: '#9ca3af',
+    fontSize: 12,
+  },
+  seekFineRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  seekFineButton: {
+    flex: 1,
+    backgroundColor: '#1f2937',
+    marginHorizontal: 4,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  seekFineButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   scrubRow: {
     marginBottom: 10,
