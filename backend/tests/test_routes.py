@@ -32,7 +32,10 @@ def test_upload_video_endpoint_rejects_invalid_extension():
         files={"file": ("video.txt", b"content", "text/plain")},
     )
     assert response.status_code == 400
-    assert "Extensão" in response.json()["detail"]
+    payload = response.json()
+    assert payload['code'] == 'invalid_file_extension'
+    assert 'Extensão' in payload['message']
+    assert payload.get('request_id')
 
 
 def test_upload_video_endpoint_accepts_valid_extension(tmp_path):
@@ -173,3 +176,24 @@ def test_critical_endpoints_accept_valid_api_key(monkeypatch, tmp_path):
         headers={'X-API-Key': 'secret-key'},
     )
     assert cancel.status_code == 200
+
+
+def test_standardized_error_format_on_critical_endpoints(monkeypatch):
+    """Critical endpoints should return code/message/request_id in error responses."""
+
+    monkeypatch.setenv('BACKEND_API_KEY', 'secret-key')
+    client = TestClient(app)
+
+    responses = [
+        client.post('/upload-video/', files={'file': ('video.mp4', b'data', 'video/mp4')}),
+        client.post('/predict-video/', json={'nome_arquivo': 'video.mp4', 'orientation': 'N'}),
+        client.get('/progresso/video.mp4'),
+        client.get('/cancelar-processamento/video.mp4'),
+    ]
+
+    for response in responses:
+        assert response.status_code == 401
+        payload = response.json()
+        assert set(payload.keys()) == {'code', 'message', 'request_id'}
+        assert payload['code'] == 'missing_api_key'
+        assert isinstance(payload['request_id'], str) and payload['request_id']

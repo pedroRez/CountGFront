@@ -3,9 +3,9 @@ import os
 import re
 import shutil
 import uuid
-from typing import List, Optional
+from typing import Optional
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, File, Header, UploadFile
 from fastapi.responses import JSONResponse
 
 from schemas import VideoRequest
@@ -25,19 +25,33 @@ logger = logging.getLogger(__name__)
 API_KEY_HEADER_NAME = "X-API-Key"
 
 
+def _error_response(status_code: int, code: str, message: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "code": code,
+            "message": message,
+            "request_id": str(uuid.uuid4()),
+        },
+    )
+
+
 def _get_expected_api_key() -> str:
     return (os.getenv("BACKEND_API_KEY") or os.getenv("API_KEY") or "").strip()
 
 
-def _validate_api_key(x_api_key: Optional[str]) -> None:
+def _validate_api_key(x_api_key: Optional[str]) -> Optional[JSONResponse]:
     expected_api_key = _get_expected_api_key()
     if not expected_api_key:
-        logger.warning("[SECURITY] BACKEND_API_KEY/API_KEY not configured; skipping API key protection.")
-        return
+        logger.warning(
+            "[SECURITY] BACKEND_API_KEY/API_KEY not configured; skipping API key protection."
+        )
+        return None
     if not x_api_key:
-        raise HTTPException(status_code=401, detail="Missing API key.")
+        return _error_response(401, "missing_api_key", "Missing API key.")
     if x_api_key != expected_api_key:
-        raise HTTPException(status_code=403, detail="Invalid API key.")
+        return _error_response(403, "invalid_api_key", "Invalid API key.")
+    return None
 
 
 def _get_env_int(name: str, default: int) -> int:
@@ -92,40 +106,17 @@ async def upload_video_endpoint(
     file: UploadFile = File(...),
     x_api_key: Optional[str] = Header(default=None, alias=API_KEY_HEADER_NAME),
 ):
-    """Português:
-        Recebe um vídeo do frontend, valida e salva temporariamente no servidor.
-
-        Parâmetros:
-            file (UploadFile): vídeo enviado pelo cliente.
-
-        Retorna:
-            dict: mensagem de sucesso e o nome único gerado para o vídeo.
-
-        Exemplo:
-            >>> curl -X POST -F "file=@meu_video.mp4" \\
-            ...     http://localhost:8000/upload-video/
-
-    English:
-        Receives a video from the frontend, validates it and stores it temporarily.
-
-        Parameters:
-            file (UploadFile): video provided by the client.
-
-        Returns:
-            dict: success message and the unique server-side filename.
-
-        Example:
-            >>> curl -X POST -F "file=@my_video.mp4" \\
-            ...     http://localhost:8000/upload-video/
-    """
-    _validate_api_key(x_api_key)
+    auth_error = _validate_api_key(x_api_key)
+    if auth_error:
+        return auth_error
 
     file_extension = os.path.splitext(file.filename)[1].lower()
 
     if file_extension not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Extensão '{file_extension}' não permitida. Use: {', '.join(sorted(ALLOWED_EXTENSIONS))}.",
+        return _error_response(
+            400,
+            "invalid_file_extension",
+            f"Extensão '{file_extension}' não permitida. Use: {', '.join(sorted(ALLOWED_EXTENSIONS))}.",
         )
 
     file.file.seek(0, os.SEEK_END)
@@ -133,37 +124,35 @@ async def upload_video_endpoint(
     file.file.seek(0)
 
     if file_size > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Arquivo excede o tamanho máximo de {MAX_FILE_SIZE_MB}MB.",
+        return _error_response(
+            400,
+            "file_too_large",
+            f"Arquivo excede o tamanho máximo de {MAX_FILE_SIZE_MB}MB.",
         )
 
     unique_filename = f"{uuid.uuid4()}{file_extension}"
     temp_local_path = os.path.join(UPLOAD_FOLDER, unique_filename)
 
     logger.info(
-        f"[UPLOAD] Recebendo '{file.filename}', salvando como '{unique_filename}'..."
+        "[UPLOAD] Recebendo '%s', salvando como '%s'...", file.filename, unique_filename
     )
 
     try:
         with open(temp_local_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        logger.debug(
-            f"[UPLOAD] Saved size: {os.path.getsize(temp_local_path)} bytes"
+        logger.debug("[UPLOAD] Saved size: %s bytes", os.path.getsize(temp_local_path))
+        logger.info("[UPLOAD] Vídeo salvo temporariamente em: %s", temp_local_path)
+    except Exception as exc:
+        logger.error("[UPLOAD ERRO] Falha ao salvar o arquivo temporariamente: %s", exc)
+        return _error_response(
+            500,
+            "upload_save_failed",
+            f"Falha ao salvar o arquivo no servidor: {str(exc)}",
         )
-        logger.info(f"[UPLOAD] Vídeo salvo temporariamente em: {temp_local_path}")
-    except Exception as e:
-        logger.error(f"[UPLOAD ERRO] Falha ao salvar o arquivo temporariamente: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Falha ao salvar o arquivo no servidor: {str(e)}"
-        )
-
-    # O upload para a HostGator e a limpeza foram movidos para dentro de 'contar_gado_em_video'.
-    # Este endpoint agora é muito mais rápido e simples.
 
     return {
         "message": f"Arquivo '{file.filename}' recebido com sucesso.",
-        "nome_arquivo": unique_filename,  # Retorna o nome único usado no servidor
+        "nome_arquivo": unique_filename,
     }
 
 
@@ -172,72 +161,44 @@ async def predict_video_endpoint(
     request: VideoRequest,
     x_api_key: Optional[str] = Header(default=None, alias=API_KEY_HEADER_NAME),
 ):
-    """Português:
-        Inicia o processamento de um vídeo previamente enviado para contar o gado.
-
-        Parâmetros:
-            request (VideoRequest): dados do vídeo e opções de processamento.
-
-        Retorna:
-            dict: status indicando que o processamento foi iniciado.
-
-        Exemplo:
-            >>> curl -X POST -H "Content-Type: application/json" \\
-            ...     -d '{"nome_arquivo":"video.mp4"}' \\
-            ...     http://localhost:8000/predict-video/
-
-    English:
-        Starts cattle counting for a previously uploaded video.
-
-        Parameters:
-            request (VideoRequest): video data and processing options.
-
-        Returns:
-            dict: status informing that processing has begun.
-
-        Example:
-            >>> curl -X POST -H "Content-Type: application/json" \\
-            ...     -d '{"nome_arquivo":"video.mp4"}' \\
-            ...     http://localhost:8000/predict-video/
-    """
-    _validate_api_key(x_api_key)
+    auth_error = _validate_api_key(x_api_key)
+    if auth_error:
+        return auth_error
 
     video_name_on_server = request.nome_arquivo
 
-    # Validação do nome do arquivo para evitar path traversal e caracteres inválidos
     if (
         ".." in video_name_on_server
         or "/" in video_name_on_server
         or "\\" in video_name_on_server
     ):
-        raise HTTPException(status_code=400, detail="Nome de arquivo inválido.")
+        return _error_response(400, "invalid_filename", "Nome de arquivo inválido.")
 
     if not re.fullmatch(r"[\w.-]+", video_name_on_server):
-        raise HTTPException(
-            status_code=400, detail="Nome de arquivo contém caracteres inválidos."
+        return _error_response(
+            400,
+            "invalid_filename_characters",
+            "Nome de arquivo contém caracteres inválidos.",
         )
 
     expected_path = os.path.join(UPLOAD_FOLDER, video_name_on_server)
     abs_path = os.path.abspath(expected_path)
     upload_folder_abs = os.path.abspath(UPLOAD_FOLDER)
     if not abs_path.startswith(upload_folder_abs + os.sep):
-        raise HTTPException(status_code=400, detail="Nome de arquivo inválido.")
+        return _error_response(400, "invalid_filename", "Nome de arquivo inválido.")
 
     try:
         get_line_and_direction_config(request.orientation, 1, 1)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid orientation code.")
+        return _error_response(400, "invalid_orientation", "Invalid orientation code.")
 
     trim_start_ms = request.trim_start_ms
     trim_end_ms = request.trim_end_ms
-    if trim_start_ms is not None and trim_end_ms is not None:
-        if trim_end_ms <= trim_start_ms:
-            raise HTTPException(status_code=400, detail="Invalid trim range.")
+    if trim_start_ms is not None and trim_end_ms is not None and trim_end_ms <= trim_start_ms:
+        return _error_response(400, "invalid_trim_range", "Invalid trim range.")
 
     if progresso_manager.is_processing(video_name_on_server):
-        logger.warning(
-            f"[PREDICT AVISO] Vídeo {video_name_on_server} já está sendo processado."
-        )
+        logger.warning("[PREDICT AVISO] Vídeo %s já está sendo processado.", video_name_on_server)
         return JSONResponse(
             status_code=409,
             content={
@@ -279,31 +240,9 @@ async def progresso_endpoint(
     video_name: str,
     x_api_key: Optional[str] = Header(default=None, alias=API_KEY_HEADER_NAME),
 ):
-    """Português:
-        Consulta o progresso do processamento de um vídeo.
-
-        Parâmetros:
-            video_name (str): nome do arquivo do vídeo no servidor.
-
-        Retorna:
-            dict: dados de status e porcentagem de conclusão.
-
-        Exemplo:
-            >>> curl http://localhost:8000/progresso/video.mp4
-
-    English:
-        Retrieves the processing progress for a video.
-
-        Parameters:
-            video_name (str): name of the video file on the server.
-
-        Returns:
-            dict: status data including completion percentage.
-
-        Example:
-            >>> curl http://localhost:8000/progresso/video.mp4
-    """
-    _validate_api_key(x_api_key)
+    auth_error = _validate_api_key(x_api_key)
+    if auth_error:
+        return auth_error
 
     status = progresso_manager.status(video_name)
     job = video_queue.get(video_name)
@@ -319,31 +258,9 @@ async def cancelar_endpoint(
     video_name: str,
     x_api_key: Optional[str] = Header(default=None, alias=API_KEY_HEADER_NAME),
 ):
-    """Português:
-        Solicita o cancelamento do processamento de um vídeo.
-
-        Parâmetros:
-            video_name (str): nome do arquivo do vídeo no servidor.
-
-        Retorna:
-            dict: mensagem indicando se o cancelamento foi enviado.
-
-        Exemplo:
-            >>> curl http://localhost:8000/cancelar-processamento/video.mp4
-
-    English:
-        Requests cancellation of video processing.
-
-        Parameters:
-            video_name (str): name of the video file on the server.
-
-        Returns:
-            dict: message stating whether cancellation was issued.
-
-        Example:
-            >>> curl http://localhost:8000/cancelar-processamento/video.mp4
-    """
-    _validate_api_key(x_api_key)
+    auth_error = _validate_api_key(x_api_key)
+    if auth_error:
+        return auth_error
 
     queue_cancelled = video_queue.cancel(video_name)
     db_cancelled = progresso_manager.cancelar(video_name)
