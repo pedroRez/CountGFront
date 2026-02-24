@@ -732,6 +732,9 @@ export default function VideoEditorScreen({ route, navigation }) {
           <TouchableOpacity
             style={styles.seekFineButton}
             onPress={handleSeekBackwardFine}
+            accessibilityRole="button"
+            accessibilityLabel={t('videoEditor.seekFineBack')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Text style={styles.seekFineButtonText}>
               {t('videoEditor.seekFineBack')}
@@ -740,6 +743,9 @@ export default function VideoEditorScreen({ route, navigation }) {
           <TouchableOpacity
             style={styles.seekFineButton}
             onPress={handleSeekForwardFine}
+            accessibilityRole="button"
+            accessibilityLabel={t('videoEditor.seekFineForward')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Text style={styles.seekFineButtonText}>
               {t('videoEditor.seekFineForward')}
@@ -771,13 +777,25 @@ export default function VideoEditorScreen({ route, navigation }) {
           </View>
         </View>
         <View style={styles.markRow}>
-          <TouchableOpacity style={styles.markButton} onPress={handleMarkStart}>
+          <TouchableOpacity
+            style={styles.markButton}
+            onPress={handleMarkStart}
+            accessibilityRole="button"
+            accessibilityLabel={t('videoEditor.markStart')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Text style={styles.markButtonText}>
               {t('videoEditor.markStart')}
             </Text>
             <Text style={styles.markValue}>{formatTime(startTime)}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.markButton} onPress={handleMarkEnd}>
+          <TouchableOpacity
+            style={styles.markButton}
+            onPress={handleMarkEnd}
+            accessibilityRole="button"
+            accessibilityLabel={t('videoEditor.markEnd')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Text style={styles.markButtonText}>
               {t('videoEditor.markEnd')}
             </Text>
