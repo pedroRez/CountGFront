@@ -12,13 +12,13 @@ const DEFAULT_REFUSED_RETRIES = 1;
 const DEFAULT_REFUSED_RETRY_DELAY_MS = 150;
 const DEFAULT_OPEN_PORTS = [554, 8554, 10554];
 const DEFAULT_OPEN_PORT_TIMEOUT_MS = 500;
-const ENFORCED_HOST_MIN = 2;
-const ENFORCED_HOST_MAX = 50;
-const ENFORCED_CONCURRENCY = 3;
+const ENFORCED_HOST_MIN = 0;
+const ENFORCED_HOST_MAX = 255;
+const ENFORCED_CONCURRENCY = 10;
 const ENFORCED_TCP_TIMEOUT_MS = 2000;
 const ENFORCED_RTSP_TIMEOUT_MS = 2500;
-const ENFORCED_HOST_MIN_TIME_MS = 3000;
-const ENFORCED_CONNECT_DELAY_MS = 300;
+const ENFORCED_HOST_MIN_TIME_MS = 0;
+const ENFORCED_CONNECT_DELAY_MS = 120;
 const ENFORCED_RTSP_PATH = '/onvif1';
 const ENFORCED_RTSP_PORT = 554;
 const BASE64_CHARS =
@@ -444,8 +444,8 @@ export const scanRtspDevices = async ({
   onStage = null,
   username = null,
   password = null,
-  hostMin = 1,
-  hostMax = 254,
+  hostMin = 0,
+  hostMax = 255,
   refusedRetries = DEFAULT_REFUSED_RETRIES,
   refusedRetryDelayMs = DEFAULT_REFUSED_RETRY_DELAY_MS,
   openPorts = DEFAULT_OPEN_PORTS,
@@ -470,12 +470,21 @@ export const scanRtspDevices = async ({
   const prefix = await getSubnetPrefix(subnetPrefix);
   if (!prefix) return [];
 
-  const normalizedPaths = [normalizePath(ENFORCED_RTSP_PATH)];
+  const normalizedPaths = paths?.length
+    ? Array.from(new Set(paths.map(normalizePath)))
+    : [normalizePath(ENFORCED_RTSP_PATH)];
   const preferredPath = selectPreferredPath(normalizedPaths);
   const probePortsBase = [ENFORCED_RTSP_PORT];
-  const openPortsList = [ENFORCED_RTSP_PORT];
-  const safeMin = Math.min(Math.max(1, hostMin), 254);
-  const safeMax = Math.min(Math.max(safeMin, hostMax), 254);
+  const openPortsList = Array.from(
+    new Set(
+      (Array.isArray(openPorts) ? openPorts : [openPorts])
+        .map((portValue) => Number(portValue))
+        .filter((portValue) => Number.isFinite(portValue) && portValue > 0)
+        .concat([ENFORCED_RTSP_PORT])
+    )
+  );
+  const safeMin = Math.min(Math.max(0, hostMin), 255);
+  const safeMax = Math.min(Math.max(safeMin, hostMax), 255);
   const enforcedMin = Math.max(safeMin, ENFORCED_HOST_MIN);
   const enforcedMax = Math.min(safeMax, ENFORCED_HOST_MAX);
   const ips = [];

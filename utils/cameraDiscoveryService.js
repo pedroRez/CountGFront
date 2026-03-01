@@ -177,9 +177,10 @@ export const startScan = ({
   lastPassword = null,
   username = null,
   password = null,
+  enableOnvifDiscovery = true,
   scanLocalOnly = false,
-  hostMin = 1,
-  hostMax = 254,
+  hostMin = 0,
+  hostMax = 255,
   onStage = null,
   verifyOnvifPort = [80, 5000, 8000, 8080, 8899],
   openPorts = [554, 8554, 10554],
@@ -383,7 +384,9 @@ export const startScan = ({
   const run = async () => {
     try {
       emitProgress();
-      await runOnvifDiscovery();
+      if (enableOnvifDiscovery) {
+        await runOnvifDiscovery();
+      }
       await runRtspScan();
       if (cancelled) return;
       state = 'completed';

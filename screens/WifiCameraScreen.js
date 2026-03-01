@@ -40,8 +40,8 @@ import {
 
 const DEFAULT_ONVIF_USERNAME = 'admin';
 const COMMON_PREFIXES = ['192.168.0'];
-const DEFAULT_HOST_MIN = 1;
-const DEFAULT_HOST_MAX = 254;
+const DEFAULT_HOST_MIN = 0;
+const DEFAULT_HOST_MAX = 255;
 const PRIMARY_PREFIX = '192.168.0';
 const WIFI_CAMERA_CREDENTIALS_KEY = '@wifi_camera_credentials';
 const WIFI_CAMERA_LAST_PASSWORD_KEY = '@wifi_camera_last_password';
@@ -708,16 +708,17 @@ const WifiCameraScreen = ({ navigation }) => {
         lastPassword,
         username: lastPassword ? DEFAULT_ONVIF_USERNAME : null,
         password: lastPassword || null,
+        enableOnvifDiscovery: false,
         scanLocalOnly,
         hostMin: DEFAULT_HOST_MIN,
         hostMax: DEFAULT_HOST_MAX,
         concurrency: 10,
         probeDelayMs: 60,
         allowConnectOnly: false,
-        verifyOnvifPort: [80, 5000, 8000, 8080, 8899],
+        verifyOnvifPort: null,
         openPorts: [554, 8554, 10554],
         openPortTimeoutMs: 500,
-        stopAfterConfirmed: scanLocalOnly,
+        stopAfterConfirmed: false,
         onStage: (stageKey, detail) => setStage(stageKey, detail),
       });
       scanHandleRef.current = scanHandle;
@@ -726,7 +727,7 @@ const WifiCameraScreen = ({ navigation }) => {
         if (!device) return;
         pendingDevicesRef.current.push(device);
         if (!flushTimerRef.current) {
-          flushTimerRef.current = setTimeout(flushPendingDevices, 150);
+          flushTimerRef.current = setTimeout(flushPendingDevices, 0);
         }
       });
 

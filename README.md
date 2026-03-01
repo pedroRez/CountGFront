@@ -63,8 +63,8 @@ const enabled = process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG_LOGS === '1';
 
 The app manipulates audio and video and relies on a few extra packages:
 
-- [`expo-av`](https://docs.expo.dev/versions/latest/sdk/av/) for playback and
-  preview.
+- [`expo-video`](https://docs.expo.dev/versions/latest/sdk/video/) for
+  playback and preview.
 - [`@react-native-community/slider`](https://github.com/callstack/react-native-slider)
   for trim selection UI.
 - [`react-native-vlc-media-player`](https://github.com/razorRun/react-native-vlc-media-player)
@@ -75,7 +75,7 @@ The backend uses trim start/end metadata to process only the selected segment.
 Install the packages:
 
 ```bash
-npx expo install expo-av @react-native-community/slider
+npx expo install expo-video @react-native-community/slider
 npm install react-native-vlc-media-player react-native-udp
 ```
 
