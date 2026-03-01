@@ -19,12 +19,43 @@ CountGFront is the mobile interface for the CountG project. Built with React Nat
    python3.10 -m venv venv
    source venv/bin/activate            # Windows: venv\Scripts\activate
    pip install -r requirements.txt
+   cp .env.example .env                # Windows (PowerShell): Copy-Item .env.example .env
    # Download YOLOv8 weights (run inside the backend folder that has main.py)
    curl -L -o yolov8n.pt https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8n.pt
    curl -L -o yolov8m.pt https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8m.pt
    curl -L -o yolov8l.pt https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8l.pt
    uvicorn main:app --host 0.0.0.0 --port 8000
    ```
+
+### Banco de dados do backend (PostgreSQL)
+
+O backend usa PostgreSQL para persistir o progresso do processamento de videos
+na tabela `video_progress`.
+
+1. Suba um PostgreSQL local (exemplo com Docker):
+   ```bash
+   docker run --name countg-postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
+   ```
+2. Crie banco/usuario e permissoes usando o script do backend:
+   ```bash
+   # na raiz do projeto:
+   psql -h localhost -U postgres -f backend/setup_db.SQL
+   # se voce ja estiver dentro da pasta backend:
+   psql -h localhost -U postgres -f setup_db.SQL
+   ```
+3. No `.env` do backend (`backend/.env`), configure a conexao:
+   ```env
+   DATABASE_URL=postgresql://kyoday_user:root@localhost:5432/kyoday_db
+   ```
+
+Observacoes:
+- O backend cria automaticamente a tabela `video_progress` ao iniciar (se o
+  usuario do banco tiver permissao de criacao no schema).
+- Se `DATABASE_URL` nao estiver definida, as rotas que dependem de progresso no
+  banco podem falhar.
+- Para validar rapidamente, acesse `GET /` e confira o campo
+  `database_url_loaded: true`.
+
 2. **Frontend**
    ```bash
    cd CountGFront
