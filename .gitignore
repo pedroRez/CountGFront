@@ -36,3 +36,13 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# local stray files
+/A
+/Configure
+/Failed
+/Get
+/NDK
+/Run
+/Task
+/Unit)
