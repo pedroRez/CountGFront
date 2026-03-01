@@ -676,15 +676,17 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
         clearTimeout(playerMountTimerRef.current);
         playerMountTimerRef.current = null;
       }
-      if (isPlayerMounted) {
-        logPlayerStage('vlc_unmount', { reason: reason || '-' });
-      }
-      setIsPlayerMounted(false);
+      setIsPlayerMounted((prevMounted) => {
+        if (prevMounted) {
+          logPlayerStage('vlc_unmount', { reason: reason || '-' });
+        }
+        return false;
+      });
       if (reason) {
         setPlayerDisabledReason(reason);
       }
     },
-    [isPlayerMounted, logPlayerStage]
+    [logPlayerStage]
   );
 
   const showSafeAlert = useCallback(
