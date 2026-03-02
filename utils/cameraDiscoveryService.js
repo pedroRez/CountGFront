@@ -1,5 +1,5 @@
 import { discoverOnvifDevices } from './onvifDiscovery';
-import { scanRtspDevices } from './rtspScan';
+import { filterRtspDevices, scanRtspDevices } from './rtspScan';
 import {
   isCameraDiscoveryDebugEnabled,
   logCameraDiscovery,
@@ -8,6 +8,10 @@ import {
 const DEFAULT_RTSP_TIMEOUT_MS = 1800;
 const DEFAULT_FAST_RTSP_TIMEOUT_MS = 900;
 const DEFAULT_FAST_TCP_TIMEOUT_MS = 350;
+const DEFAULT_POSSIBLE_RTSP_TIMEOUT_MS = 5000;
+const DEFAULT_POSSIBLE_CONCURRENCY = 4;
+const DEFAULT_POSSIBLE_REFUSED_RETRIES = 2;
+const DEFAULT_POSSIBLE_REFUSED_RETRY_DELAY_MS = 250;
 const DEFAULT_ONVIF_TIMEOUT_MS = 4500;
 const DEFAULT_ONVIF_RETRIES = 3;
 const DEFAULT_CONCURRENCY = 10;
@@ -199,7 +203,13 @@ export const startScan = ({
   fastRtspPort = 554,
   fastRtspTimeoutMs = DEFAULT_FAST_RTSP_TIMEOUT_MS,
   fastOpenPortTimeoutMs = DEFAULT_FAST_TCP_TIMEOUT_MS,
-  skipFullScanWhenConfirmed = true,
+  skipFullScanWhenConfirmed = false,
+  boostPossibleCameras = true,
+  possibleCameraPaths = ['/onvif1', '/', '/onvif0'],
+  possibleCameraRtspTimeoutMs = DEFAULT_POSSIBLE_RTSP_TIMEOUT_MS,
+  possibleCameraConcurrency = DEFAULT_POSSIBLE_CONCURRENCY,
+  possibleCameraRefusedRetries = DEFAULT_POSSIBLE_REFUSED_RETRIES,
+  possibleCameraRefusedRetryDelayMs = DEFAULT_POSSIBLE_REFUSED_RETRY_DELAY_MS,
   stopAfterConfirmed = false,
 } = {}) => {
   const emitter = createEmitter();
@@ -305,6 +315,14 @@ export const startScan = ({
 
       const runScanForPrefix = async (prefix, overrides = {}) => {
         let scanFound = false;
+        const possibleCandidateIps = new Set();
+        const shouldIncludePossible =
+          overrides.includePossibleCameras ?? includePossibleCameras;
+        const shouldBoostPossible =
+          overrides.boostPossibleCameras ?? boostPossibleCameras;
+        const scanOverrides = { ...overrides };
+        delete scanOverrides.includePossibleCameras;
+        delete scanOverrides.boostPossibleCameras;
         const results = await scanRtspDevices({
           subnetPrefix: prefix,
           timeoutMs: rtspTimeoutMs,
@@ -313,7 +331,7 @@ export const startScan = ({
           priorityIps,
           matchHint: null,
           verifyOnvifPort,
-          username: lastPassword ? username : null,
+          username: username || null,
           password: lastPassword || password || null,
           hostMin,
           hostMax,
@@ -346,7 +364,10 @@ export const startScan = ({
                 possibleCamera: false,
               });
             } else if (result?.result === 'possible_camera') {
-              if (includePossibleCameras) {
+              if (result?.ip) {
+                possibleCandidateIps.add(result.ip);
+              }
+              if (shouldIncludePossible) {
                 emitDevice({
                   ...result,
                   discoverySource: 'rtsp-port',
@@ -362,12 +383,15 @@ export const startScan = ({
             logCameraDiscovery('rtsp_port_open_result', data);
           },
           signal: controller.signal,
-          ...overrides,
+          ...scanOverrides,
         });
         if (cancelled) return scanFound;
         if (Array.isArray(results)) {
           results.forEach((item) => {
-            if (!includePossibleCameras && item?.possibleCamera) return;
+            if (item?.possibleCamera && item?.ip) {
+              possibleCandidateIps.add(item.ip);
+            }
+            if (!shouldIncludePossible && item?.possibleCamera) return;
             emitDevice({
               ...item,
               discoverySource: item?.possibleCamera ? 'rtsp-port' : 'rtsp-scan',
@@ -378,6 +402,58 @@ export const startScan = ({
               confirmedFound = true;
             }
           });
+        }
+        if (
+          !cancelled &&
+          shouldBoostPossible &&
+          possibleCandidateIps.size > 0
+        ) {
+          const possibleIps = Array.from(possibleCandidateIps);
+          if (typeof onStage === 'function') {
+            onStage(
+              'rtsp_scan',
+              `${prefix} candidates=${possibleIps.length}`
+            );
+          }
+          logCameraDiscovery('rtsp_possible_candidates', {
+            prefix,
+            count: possibleIps.length,
+            ips: possibleIps,
+          });
+          const boostedResults = await filterRtspDevices({
+            ips: possibleIps,
+            port: fastRtspPort || 554,
+            paths:
+              Array.isArray(possibleCameraPaths) && possibleCameraPaths.length
+                ? possibleCameraPaths
+                : ['/onvif1', '/', '/onvif0'],
+            timeoutMs: possibleCameraRtspTimeoutMs,
+            concurrency: Math.max(
+              1,
+              Math.min(possibleCameraConcurrency, possibleIps.length)
+            ),
+            verifyOnvifPort,
+            allowConnectOnly: true,
+            username: username || null,
+            password: lastPassword || password || null,
+            refusedRetries: possibleCameraRefusedRetries,
+            refusedRetryDelayMs: possibleCameraRefusedRetryDelayMs,
+            onLog: isCameraDiscoveryDebugEnabled() ? logCameraDiscovery : null,
+            signal: controller.signal,
+          });
+          if (Array.isArray(boostedResults) && boostedResults.length) {
+            boostedResults.forEach((item) => {
+              if (!item?.ip) return;
+              scanFound = true;
+              confirmedFound = true;
+              emitDevice({
+                ...item,
+                discoverySource: 'rtsp-scan',
+                possibleCamera: false,
+                onvifOk: Boolean(item.onvifOk),
+              });
+            });
+          }
         }
         return scanFound;
       };
@@ -397,6 +473,7 @@ export const startScan = ({
             probeDelayMs: 0,
             refusedRetries: 0,
             refusedRetryDelayMs: 0,
+            boostPossibleCameras: false,
           });
           if (cancelled) return confirmedFound;
           if (fastFound && (stopAfterConfirmed || skipFullScanWhenConfirmed)) {
