@@ -342,7 +342,7 @@ const HomeScreen = ({ route }) => {
         return;
       }
       let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaType.Videos,
+        mediaTypes: ['videos'],
         quality: 0.8,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -358,10 +358,12 @@ const HomeScreen = ({ route }) => {
         resetAllStates();
       }
     } catch (error) {
+      console.warn('Failed to load video from gallery:', error);
       Alert.alert(t('common.error'), t('home.errors.galleryLoadFailed'));
       resetAllStates();
+    } finally {
+      setIsPickerLoading(false);
     }
-    setIsPickerLoading(false);
   };
 
   const buildProcessingMeta = (assetOverride) => {

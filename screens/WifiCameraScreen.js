@@ -26,6 +26,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Clipboard from 'expo-clipboard';
+import { useFocusEffect } from '@react-navigation/native';
 
 import BigButton from '../components/BigButton';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
@@ -39,6 +40,12 @@ import {
 } from '../utils/cameraDiscoveryLogger';
 
 const DEFAULT_ONVIF_USERNAME = 'admin';
+const ENV_SCAN_USERNAME = (
+  process.env.EXPO_PUBLIC_CAMERA_SCAN_USERNAME || DEFAULT_ONVIF_USERNAME
+).trim();
+const ENV_SCAN_PASSWORD = (
+  process.env.EXPO_PUBLIC_CAMERA_SCAN_PASSWORD || ''
+).trim();
 const COMMON_PREFIXES = ['192.168.0'];
 const DEFAULT_HOST_MIN = 0;
 const DEFAULT_HOST_MAX = 255;
@@ -202,10 +209,15 @@ const formatElapsed = (elapsedMs) => {
   return `${pad(minutes)}:${pad(seconds)}`;
 };
 
+const getDeviceStorageKey = (device) => {
+  if (!device?.ip) return null;
+  return device.id || `${device.ip}:${device.rtspPort || ''}`.toLowerCase();
+};
+
 const normalizeStoredDevice = (device) => {
   if (!device?.ip) return null;
-  const key =
-    device.id || `${device.ip}:${device.rtspPort || ''}`.toLowerCase();
+  const key = getDeviceStorageKey(device);
+  if (!key) return null;
   return {
     id: key,
     ip: device.ip,
@@ -482,18 +494,19 @@ const WifiCameraScreen = ({ navigation }) => {
     void loadSavedCredentials(selectedDevice.ip);
   }, [isAuthVisible, loadSavedCredentials, selectedDevice?.ip]);
 
-  useEffect(() => {
-    let mounted = true;
-    loadLastKnownDevices().then((cached) => {
-      if (!mounted) return;
-      if (Array.isArray(cached) && cached.length) {
-        setDevices(cached);
-      }
-    });
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      loadLastKnownDevices().then((cached) => {
+        if (!active) return;
+        if (!Array.isArray(cached) || !cached.length) return;
+        setDevices((prev) => mergeDeviceLists(prev, cached));
+      });
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
 
   useEffect(() => {
     return () => {
@@ -572,6 +585,58 @@ const WifiCameraScreen = ({ navigation }) => {
       return merged;
     });
   }, [schedulePersistDevices]);
+
+  const removeDeviceFromSavedList = useCallback(
+    async (device) => {
+      const key = getDeviceStorageKey(device);
+      const ip = device?.ip;
+      if (!key || !ip) return;
+
+      setDevices((prev) => {
+        const next = prev.filter((item) => getDeviceStorageKey(item) !== key);
+        schedulePersistDevices(next);
+        return next;
+      });
+
+      if (selectedDevice?.ip === ip) {
+        setIsAuthVisible(false);
+        setSelectedDevice(null);
+        setShowAdvanced(false);
+        setPassword('');
+        setShowPassword(false);
+      }
+
+      try {
+        const savedIps = await loadLastKnownIps();
+        const nextIps = savedIps.filter((savedIp) => savedIp !== ip);
+        await saveLastKnownIps(nextIps);
+      } catch (_error) {
+        // ignore storage failures
+      }
+    },
+    [schedulePersistDevices, selectedDevice?.ip]
+  );
+
+  const handleRemoveDevice = useCallback(
+    (device) => {
+      if (!device?.ip) return;
+      Alert.alert(
+        t('wifiCamera.removeCameraTitle'),
+        t('wifiCamera.removeCameraMessage', { ip: device.ip }),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('wifiCamera.removeCamera'),
+            style: 'destructive',
+            onPress: () => {
+              void removeDeviceFromSavedList(device);
+            },
+          },
+        ]
+      );
+    },
+    [removeDeviceFromSavedList, t]
+  );
 
   const handleScan = async () => {
     if (isScanning) return;
@@ -657,6 +722,10 @@ const WifiCameraScreen = ({ navigation }) => {
       } catch (error) {
         lastPassword = null;
       }
+      const scanPassword = lastPassword || ENV_SCAN_PASSWORD || null;
+      const scanUsername = scanPassword
+        ? ENV_SCAN_USERNAME || DEFAULT_ONVIF_USERNAME
+        : null;
       const lastKnownIps = await loadLastKnownIps();
       logCameraDiscovery('last_known_ips_loaded', {
         count: lastKnownIps.length,
@@ -706,8 +775,8 @@ const WifiCameraScreen = ({ navigation }) => {
         priorityIps,
         excludeIps: [localIp, devServerIp],
         lastPassword,
-        username: lastPassword ? DEFAULT_ONVIF_USERNAME : null,
-        password: lastPassword || null,
+        username: scanUsername,
+        password: scanPassword,
         enableOnvifDiscovery: false,
         scanLocalOnly,
         hostMin: DEFAULT_HOST_MIN,
@@ -715,9 +784,17 @@ const WifiCameraScreen = ({ navigation }) => {
         concurrency: 10,
         probeDelayMs: 60,
         allowConnectOnly: false,
+        includePossibleCameras: false,
+        enableFastRtspScan: true,
+        fastRtspPath: '/onvif1',
+        fastRtspPort: 554,
+        fastRtspTimeoutMs: 900,
+        fastOpenPortTimeoutMs: 350,
+        skipFullScanWhenConfirmed: true,
+        rtspTimeoutMs: 2500,
         verifyOnvifPort: null,
         openPorts: [554, 8554, 10554],
-        openPortTimeoutMs: 500,
+        openPortTimeoutMs: 1200,
         stopAfterConfirmed: false,
         onStage: (stageKey, detail) => setStage(stageKey, detail),
       });
@@ -860,6 +937,15 @@ const WifiCameraScreen = ({ navigation }) => {
       xaddrs: selectedDevice.xaddrs || [],
       rtspPath: selectedDevice.rtspPath,
       rtspPort: selectedDevice.rtspPort,
+      discoverySource:
+        selectedDevice.discoverySource ||
+        (selectedDevice.manualConnect ? 'manual' : null),
+      onvifOk: Boolean(selectedDevice.onvifOk),
+      possibleCamera: Boolean(selectedDevice.possibleCamera),
+      manualConnect: Boolean(selectedDevice.manualConnect),
+      name: selectedDevice.name || null,
+      manufacturer: selectedDevice.manufacturer || null,
+      model: selectedDevice.model || null,
     };
     setIsAuthVisible(false);
     setSelectedDevice(null);
@@ -1090,19 +1176,34 @@ const WifiCameraScreen = ({ navigation }) => {
                     <Text style={styles.resultTitle}>
                       {t('wifiCamera.deviceLabel', { ip: device.ip })}
                     </Text>
-                    <TouchableOpacity
-                      style={styles.connectButton}
-                      onPress={() => openAuthModal(device)}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('wifiCamera.a11y.connectDevice', {
-                        ip: device.ip,
-                      })}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Text style={styles.connectButtonText}>
-                        {t('wifiCamera.connect')}
-                      </Text>
-                    </TouchableOpacity>
+                    <View style={styles.resultActions}>
+                      <TouchableOpacity
+                        style={styles.removeButton}
+                        onPress={() => handleRemoveDevice(device)}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('wifiCamera.a11y.removeDevice', {
+                          ip: device.ip,
+                        })}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Text style={styles.removeButtonText}>
+                          {t('wifiCamera.removeCamera')}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.connectButton}
+                        onPress={() => openAuthModal(device)}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('wifiCamera.a11y.connectDevice', {
+                          ip: device.ip,
+                        })}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Text style={styles.connectButtonText}>
+                          {t('wifiCamera.connect')}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                   <Text
                     style={[
@@ -1391,6 +1492,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
+  resultActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   resultTitle: {
     flex: 1,
     fontSize: 15,
@@ -1421,6 +1527,19 @@ const styles = StyleSheet.create({
   },
   connectButtonText: {
     color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  removeButton: {
+    borderWidth: 1,
+    borderColor: '#dc2626',
+    backgroundColor: '#fff1f2',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  removeButtonText: {
+    color: '#b91c1c',
     fontSize: 12,
     fontWeight: '600',
   },

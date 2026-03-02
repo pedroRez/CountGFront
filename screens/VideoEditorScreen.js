@@ -15,11 +15,11 @@ import {
   Pressable,
   PanResponder,
   Image,
-  Platform,
 } from 'react-native';
 import { useEvent, useEventListener } from 'expo';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as VideoThumbnails from 'expo-video-thumbnails';
+import * as FileSystem from 'expo-file-system/legacy';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   SafeAreaView,
@@ -114,6 +114,25 @@ const buildFallbackOrientations = (orientationStyleMap) => [
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 const clampRatio = (value) => clamp(value, 0, 1);
+
+const hasUriScheme = (value) =>
+  typeof value === 'string' && /^[a-z][a-z0-9+.-]*:\/\//i.test(value);
+
+const ensurePlayableUri = (value) => {
+  if (!value || typeof value !== 'string') return null;
+  if (hasUriScheme(value)) return value;
+  if (value.startsWith('/')) return `file://${value}`;
+  return `file:///${value}`;
+};
+
+const toSafeCacheFileName = (value) => {
+  if (!value) return `video_${Date.now()}.mp4`;
+  const normalized = String(value)
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  if (!normalized) return `video_${Date.now()}.mp4`;
+  return normalized.includes('.') ? normalized : `${normalized}.mp4`;
+};
 
 const formatTime = (seconds) => {
   if (!Number.isFinite(seconds) || seconds < 0) return '00:00';
@@ -233,16 +252,64 @@ export default function VideoEditorScreen({ route, navigation }) {
   const [scrubBarWidth, setScrubBarWidth] = useState(0);
   const [thumbnails, setThumbnails] = useState([]);
   const [isGeneratingThumbnails, setIsGeneratingThumbnails] = useState(false);
+  const [playbackUri, setPlaybackUri] = useState(() =>
+    ensurePlayableUri(assetUri)
+  );
 
   const safeDurationSeconds = Math.max(0, durationSeconds);
   const tapTimeoutRef = useRef(null);
   const lastTapRef = useRef(0);
+  const hasShownPlaybackErrorRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const preparePlaybackUri = async () => {
+      const rawUri = ensurePlayableUri(assetUri);
+      if (!rawUri) {
+        setPlaybackUri(null);
+        return;
+      }
+
+      let nextUri = rawUri;
+      if (rawUri.startsWith('content://')) {
+        try {
+          const fileName = toSafeCacheFileName(
+            asset?.fileName || rawUri.split('/').pop()
+          );
+          const targetUri = `${FileSystem.cacheDirectory}editor_${Date.now()}_${fileName}`;
+          await FileSystem.copyAsync({ from: rawUri, to: targetUri });
+          nextUri = targetUri;
+        } catch (error) {
+          console.warn('Failed to copy content uri for editor playback:', error);
+          nextUri = rawUri;
+        }
+      }
+
+      if (!cancelled) {
+        setPlaybackUri(nextUri);
+      }
+    };
+
+    void preparePlaybackUri();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [asset?.fileName, assetUri]);
+
+  useEffect(() => {
+    hasShownPlaybackErrorRef.current = false;
+  }, [playbackUri]);
+
   const videoSource = useMemo(() => {
-    if (!assetUri) return null;
-    return { uri: assetUri };
-  }, [assetUri]);
+    if (!playbackUri) return null;
+    return { uri: playbackUri };
+  }, [playbackUri]);
   const player = useVideoPlayer(videoSource, (instance) => {
     instance.loop = false;
+    instance.muted = false;
+    instance.volume = 1;
     instance.timeUpdateEventInterval = 0.2;
   });
   const timeUpdate = useEvent(player, 'timeUpdate', {
@@ -272,7 +339,7 @@ export default function VideoEditorScreen({ route, navigation }) {
       if (player.playing) {
         player.pause();
       }
-    } catch (error) {
+    } catch (_error) {
       // Best effort to avoid audio leakage when leaving the screen.
     }
   }, [player]);
@@ -347,13 +414,22 @@ export default function VideoEditorScreen({ route, navigation }) {
     }
   });
 
-  useEventListener(player, 'statusChange', ({ status }) => {
-    if (status !== 'readyToPlay') return;
-    const nextDuration = Number(player.duration);
-    if (Number.isFinite(nextDuration) && nextDuration > 0) {
-      setDurationSeconds((prev) =>
-        Math.abs(nextDuration - prev) > 0.01 ? nextDuration : prev
-      );
+  useEventListener(player, 'statusChange', ({ status, error }) => {
+    if (status === 'error') {
+      console.warn('Video editor player error:', error?.message || error);
+      if (!hasShownPlaybackErrorRef.current) {
+        hasShownPlaybackErrorRef.current = true;
+        Alert.alert(t('common.error'), t('videoEditor.videoNotFoundMessage'));
+      }
+      return;
+    }
+    if (status === 'readyToPlay') {
+      const nextDuration = Number(player.duration);
+      if (Number.isFinite(nextDuration) && nextDuration > 0) {
+        setDurationSeconds((prev) =>
+          Math.abs(nextDuration - prev) > 0.01 ? nextDuration : prev
+        );
+      }
     }
   });
 
@@ -372,7 +448,15 @@ export default function VideoEditorScreen({ route, navigation }) {
     let cancelled = false;
 
     const loadThumbnails = async () => {
-      if (!assetUri || !safeDurationSeconds || safeDurationSeconds <= 0) {
+      const resolvedAssetUri = ensurePlayableUri(assetUri);
+      const sourceCandidates = Array.from(
+        new Set([playbackUri, resolvedAssetUri].filter(Boolean))
+      );
+      if (
+        !sourceCandidates.length ||
+        !safeDurationSeconds ||
+        safeDurationSeconds <= 0
+      ) {
         setThumbnails([]);
         return;
       }
@@ -384,37 +468,48 @@ export default function VideoEditorScreen({ route, navigation }) {
         const requests = Array.from({ length: THUMBNAIL_COUNT }, (_, index) =>
           Math.round(stepMs * index + stepMs / 2)
         );
-        const settled = await Promise.allSettled(
-          requests.map((time) =>
-            VideoThumbnails.getThumbnailAsync(assetUri, { time })
-          )
-        );
-        const successfulUris = settled
-          .filter((item) => item.status === 'fulfilled')
-          .map((item) => item.value?.uri)
-          .filter(Boolean);
-        const uniqueUris = Array.from(new Set(successfulUris));
+        const uniqueUris = [];
+        for (const sourceUri of sourceCandidates) {
+          const settled = await Promise.allSettled(
+            requests.map((time) =>
+              VideoThumbnails.getThumbnailAsync(sourceUri, { time })
+            )
+          );
+          const successfulUris = settled
+            .filter((item) => item.status === 'fulfilled')
+            .map((item) => item.value?.uri)
+            .filter(Boolean);
+          successfulUris.forEach((uri) => {
+            if (!uniqueUris.includes(uri)) uniqueUris.push(uri);
+          });
+          if (uniqueUris.length) break;
+        }
         if (!uniqueUris.length) {
           const fallbackTimes = [0, 500, 1000];
-          for (const fallbackTime of fallbackTimes) {
-            try {
-              const fallback = await VideoThumbnails.getThumbnailAsync(
-                assetUri,
-                { time: fallbackTime }
-              );
-              if (fallback?.uri) {
-                uniqueUris.push(fallback.uri);
-                break;
+          for (const sourceUri of sourceCandidates) {
+            for (const fallbackTime of fallbackTimes) {
+              try {
+                const fallback = await VideoThumbnails.getThumbnailAsync(
+                  sourceUri,
+                  { time: fallbackTime }
+                );
+                if (fallback?.uri) {
+                  uniqueUris.push(fallback.uri);
+                  break;
+                }
+              } catch (_error) {
+                // try next fallback timestamp
               }
-            } catch (error) {
-              // try next fallback timestamp
+            }
+            if (uniqueUris.length) {
+              break;
             }
           }
         }
         if (!cancelled) {
           setThumbnails(uniqueUris);
         }
-      } catch (error) {
+      } catch (_error) {
         if (!cancelled) {
           setThumbnails([]);
         }
@@ -430,7 +525,7 @@ export default function VideoEditorScreen({ route, navigation }) {
     return () => {
       cancelled = true;
     };
-  }, [assetUri, safeDurationSeconds]);
+  }, [assetUri, playbackUri, safeDurationSeconds]);
 
   const handleCancel = () => {
     stopPlayback();
@@ -748,7 +843,6 @@ export default function VideoEditorScreen({ route, navigation }) {
             style={styles.editor}
             contentFit="contain"
             nativeControls={false}
-            surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
           />
           <View pointerEvents="none" style={styles.overlay}>
             {lineStyle === 'vertical' ? (

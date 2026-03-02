@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Alert, StyleSheet, AppState } from 'react-native';
+import { View, Alert, StyleSheet, AppState, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import axios from 'axios';
 import BigButton from './BigButton';
@@ -7,6 +7,8 @@ import { useApi } from '../context/ApiContext';
 import { useLanguage } from '../context/LanguageContext';
 const CONNECTIVITY_TIMEOUT_MS = 5000;
 const RETRY_INTERVAL_MS = 10000;
+const ANDROID_UPLOAD_PROGRESS_SCALE = 2;
+const MAX_PROGRESS_BEFORE_UPLOAD_FINISH = 0.99;
 
 const isValidTrimRange = (startMs, endMs) =>
   Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs;
@@ -44,6 +46,7 @@ export default function VideoUploadSender({
   const isRetryingRef = useRef(false);
   const appStateRef = useRef(AppState.currentState);
   const uploadTotalRef = useRef(null);
+  const uploadProgressScaleRef = useRef(1);
   const [status, setStatus] = useState({
     key: 'upload.processVideo',
     params: {},
@@ -237,6 +240,8 @@ export default function VideoUploadSender({
     if (!payload || isRetryingRef.current) return;
     isRetryingRef.current = true;
     uploadTotalRef.current = null;
+    uploadProgressScaleRef.current =
+      Platform.OS === 'android' ? ANDROID_UPLOAD_PROGRESS_SCALE : 1;
     if (retryTimerRef.current) {
       clearInterval(retryTimerRef.current);
       retryTimerRef.current = null;
@@ -289,8 +294,11 @@ export default function VideoUploadSender({
             safeSetStatus({ key: 'upload.uploading', params: {} });
             return;
           }
-          const safeTotal = Math.max(totalForProgress, loaded);
-          const clampedProgress = Math.min(loaded / safeTotal, 1);
+          const scaledTotal = totalForProgress * uploadProgressScaleRef.current;
+          const clampedProgress = Math.min(
+            loaded / Math.max(scaledTotal, 1),
+            MAX_PROGRESS_BEFORE_UPLOAD_FINISH
+          );
 
           safeSetUploadProgress(clampedProgress);
           safeSetStatus({

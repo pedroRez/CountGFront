@@ -6,6 +6,8 @@ import {
 } from './cameraDiscoveryLogger';
 
 const DEFAULT_RTSP_TIMEOUT_MS = 1800;
+const DEFAULT_FAST_RTSP_TIMEOUT_MS = 900;
+const DEFAULT_FAST_TCP_TIMEOUT_MS = 350;
 const DEFAULT_ONVIF_TIMEOUT_MS = 4500;
 const DEFAULT_ONVIF_RETRIES = 3;
 const DEFAULT_CONCURRENCY = 10;
@@ -191,6 +193,13 @@ export const startScan = ({
   concurrency = DEFAULT_CONCURRENCY,
   probeDelayMs = 60,
   allowConnectOnly = false,
+  includePossibleCameras = false,
+  enableFastRtspScan = true,
+  fastRtspPath = '/onvif1',
+  fastRtspPort = 554,
+  fastRtspTimeoutMs = DEFAULT_FAST_RTSP_TIMEOUT_MS,
+  fastOpenPortTimeoutMs = DEFAULT_FAST_TCP_TIMEOUT_MS,
+  skipFullScanWhenConfirmed = true,
   stopAfterConfirmed = false,
 } = {}) => {
   const emitter = createEmitter();
@@ -293,11 +302,9 @@ export const startScan = ({
     const runPrefixList = async (list) => {
       if (!Array.isArray(list) || !list.length) return false;
       let confirmedFound = false;
-      for (const prefix of list) {
-        if (cancelled) return confirmedFound;
-        if (typeof onStage === 'function') {
-          onStage('rtsp_scan', prefix);
-        }
+
+      const runScanForPrefix = async (prefix, overrides = {}) => {
+        let scanFound = false;
         const results = await scanRtspDevices({
           subnetPrefix: prefix,
           timeoutMs: rtspTimeoutMs,
@@ -331,6 +338,7 @@ export const startScan = ({
             if (cancelled) return;
             checkedCount += 1;
             if (result?.result === 'hit') {
+              scanFound = true;
               confirmedFound = true;
               emitDevice({
                 ...result,
@@ -338,12 +346,14 @@ export const startScan = ({
                 possibleCamera: false,
               });
             } else if (result?.result === 'possible_camera') {
-              emitDevice({
-                ...result,
-                discoverySource: 'rtsp-port',
-                possibleCamera: true,
-                onvifOk: false,
-              });
+              if (includePossibleCameras) {
+                emitDevice({
+                  ...result,
+                  discoverySource: 'rtsp-port',
+                  possibleCamera: true,
+                  onvifOk: false,
+                });
+              }
             }
             emitProgress();
           },
@@ -352,18 +362,50 @@ export const startScan = ({
             logCameraDiscovery('rtsp_port_open_result', data);
           },
           signal: controller.signal,
+          ...overrides,
         });
-        if (cancelled) return confirmedFound;
+        if (cancelled) return scanFound;
         if (Array.isArray(results)) {
           results.forEach((item) => {
+            if (!includePossibleCameras && item?.possibleCamera) return;
             emitDevice({
               ...item,
               discoverySource: item?.possibleCamera ? 'rtsp-port' : 'rtsp-scan',
               possibleCamera: Boolean(item?.possibleCamera),
             });
-            if (!item?.possibleCamera) confirmedFound = true;
+            if (!item?.possibleCamera) {
+              scanFound = true;
+              confirmedFound = true;
+            }
           });
         }
+        return scanFound;
+      };
+
+      for (const prefix of list) {
+        if (cancelled) return confirmedFound;
+        if (typeof onStage === 'function') {
+          onStage('rtsp_scan', prefix);
+        }
+
+        if (enableFastRtspScan) {
+          const fastFound = await runScanForPrefix(prefix, {
+            paths: [fastRtspPath],
+            openPorts: [fastRtspPort],
+            timeoutMs: fastRtspTimeoutMs,
+            openPortTimeoutMs: fastOpenPortTimeoutMs,
+            probeDelayMs: 0,
+            refusedRetries: 0,
+            refusedRetryDelayMs: 0,
+          });
+          if (cancelled) return confirmedFound;
+          if (fastFound && (stopAfterConfirmed || skipFullScanWhenConfirmed)) {
+            return true;
+          }
+        }
+
+        await runScanForPrefix(prefix);
+        if (cancelled) return confirmedFound;
         if (stopAfterConfirmed && confirmedFound) return confirmedFound;
       }
       return confirmedFound;
