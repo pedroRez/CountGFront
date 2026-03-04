@@ -49,6 +49,7 @@ na tabela `video_progress`.
    ```
 
 Observacoes:
+
 - O backend cria automaticamente a tabela `video_progress` ao iniciar (se o
   usuario do banco tiver permissao de criacao no schema).
 - Se `DATABASE_URL` nao estiver definida, as rotas que dependem de progresso no
