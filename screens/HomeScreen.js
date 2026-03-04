@@ -19,7 +19,10 @@ import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
-import { resolveVideoMimeType } from '../utils/videoMime';
+import {
+  resolveVideoMimeType,
+  resolveVideoExtensionFromMimeType,
+} from '../utils/videoMime';
 
 import BigButton from '../components/BigButton';
 import VideoUploadSender from '../components/VideoUploadSender';
@@ -114,9 +117,29 @@ const ensureLocalVideoUri = async (asset) => {
   if (!asset?.uri) return asset;
   if (!asset.uri.startsWith('content://')) return asset;
   try {
-    const fileName =
-      asset.fileName || asset.uri.split('/').pop() || 'video.mp4';
-    const safeName = fileName.includes('.') ? fileName : `${fileName}.mp4`;
+    const rawName =
+      asset.fileName || asset.uri.split('/').pop() || `video_${Date.now()}`;
+    const normalizedName = String(rawName)
+      .replace(/[^a-zA-Z0-9._-]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    const baseName = normalizedName || `video_${Date.now()}`;
+    const extensionMatch = baseName.match(/\.([a-z0-9]{2,5})$/i);
+    const currentExtension = extensionMatch?.[1]?.toLowerCase() || null;
+    const inferredExtension = resolveVideoExtensionFromMimeType(
+      asset?.mimeType,
+      null
+    );
+    const shouldReplaceLikelyWrongMp4 =
+      currentExtension === 'mp4' &&
+      inferredExtension &&
+      inferredExtension !== 'mp4';
+    const safeName = !currentExtension
+      ? inferredExtension
+        ? `${baseName}.${inferredExtension}`
+        : baseName
+      : shouldReplaceLikelyWrongMp4
+        ? baseName.replace(/\.[a-z0-9]{2,5}$/i, `.${inferredExtension}`)
+        : baseName;
     const targetUri = `${FileSystem.cacheDirectory}${Date.now()}_${safeName}`;
     await FileSystem.copyAsync({ from: asset.uri, to: targetUri });
     return { ...asset, uri: targetUri };
@@ -366,13 +389,21 @@ const HomeScreen = ({ route }) => {
     }
   };
 
-  const buildProcessingMeta = (assetOverride) => {
+  const buildProcessingMeta = (assetOverride, overrides = {}) => {
     const asset = assetOverride || selectedVideoAsset;
     const fileName =
       asset?.fileName || (asset?.uri ? asset.uri.split('/').pop() : null);
+    const resolvedCountName =
+      typeof overrides.countName === 'string'
+        ? overrides.countName.trim()
+        : (countName || '').trim();
+    const resolvedCountDescription =
+      typeof overrides.countDescription === 'string'
+        ? overrides.countDescription.trim()
+        : (countDescription || '').trim();
     return {
-      countName: (countName || '').trim(),
-      countDescription: (countDescription || '').trim(),
+      countName: resolvedCountName,
+      countDescription: resolvedCountDescription,
       originalVideoName: fileName,
       orientation: selectedOrientation || asset?.orientation || null,
       trimStartMs:
@@ -460,11 +491,18 @@ const HomeScreen = ({ route }) => {
     });
   };
 
-  const handleProcessingStarted = (responseData) => {
+  const handleProcessingStarted = (responseData, context = {}) => {
     const videoName = responseData?.video_name || responseData?.nome_arquivo;
+    const resolvedCountName =
+      typeof context?.countName === 'string'
+        ? context.countName.trim()
+        : (countName || '').trim();
+    if (resolvedCountName && resolvedCountName !== countName) {
+      setCountName(resolvedCountName);
+    }
     if (videoName) {
       isFinalizingRef.current = false;
-      const meta = buildProcessingMeta();
+      const meta = buildProcessingMeta(null, { countName: resolvedCountName });
       setProcessingVideoName(videoName);
       setProcessingMeta(meta);
       const queueStatus = responseData?.queue_status;
@@ -952,6 +990,7 @@ const HomeScreen = ({ route }) => {
               modelChoice={modelChoice}
               onProcessingStarted={handleProcessingStarted}
               onUploadError={handleUploadError}
+              onCountNameResolved={setCountName}
             />
             <TouchableOpacity
               onPress={resetAllStates}

@@ -28,7 +28,10 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useOrientationMap } from '../context/OrientationMapContext';
 import { useLanguage } from '../context/LanguageContext';
-import { resolveVideoMimeType } from '../utils/videoMime';
+import {
+  resolveVideoMimeType,
+  resolveVideoExtensionFromMimeType,
+} from '../utils/videoMime';
 
 const MIN_GAP_SECONDS = 0.1;
 const LINE_RATIO_STEP = 0.05;
@@ -125,13 +128,27 @@ const ensurePlayableUri = (value) => {
   return `file:///${value}`;
 };
 
-const toSafeCacheFileName = (value) => {
-  if (!value) return `video_${Date.now()}.mp4`;
+const toSafeCacheFileName = (value, mimeType) => {
+  const fallbackExtension = resolveVideoExtensionFromMimeType(
+    mimeType,
+    'mp4'
+  );
+  if (!value) return `video_${Date.now()}.${fallbackExtension}`;
   const normalized = String(value)
     .replace(/[^a-zA-Z0-9._-]+/g, '_')
     .replace(/^_+|_+$/g, '');
-  if (!normalized) return `video_${Date.now()}.mp4`;
-  return normalized.includes('.') ? normalized : `${normalized}.mp4`;
+  if (!normalized) return `video_${Date.now()}.${fallbackExtension}`;
+  const extensionMatch = normalized.match(/\.([a-z0-9]{2,5})$/i);
+  const currentExtension = extensionMatch?.[1]?.toLowerCase() || null;
+  const shouldReplaceLikelyWrongMp4 =
+    currentExtension === 'mp4' && fallbackExtension !== 'mp4';
+  if (!currentExtension) {
+    return `${normalized}.${fallbackExtension}`;
+  }
+  if (shouldReplaceLikelyWrongMp4) {
+    return normalized.replace(/\.[a-z0-9]{2,5}$/i, `.${fallbackExtension}`);
+  }
+  return normalized;
 };
 
 const formatTime = (seconds) => {
@@ -275,7 +292,8 @@ export default function VideoEditorScreen({ route, navigation }) {
       if (rawUri.startsWith('content://')) {
         try {
           const fileName = toSafeCacheFileName(
-            asset?.fileName || rawUri.split('/').pop()
+            asset?.fileName || rawUri.split('/').pop(),
+            asset?.mimeType
           );
           const targetUri = `${FileSystem.cacheDirectory}editor_${Date.now()}_${fileName}`;
           await FileSystem.copyAsync({ from: rawUri, to: targetUri });
@@ -296,7 +314,7 @@ export default function VideoEditorScreen({ route, navigation }) {
     return () => {
       cancelled = true;
     };
-  }, [asset?.fileName, assetUri]);
+  }, [asset?.fileName, asset?.mimeType, assetUri]);
 
   useEffect(() => {
     hasShownPlaybackErrorRef.current = false;

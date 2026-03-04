@@ -86,13 +86,43 @@ const buildRecordingFilePath = (directory) => {
   return `${normalizedDir}wifi_camera_${timestamp}.${RECORDING_EXTENSION}`;
 };
 
+const getPathExtension = (path) => {
+  if (!path || typeof path !== 'string') return null;
+  const normalizedPath = stripFileScheme(path).split('?')[0].split('#')[0];
+  const fileName = normalizedPath.split('/').pop() || '';
+  const dotIndex = fileName.lastIndexOf('.');
+  if (dotIndex <= 0 || dotIndex >= fileName.length - 1) return null;
+  return fileName.slice(dotIndex + 1).toLowerCase();
+};
+
+const replacePathExtension = (path, extension) => {
+  if (!path || typeof path !== 'string') return path;
+  const normalizedExtension = String(extension || '')
+    .replace(/^\.+/, '')
+    .toLowerCase();
+  if (!normalizedExtension) return path;
+
+  const normalizedPath = stripFileScheme(path).split('?')[0].split('#')[0];
+  const slashIndex = normalizedPath.lastIndexOf('/');
+  const prefix =
+    slashIndex >= 0 ? normalizedPath.slice(0, slashIndex + 1) : '';
+  const fileName =
+    slashIndex >= 0 ? normalizedPath.slice(slashIndex + 1) : normalizedPath;
+  const dotIndex = fileName.lastIndexOf('.');
+  const baseName = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+  return `${prefix}${baseName}.${normalizedExtension}`;
+};
+
 const getMimeTypeForPath = (path) => {
   if (!path) return 'video/mp4';
-  const lower = path.toLowerCase();
-  if (lower.endsWith('.ts')) return 'video/mp2t';
-  if (lower.endsWith('.mkv')) return 'video/x-matroska';
-  if (lower.endsWith('.mov')) return 'video/quicktime';
-  if (lower.endsWith('.avi')) return 'video/x-msvideo';
+  const extension = getPathExtension(path);
+  if (extension === 'ts') return 'video/mp2t';
+  if (extension === 'mkv') return 'video/x-matroska';
+  if (extension === 'mov') return 'video/quicktime';
+  if (extension === 'avi') return 'video/x-msvideo';
+  if (extension === 'm4v') return 'video/x-m4v';
+  if (extension === 'webm') return 'video/webm';
+  if (extension === '3gp') return 'video/3gpp';
   return 'video/mp4';
 };
 
@@ -1457,8 +1487,14 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
 
       let { uri: outputUri, info } = fileResult;
       const targetPath = recordingFileRef.current;
+      const outputPath = stripFileScheme(outputUri);
+      const sourceExtension = getPathExtension(outputPath);
+      const normalizedTargetPath =
+        targetPath && sourceExtension
+          ? replacePathExtension(targetPath, sourceExtension)
+          : targetPath;
       if (targetPath && outputUri) {
-        const targetUri = ensureFileUri(targetPath);
+        const targetUri = ensureFileUri(normalizedTargetPath);
         if (targetUri && targetUri !== outputUri) {
           try {
             await FileSystem.moveAsync({ from: outputUri, to: targetUri });

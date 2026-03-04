@@ -13,6 +13,18 @@ const MAX_PROGRESS_BEFORE_UPLOAD_FINISH = 0.99;
 const isValidTrimRange = (startMs, endMs) =>
   Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs;
 
+const pad2 = (value) => String(value).padStart(2, '0');
+
+const buildAutomaticCountName = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  const hours = pad2(date.getHours());
+  const minutes = pad2(date.getMinutes());
+  const seconds = pad2(date.getSeconds());
+  return `contagem_${year}${month}${day}_${hours}${minutes}${seconds}`;
+};
+
 const InternalProgressBar = ({ progress }) => (
   <View style={styles.progressBarContainer}>
     <View
@@ -33,6 +45,7 @@ export default function VideoUploadSender({
   targetClasses,
   onProcessingStarted,
   onUploadError,
+  onCountNameResolved,
 }) {
   const { apiUrl, apiHeaders } = useApi();
   const { t } = useLanguage();
@@ -184,13 +197,7 @@ export default function VideoUploadSender({
     const assetUri = videoAsset?.uri || videoAsset?.localUri;
     const finalOrientation = orientation || videoAsset?.orientation;
     const trimmedCountName = (countName || '').trim();
-    if (!trimmedCountName) {
-      Alert.alert(
-        t('upload.missingCountNameTitle'),
-        t('upload.missingCountNameMessage')
-      );
-      return;
-    }
+    const resolvedCountName = trimmedCountName || buildAutomaticCountName();
     if (!assetUri || !finalOrientation || !modelChoice) {
       Alert.alert(t('upload.missingDataTitle'), t('upload.missingDataMessage'));
       return;
@@ -233,6 +240,7 @@ export default function VideoUploadSender({
       trimStartMs: hasTrimRange ? trimStartMs : null,
       trimEndMs: hasTrimRange ? trimEndMs : null,
       targetClasses,
+      countName: resolvedCountName,
     };
   };
 
@@ -377,7 +385,9 @@ export default function VideoUploadSender({
       clearQueuedUpload();
 
       if (onProcessingStarted) {
-        onProcessingStarted(predictResponse.data);
+        onProcessingStarted(predictResponse.data, {
+          countName: payload.countName,
+        });
       }
     } catch (error) {
       if (!isMountedRef.current) return;
@@ -422,6 +432,13 @@ export default function VideoUploadSender({
       safeSetIsUploading(false);
       safeSetStatus({ key: 'upload.processVideo', params: {} });
       return;
+    }
+    if (
+      !String(countName || '').trim() &&
+      payload.countName &&
+      onCountNameResolved
+    ) {
+      onCountNameResolved(payload.countName);
     }
     const reachable = await checkServerReachable();
     if (!reachable) {
