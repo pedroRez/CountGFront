@@ -34,7 +34,7 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
       ],
-      "versionCode": 4,
+      "versionCode": 5,
       "usesCleartextTraffic": true,
       "package": "com.kyoday.countg"
     },
