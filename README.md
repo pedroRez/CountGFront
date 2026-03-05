@@ -74,7 +74,12 @@ Exemplo para habilitar logs de descoberta de camera:
 
 ```bash
 EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG_LOGS=1
+# habilita WS-Discovery ONVIF no scan para comparacao com outros apps
+EXPO_PUBLIC_CAMERA_SCAN_ENABLE_ONVIF_DISCOVERY=1
 ```
+
+Guia de captura comparativa (`.pcap` + logs internos):
+`docs/README_DISCOVERY.md`.
 
 Configuracao do wake-up automatico do backend (App lifecycle):
 

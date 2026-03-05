@@ -309,6 +309,7 @@ export const startScan = ({
   };
 
   const runRtspScan = async () => {
+    const scanOnLog = isCameraDiscoveryDebugEnabled() ? logCameraDiscovery : null;
     const runPrefixList = async (list) => {
       if (!Array.isArray(list) || !list.length) return false;
       let confirmedFound = false;
@@ -382,6 +383,7 @@ export const startScan = ({
             if (!isCameraDiscoveryDebugEnabled()) return;
             logCameraDiscovery('rtsp_port_open_result', data);
           },
+          onLog: scanOnLog,
           signal: controller.signal,
           ...scanOverrides,
         });

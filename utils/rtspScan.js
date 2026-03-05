@@ -162,6 +162,46 @@ const buildDescribeRequest = (ip, port, path, auth) => {
   return lines.join('\r\n');
 };
 
+const sanitizeLogToken = (value) => {
+  if (value === null || value === undefined) return '-';
+  const text = String(value).replace(/\s+/g, ' ').trim();
+  return text || '-';
+};
+
+const parseRtspStatusCode = (line) => {
+  const match = String(line || '').match(/^RTSP\/\d\.\d\s+(\d{3})/i);
+  return match ? Number(match[1]) : null;
+};
+
+const escapeHeaderRegex = (value) =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const extractHeaderValue = (text, headerName) => {
+  if (!text || !headerName) return null;
+  const regex = new RegExp(
+    `(?:^|\\r?\\n)${escapeHeaderRegex(headerName)}:\\s*([^\\r\\n]+)`,
+    'i'
+  );
+  const match = text.match(regex);
+  return match ? match[1].trim() : null;
+};
+
+const hasAuthCandidate = (auth) =>
+  Boolean(auth && (auth.username || auth.password));
+
+const logRtspRequest = (onLog, { phase, method, ip, port, path, auth }) => {
+  if (typeof onLog !== 'function') return;
+  onLog(
+    '[rtsp-scan] request',
+    `phase=${sanitizeLogToken(phase)}`,
+    `method=${sanitizeLogToken(method)}`,
+    `ip=${sanitizeLogToken(ip)}`,
+    `port=${sanitizeLogToken(port)}`,
+    `path=${sanitizeLogToken(normalizePath(path))}`,
+    `auth=${hasAuthCandidate(auth) ? 'basic' : 'none'}`
+  );
+};
+
 const extractMatchHints = (responseText) => {
   if (!responseText) return {};
   const realmMatch = responseText.match(/realm="([^"]+)"/i);
@@ -237,20 +277,37 @@ const sleep = (ms) =>
     setTimeout(resolve, ms);
   });
 
-const verifyOnvifService = async (ip, ports, timeoutMs) => {
+const verifyOnvifService = async (ip, ports, timeoutMs, onLog = null) => {
   const candidatePorts = normalizePorts(ports);
   if (!ip || !candidatePorts.length) return false;
   for (const port of candidatePorts) {
-    const ok = await verifyOnvifServiceAtPort(ip, port, timeoutMs);
+    const ok = await verifyOnvifServiceAtPort(ip, port, timeoutMs, onLog);
+    if (typeof onLog === 'function') {
+      onLog(
+        '[onvif-verify] result',
+        `ip=${sanitizeLogToken(ip)}`,
+        `port=${sanitizeLogToken(port)}`,
+        `ok=${ok ? 'yes' : 'no'}`
+      );
+    }
     if (ok) return true;
   }
   return false;
 };
 
-const verifyOnvifServiceAtPort = async (ip, port, timeoutMs) => {
+const verifyOnvifServiceAtPort = async (ip, port, timeoutMs, onLog = null) => {
   if (!ip || !port) return false;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = Date.now();
+  if (typeof onLog === 'function') {
+    onLog(
+      '[onvif-verify] request',
+      `ip=${sanitizeLogToken(ip)}`,
+      `port=${sanitizeLogToken(port)}`,
+      `timeoutMs=${sanitizeLogToken(timeoutMs)}`
+    );
+  }
   try {
     const response = await fetch(
       `http://${ip}:${port}/onvif/device_service`,
@@ -263,16 +320,56 @@ const verifyOnvifServiceAtPort = async (ip, port, timeoutMs) => {
         signal: controller.signal,
       }
     );
-    if ([200, 400, 401, 403, 405].includes(response.status)) {
+    const acceptedStatus = [200, 400, 401, 403, 405].includes(response.status);
+    if (acceptedStatus) {
+      if (typeof onLog === 'function') {
+        onLog(
+          '[onvif-verify] response',
+          `ip=${sanitizeLogToken(ip)}`,
+          `port=${sanitizeLogToken(port)}`,
+          `status=${sanitizeLogToken(response.status)}`,
+          `elapsedMs=${Date.now() - startedAt}`,
+          'accepted=yes'
+        );
+      }
       return true;
     }
     try {
       const text = await response.text();
-      return text.toLowerCase().includes('onvif');
+      const containsOnvif = text.toLowerCase().includes('onvif');
+      if (typeof onLog === 'function') {
+        onLog(
+          '[onvif-verify] response',
+          `ip=${sanitizeLogToken(ip)}`,
+          `port=${sanitizeLogToken(port)}`,
+          `status=${sanitizeLogToken(response.status)}`,
+          `elapsedMs=${Date.now() - startedAt}`,
+          `containsOnvif=${containsOnvif ? 'yes' : 'no'}`
+        );
+      }
+      return containsOnvif;
     } catch (error) {
+      if (typeof onLog === 'function') {
+        onLog(
+          '[onvif-verify] body_error',
+          `ip=${sanitizeLogToken(ip)}`,
+          `port=${sanitizeLogToken(port)}`,
+          `status=${sanitizeLogToken(response.status)}`,
+          `error=${sanitizeLogToken(error?.message || 'read_error')}`
+        );
+      }
       return false;
     }
   } catch (error) {
+    if (typeof onLog === 'function') {
+      onLog(
+        '[onvif-verify] error',
+        `ip=${sanitizeLogToken(ip)}`,
+        `port=${sanitizeLogToken(port)}`,
+        `elapsedMs=${Date.now() - startedAt}`,
+        `error=${sanitizeLogToken(error?.message || 'fetch_error')}`
+      );
+    }
     return false;
   } finally {
     clearTimeout(timeout);
@@ -287,6 +384,7 @@ const probeRtspPath = (
   { allowConnectOnly, onLog, onStop, auth, connectDelayMs = 0 } = {}
 ) =>
   new Promise((resolve) => {
+    const startedAt = Date.now();
     let done = false;
     let buffer = '';
     let socket = null;
@@ -295,6 +393,7 @@ const probeRtspPath = (
     let sawResponse = false;
     let connected = false;
     let sawRtspResponse = false;
+    let loggedRtspResponse = false;
 
     const finish = (result, reason, details = {}) => {
       if (done) return;
@@ -307,6 +406,19 @@ const probeRtspPath = (
         } catch (error) {
           // ignore socket close errors
         }
+      }
+      if (typeof onLog === 'function') {
+        onLog(
+          '[rtsp-scan] stop',
+          `ip=${sanitizeLogToken(ip)}`,
+          `port=${sanitizeLogToken(port)}`,
+          `path=${sanitizeLogToken(normalizePath(path))}`,
+          `reason=${sanitizeLogToken(reason)}`,
+          `elapsedMs=${Date.now() - startedAt}`,
+          `connected=${connected ? 'yes' : 'no'}`,
+          `response=${sawResponse ? 'yes' : 'no'}`,
+          `rtsp=${sawRtspResponse ? 'yes' : 'no'}`
+        );
       }
       if (typeof onStop === 'function') {
         onStop({
@@ -333,6 +445,14 @@ const probeRtspPath = (
       const sendRequest = () => {
         if (done) return;
         try {
+          logRtspRequest(onLog, {
+            phase: 'initial',
+            method: 'OPTIONS',
+            ip,
+            port,
+            path,
+            auth,
+          });
           socket.write(request);
         } catch (error) {
           finish(null, 'write_error', {
@@ -375,7 +495,12 @@ const probeRtspPath = (
     socket.on('data', (data) => {
       sawResponse = true;
       if (typeof onLog === 'function') {
-        onLog('[rtsp-scan] response', ip, port);
+        onLog(
+          '[rtsp-scan] response',
+          ip,
+          port,
+          `bytes=${data?.length || 0}`
+        );
       }
       buffer += data?.toString ? data.toString('utf8') : String(data);
       if (!buffer.length) return;
@@ -384,6 +509,26 @@ const probeRtspPath = (
       }
       sawRtspResponse = true;
       const hints = extractMatchHints(buffer);
+      if (!loggedRtspResponse && typeof onLog === 'function') {
+        const firstLine = sanitizeLogToken(buffer.split(/\r?\n/, 1)[0]);
+        const statusCode = parseRtspStatusCode(firstLine);
+        const cseq = extractHeaderValue(buffer, 'CSeq');
+        const publicHeader = extractHeaderValue(buffer, 'Public');
+        const transportHeader = extractHeaderValue(buffer, 'Transport');
+        onLog(
+          '[rtsp-scan] response_rtsp',
+          `ip=${sanitizeLogToken(ip)}`,
+          `port=${sanitizeLogToken(port)}`,
+          `line=${firstLine}`,
+          `status=${sanitizeLogToken(statusCode)}`,
+          `cseq=${sanitizeLogToken(cseq)}`,
+          `realm=${sanitizeLogToken(hints.realm)}`,
+          `server=${sanitizeLogToken(hints.server)}`,
+          `public=${sanitizeLogToken(publicHeader)}`,
+          `transport=${sanitizeLogToken(transportHeader)}`
+        );
+        loggedRtspResponse = true;
+      }
       finish(
         {
           ip,
@@ -438,6 +583,14 @@ const probeRtspPath = (
     followupTimer = setTimeout(() => {
       if (!connected || sawResponse || done) return;
       try {
+        logRtspRequest(onLog, {
+          phase: 'followup',
+          method: 'DESCRIBE',
+          ip,
+          port,
+          path,
+          auth,
+        });
         const request = buildDescribeRequest(ip, port, path, auth);
         socket.write(request);
       } catch (error) {
@@ -780,7 +933,8 @@ export const scanRtspDevices = async ({
               onvifOk = await verifyOnvifService(
                 ip,
                 verifyOnvifPort,
-                verifyTimeoutMs
+                verifyTimeoutMs,
+                (msg, ...rest) => log(msg, ...rest)
               );
               if (typeof onStage === 'function') {
                 onStage('rtsp_scan', { ip });
@@ -1049,7 +1203,8 @@ export const filterRtspDevices = async ({
           onvifOk = await verifyOnvifService(
             ip,
             verifyOnvifPort,
-            verifyTimeoutMs
+            verifyTimeoutMs,
+            (msg, ...rest) => log(msg, ...rest)
           );
           if (!onvifOk) {
             log('[rtsp-filter] onvif reject', ip);

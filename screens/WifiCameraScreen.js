@@ -58,6 +58,15 @@ const WIFI_CAMERA_LAST_DEVICES_KEY = '@wifi_camera_last_devices';
 const WIFI_CAMERA_LAST_DEVICES_LIMIT = 12;
 const CAMERA_DISCOVERY_DEBUG_UI =
   String(process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG || '') === '1';
+const parseEnvBoolean = (value) =>
+  ['1', 'true', 'yes', 'on'].includes(
+    String(value || '')
+      .trim()
+      .toLowerCase()
+  );
+const ENV_ENABLE_ONVIF_DISCOVERY = parseEnvBoolean(
+  process.env.EXPO_PUBLIC_CAMERA_SCAN_ENABLE_ONVIF_DISCOVERY
+);
 
 const isValidIp = (value) => {
   if (!value) return false;
@@ -666,6 +675,7 @@ const WifiCameraScreen = ({ navigation }) => {
     const scanStartedAt = Date.now();
     logCameraDiscovery('scan_start', {
       debugEnabled: isCameraDiscoveryDebugEnabled(),
+      onvifDiscoveryEnabled: ENV_ENABLE_ONVIF_DISCOVERY,
     });
     try {
       let lastPassword = null;
@@ -777,7 +787,7 @@ const WifiCameraScreen = ({ navigation }) => {
         lastPassword,
         username: scanUsername,
         password: scanPassword,
-        enableOnvifDiscovery: false,
+        enableOnvifDiscovery: ENV_ENABLE_ONVIF_DISCOVERY,
         scanLocalOnly,
         hostMin: DEFAULT_HOST_MIN,
         hostMax: DEFAULT_HOST_MAX,
