@@ -479,21 +479,19 @@ export const startScan = ({
           const fastPathCandidates = normalizedFastPaths.length
             ? normalizedFastPaths
             : ['/onvif1'];
-          for (const fastPathCandidate of fastPathCandidates) {
-            const fastFound = await runScanForPrefix(prefix, {
-              paths: [fastPathCandidate],
-              openPorts: [fastRtspPort],
-              timeoutMs: fastRtspTimeoutMs,
-              openPortTimeoutMs: fastOpenPortTimeoutMs,
-              probeDelayMs: 0,
-              refusedRetries: 0,
-              refusedRetryDelayMs: 0,
-              boostPossibleCameras: false,
-            });
-            if (cancelled) return confirmedFound;
-            if (fastFound && (stopAfterConfirmed || skipFullScanWhenConfirmed)) {
-              return true;
-            }
+          const fastFound = await runScanForPrefix(prefix, {
+            paths: fastPathCandidates,
+            openPorts: [fastRtspPort],
+            timeoutMs: fastRtspTimeoutMs,
+            openPortTimeoutMs: fastOpenPortTimeoutMs,
+            probeDelayMs: 0,
+            refusedRetries: 0,
+            refusedRetryDelayMs: 0,
+            boostPossibleCameras: false,
+          });
+          if (cancelled) return confirmedFound;
+          if (fastFound && (stopAfterConfirmed || skipFullScanWhenConfirmed)) {
+            return true;
           }
         }
 

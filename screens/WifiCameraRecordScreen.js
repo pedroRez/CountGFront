@@ -34,19 +34,10 @@ import {
   buildRtspUrlFromPath,
   resolveOnvifRtspUrl,
 } from '../utils/onvifClient';
+import { buildRtspPathCandidates } from '../utils/rtspPaths';
 
 const MIN_FILE_BYTES = 200 * 1024;
 const DEFAULT_RTSP_PATH = '/onvif1';
-const RTSP_PATH_CANDIDATES = [
-  '/onvif1',
-  '/live/ch00_0',
-  '/Streaming/Channels/101',
-  '/h264Preview_01_main',
-  '/cam/realmonitor?channel=1&subtype=0',
-  '/live.sdp',
-  '/stream1',
-  '/',
-];
 const VLC_INIT_OPTIONS = ['--rtsp-tcp', '--network-caching=300'];
 const VLC_MEDIA_OPTIONS = [':network-caching=300', ':rtsp-tcp'];
 const RECORDING_EXTENSION = 'mp4';
@@ -196,19 +187,6 @@ const encodeBase64 = (input) => {
 };
 
 
-const buildUniqueRtspPathCandidates = (preferredPath) => {
-  const normalizedPreferred =
-    typeof preferredPath === 'string' && preferredPath.trim().length
-      ? preferredPath.trim()
-      : null;
-  return Array.from(
-    new Set([
-      ...(normalizedPreferred ? [normalizedPreferred] : []),
-      ...RTSP_PATH_CANDIDATES,
-    ])
-  );
-};
-
 const isUsableRtspStatus = (statusCode) =>
   [200, 401, 403, 405, 454].includes(Number(statusCode));
 
@@ -220,7 +198,7 @@ const tryResolveRtspPathFromProbes = async ({
   password,
 } = {}) => {
   if (!ip || !port) return null;
-  const candidates = buildUniqueRtspPathCandidates(preferredPath);
+  const candidates = buildRtspPathCandidates(preferredPath);
 
   for (const path of candidates) {
     const describeNoAuth = await probeRtspRequest({

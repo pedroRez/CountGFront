@@ -32,6 +32,7 @@ import BigButton from '../components/BigButton';
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
 import { startScan } from '../utils/cameraDiscoveryService';
+import { COMMON_RTSP_PATH_CANDIDATES } from '../utils/rtspPaths';
 import {
   clearCameraDiscoveryLogs,
   getCameraDiscoveryLogsText,
@@ -796,16 +797,7 @@ const WifiCameraScreen = ({ navigation }) => {
         allowConnectOnly: false,
         includePossibleCameras: true,
         enableFastRtspScan: true,
-        fastRtspPaths: [
-          '/onvif1',
-          '/live/ch00_0',
-          '/Streaming/Channels/101',
-          '/h264Preview_01_main',
-          '/cam/realmonitor?channel=1&subtype=0',
-          '/live.sdp',
-          '/stream1',
-          '/',
-        ],
+        fastRtspPaths: COMMON_RTSP_PATH_CANDIDATES,
         fastRtspPath: '/onvif1',
         fastRtspPort: 554,
         fastRtspTimeoutMs: 1200,
