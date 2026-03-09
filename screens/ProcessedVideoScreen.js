@@ -1,7 +1,7 @@
-import React, { useRef } from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Video, ResizeMode } from 'expo-av';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { useLanguage } from '../context/LanguageContext';
 
 const formatDateTime = (value) => {
@@ -14,7 +14,6 @@ const formatDateTime = (value) => {
 export default function ProcessedVideoScreen({ route }) {
   const { t } = useLanguage();
   const { count } = route.params || {};
-  const videoRef = useRef(null);
 
   const title = count?.name || t('home.counts.unnamed');
   const description = count?.description;
@@ -22,6 +21,14 @@ export default function ProcessedVideoScreen({ route }) {
   const totalCount =
     Number.isFinite(Number(count?.total_count)) ? count.total_count : '-';
   const videoUri = count?.local_video_uri;
+  const videoSource = useMemo(
+    () => (videoUri ? { uri: videoUri } : null),
+    [videoUri]
+  );
+  const player = useVideoPlayer(videoSource, (instance) => {
+    instance.loop = false;
+    instance.timeUpdateEventInterval = 0;
+  });
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -34,12 +41,11 @@ export default function ProcessedVideoScreen({ route }) {
         </Text>
         <View style={styles.videoWrapper}>
           {videoUri ? (
-            <Video
-              ref={videoRef}
-              source={{ uri: videoUri }}
+            <VideoView
+              player={player}
               style={styles.video}
-              resizeMode={ResizeMode.CONTAIN}
-              useNativeControls
+              contentFit="contain"
+              nativeControls
             />
           ) : (
             <Text style={styles.noVideoText}>{t('home.counts.noVideo')}</Text>

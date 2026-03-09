@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, Pressable, StyleSheet, View } from 'react-native';
+import { Text, Pressable, StyleSheet } from 'react-native';
+import tokens from '../theme/tokens';
 // If using icons from Expo:
 // import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -11,8 +12,10 @@ const BigButton = ({
   iconName,
   iconFamily,
   iconSize = 22,
-  iconColor = 'white',
+  iconColor = tokens.colors.onPrimary,
   disabled = false,
+  hitSlop = { top: 8, bottom: 8, left: 8, right: 8 },
+  ...pressableProps
 }) => {
   // const IconComponent = iconFamily; // e.g., MaterialCommunityIcons
 
@@ -20,12 +23,14 @@ const BigButton = ({
     <Pressable
       onPress={onPress}
       disabled={disabled}
+      hitSlop={hitSlop}
       style={({ pressed }) => [
         styles.button,
         buttonStyle,
         disabled && styles.buttonDisabled,
         pressed && !disabled && styles.buttonPressed,
       ]}
+      {...pressableProps}
     >
       {/* {IconComponent && iconName && (
         <IconComponent name={iconName} size={iconSize} color={iconColor} style={styles.icon} />
@@ -40,14 +45,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#007AFF', // Primary color
-    paddingVertical: 16,
+    backgroundColor: tokens.colors.primary,
+    paddingVertical: tokens.spacing.xl,
     paddingHorizontal: 25,
-    borderRadius: 12,
-    marginVertical: 12,
+    borderRadius: tokens.radius.md,
+    marginVertical: tokens.spacing.lg,
     minWidth: '85%',
     elevation: 3,
-    shadowColor: '#000',
+    shadowColor: tokens.colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.23,
     shadowRadius: 2.62,
@@ -60,12 +65,11 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   icon: {
-    marginRight: 10,
+    marginRight: tokens.spacing.md,
   },
   text: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '600', // Slightly lighter than 'bold'
+    color: tokens.colors.onPrimary,
+    ...tokens.typography.button,
     textAlign: 'center',
   },
 });

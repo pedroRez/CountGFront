@@ -19,7 +19,10 @@ import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
-import { resolveVideoMimeType } from '../utils/videoMime';
+import {
+  resolveVideoMimeType,
+  resolveVideoExtensionFromMimeType,
+} from '../utils/videoMime';
 
 import BigButton from '../components/BigButton';
 import VideoUploadSender from '../components/VideoUploadSender';
@@ -114,9 +117,29 @@ const ensureLocalVideoUri = async (asset) => {
   if (!asset?.uri) return asset;
   if (!asset.uri.startsWith('content://')) return asset;
   try {
-    const fileName =
-      asset.fileName || asset.uri.split('/').pop() || 'video.mp4';
-    const safeName = fileName.includes('.') ? fileName : `${fileName}.mp4`;
+    const rawName =
+      asset.fileName || asset.uri.split('/').pop() || `video_${Date.now()}`;
+    const normalizedName = String(rawName)
+      .replace(/[^a-zA-Z0-9._-]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    const baseName = normalizedName || `video_${Date.now()}`;
+    const extensionMatch = baseName.match(/\.([a-z0-9]{2,5})$/i);
+    const currentExtension = extensionMatch?.[1]?.toLowerCase() || null;
+    const inferredExtension = resolveVideoExtensionFromMimeType(
+      asset?.mimeType,
+      null
+    );
+    const shouldReplaceLikelyWrongMp4 =
+      currentExtension === 'mp4' &&
+      inferredExtension &&
+      inferredExtension !== 'mp4';
+    const safeName = !currentExtension
+      ? inferredExtension
+        ? `${baseName}.${inferredExtension}`
+        : baseName
+      : shouldReplaceLikelyWrongMp4
+        ? baseName.replace(/\.[a-z0-9]{2,5}$/i, `.${inferredExtension}`)
+        : baseName;
     const targetUri = `${FileSystem.cacheDirectory}${Date.now()}_${safeName}`;
     await FileSystem.copyAsync({ from: asset.uri, to: targetUri });
     return { ...asset, uri: targetUri };
@@ -130,7 +153,7 @@ const PROCESSING_STATE_KEY = '@processing_state';
 
 const HomeScreen = ({ route }) => {
   const navigation = useNavigation();
-  const { apiUrl } = useApi();
+  const { apiUrl, apiHeaders } = useApi();
   const { orientationMap, fetchOrientationMap } = useOrientationMap();
   const { t } = useLanguage();
   const { addCount } = useCounts();
@@ -219,6 +242,9 @@ const HomeScreen = ({ route }) => {
         <TouchableOpacity
           onPress={() => navigation.navigate('Settings')}
           style={{ marginRight: 15 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('home.a11y.openSettings')}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <MaterialCommunityIcons
             name="cog-outline"
@@ -339,7 +365,7 @@ const HomeScreen = ({ route }) => {
         return;
       }
       let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaType.Videos,
+        mediaTypes: ['videos'],
         quality: 0.8,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -355,19 +381,29 @@ const HomeScreen = ({ route }) => {
         resetAllStates();
       }
     } catch (error) {
+      console.warn('Failed to load video from gallery:', error);
       Alert.alert(t('common.error'), t('home.errors.galleryLoadFailed'));
       resetAllStates();
+    } finally {
+      setIsPickerLoading(false);
     }
-    setIsPickerLoading(false);
   };
 
-  const buildProcessingMeta = (assetOverride) => {
+  const buildProcessingMeta = (assetOverride, overrides = {}) => {
     const asset = assetOverride || selectedVideoAsset;
     const fileName =
       asset?.fileName || (asset?.uri ? asset.uri.split('/').pop() : null);
+    const resolvedCountName =
+      typeof overrides.countName === 'string'
+        ? overrides.countName.trim()
+        : (countName || '').trim();
+    const resolvedCountDescription =
+      typeof overrides.countDescription === 'string'
+        ? overrides.countDescription.trim()
+        : (countDescription || '').trim();
     return {
-      countName: (countName || '').trim(),
-      countDescription: (countDescription || '').trim(),
+      countName: resolvedCountName,
+      countDescription: resolvedCountDescription,
       originalVideoName: fileName,
       orientation: selectedOrientation || asset?.orientation || null,
       trimStartMs:
@@ -455,11 +491,18 @@ const HomeScreen = ({ route }) => {
     });
   };
 
-  const handleProcessingStarted = (responseData) => {
+  const handleProcessingStarted = (responseData, context = {}) => {
     const videoName = responseData?.video_name || responseData?.nome_arquivo;
+    const resolvedCountName =
+      typeof context?.countName === 'string'
+        ? context.countName.trim()
+        : (countName || '').trim();
+    if (resolvedCountName && resolvedCountName !== countName) {
+      setCountName(resolvedCountName);
+    }
     if (videoName) {
       isFinalizingRef.current = false;
-      const meta = buildProcessingMeta();
+      const meta = buildProcessingMeta(null, { countName: resolvedCountName });
       setProcessingVideoName(videoName);
       setProcessingMeta(meta);
       const queueStatus = responseData?.queue_status;
@@ -571,7 +614,9 @@ const HomeScreen = ({ route }) => {
       return;
     }
     try {
-      const response = await axios.get(`${apiUrl}/progresso/${videoName}`);
+      const response = await axios.get(`${apiUrl}/progresso/${videoName}`, {
+        headers: apiHeaders,
+      });
       const progressData = response.data;
       setBackendProgressData(progressData);
       if (progressData.finalizado) {
@@ -623,7 +668,8 @@ const HomeScreen = ({ route }) => {
     if (processingVideoName) {
       try {
         await axios.get(
-          `${apiUrl}/cancelar-processamento/${processingVideoName}`
+          `${apiUrl}/cancelar-processamento/${processingVideoName}`,
+          { headers: apiHeaders }
         );
         Alert.alert(
           t('home.alerts.cancelledTitle'),
@@ -725,30 +771,35 @@ const HomeScreen = ({ route }) => {
                 icon="counter"
                 onPress={() => navigation.navigate('Counts')}
                 index={0}
+                accessibilityLabel={t('home.a11y.openCounts')}
               />
               <MenuButton
                 label={t('home.menu.recordVideo')}
                 icon="camera-outline"
                 onPress={() => navigation.navigate('RecordVideo')}
                 index={1}
+                accessibilityLabel={t('home.a11y.openRecordVideo')}
               />
               <MenuButton
                 label={t('home.menu.galleryVideo')}
                 icon="image-multiple-outline"
                 onPress={handlePickFromGallery}
                 index={2}
+                accessibilityLabel={t('home.a11y.openGalleryVideo')}
               />
               <MenuButton
                 label={t('home.menu.wifiCamera')}
                 icon="wifi-strength-4"
                 onPress={() => navigation.navigate('WifiCamera')}
                 index={3}
+                accessibilityLabel={t('home.a11y.openWifiCamera')}
               />
               <MenuButton
                 label={t('home.menu.tutorial')}
                 icon="help-circle-outline"
                 onPress={() => navigation.navigate('OnboardingTutorial')}
                 index={4}
+                accessibilityLabel={t('home.a11y.openTutorial')}
               />
             </View>
           </>
@@ -939,6 +990,7 @@ const HomeScreen = ({ route }) => {
               modelChoice={modelChoice}
               onProcessingStarted={handleProcessingStarted}
               onUploadError={handleUploadError}
+              onCountNameResolved={setCountName}
             />
             <TouchableOpacity
               onPress={resetAllStates}
@@ -961,6 +1013,9 @@ const HomeScreen = ({ route }) => {
               title={t('home.processing.cancel')}
               onPress={handleCancelProcessing}
               buttonStyle={styles.cancelAnalysisButton}
+              accessibilityRole="button"
+              accessibilityLabel={t('home.a11y.cancelAnalysis')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             />
           </View>
         );

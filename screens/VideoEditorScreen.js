@@ -14,8 +14,12 @@ import {
   Alert,
   Pressable,
   PanResponder,
+  Image,
 } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { useEvent, useEventListener } from 'expo';
+import { VideoView, useVideoPlayer } from 'expo-video';
+import * as VideoThumbnails from 'expo-video-thumbnails';
+import * as FileSystem from 'expo-file-system/legacy';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   SafeAreaView,
@@ -24,12 +28,17 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useOrientationMap } from '../context/OrientationMapContext';
 import { useLanguage } from '../context/LanguageContext';
-import { resolveVideoMimeType } from '../utils/videoMime';
+import {
+  resolveVideoMimeType,
+  resolveVideoExtensionFromMimeType,
+} from '../utils/videoMime';
 
 const MIN_GAP_SECONDS = 0.1;
 const LINE_RATIO_STEP = 0.05;
 const DOUBLE_TAP_DELAY_MS = 260;
 const SEEK_STEP_SECONDS = 10;
+const FINE_SEEK_STEP_SECONDS = 0.25;
+const THUMBNAIL_COUNT = 5;
 const VIDEO_FRAME_PADDING = 12;
 const SCRUB_KNOB_SIZE = 14;
 const SCRUB_LINE_INSET = 10;
@@ -108,6 +117,39 @@ const buildFallbackOrientations = (orientationStyleMap) => [
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 const clampRatio = (value) => clamp(value, 0, 1);
+
+const hasUriScheme = (value) =>
+  typeof value === 'string' && /^[a-z][a-z0-9+.-]*:\/\//i.test(value);
+
+const ensurePlayableUri = (value) => {
+  if (!value || typeof value !== 'string') return null;
+  if (hasUriScheme(value)) return value;
+  if (value.startsWith('/')) return `file://${value}`;
+  return `file:///${value}`;
+};
+
+const toSafeCacheFileName = (value, mimeType) => {
+  const fallbackExtension = resolveVideoExtensionFromMimeType(
+    mimeType,
+    'mp4'
+  );
+  if (!value) return `video_${Date.now()}.${fallbackExtension}`;
+  const normalized = String(value)
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  if (!normalized) return `video_${Date.now()}.${fallbackExtension}`;
+  const extensionMatch = normalized.match(/\.([a-z0-9]{2,5})$/i);
+  const currentExtension = extensionMatch?.[1]?.toLowerCase() || null;
+  const shouldReplaceLikelyWrongMp4 =
+    currentExtension === 'mp4' && fallbackExtension !== 'mp4';
+  if (!currentExtension) {
+    return `${normalized}.${fallbackExtension}`;
+  }
+  if (shouldReplaceLikelyWrongMp4) {
+    return normalized.replace(/\.[a-z0-9]{2,5}$/i, `.${fallbackExtension}`);
+  }
+  return normalized;
+};
 
 const formatTime = (seconds) => {
   if (!Number.isFinite(seconds) || seconds < 0) return '00:00';
@@ -225,11 +267,78 @@ export default function VideoEditorScreen({ route, navigation }) {
   });
   const [videoWidth, setVideoWidth] = useState(0);
   const [scrubBarWidth, setScrubBarWidth] = useState(0);
+  const [thumbnails, setThumbnails] = useState([]);
+  const [isGeneratingThumbnails, setIsGeneratingThumbnails] = useState(false);
+  const [playbackUri, setPlaybackUri] = useState(() =>
+    ensurePlayableUri(assetUri)
+  );
 
   const safeDurationSeconds = Math.max(0, durationSeconds);
-  const videoRef = useRef(null);
   const tapTimeoutRef = useRef(null);
   const lastTapRef = useRef(0);
+  const hasShownPlaybackErrorRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const preparePlaybackUri = async () => {
+      const rawUri = ensurePlayableUri(assetUri);
+      if (!rawUri) {
+        setPlaybackUri(null);
+        return;
+      }
+
+      let nextUri = rawUri;
+      if (rawUri.startsWith('content://')) {
+        try {
+          const fileName = toSafeCacheFileName(
+            asset?.fileName || rawUri.split('/').pop(),
+            asset?.mimeType
+          );
+          const targetUri = `${FileSystem.cacheDirectory}editor_${Date.now()}_${fileName}`;
+          await FileSystem.copyAsync({ from: rawUri, to: targetUri });
+          nextUri = targetUri;
+        } catch (error) {
+          console.warn('Failed to copy content uri for editor playback:', error);
+          nextUri = rawUri;
+        }
+      }
+
+      if (!cancelled) {
+        setPlaybackUri(nextUri);
+      }
+    };
+
+    void preparePlaybackUri();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [asset?.fileName, asset?.mimeType, assetUri]);
+
+  useEffect(() => {
+    hasShownPlaybackErrorRef.current = false;
+  }, [playbackUri]);
+
+  const videoSource = useMemo(() => {
+    if (!playbackUri) return null;
+    return { uri: playbackUri };
+  }, [playbackUri]);
+  const player = useVideoPlayer(videoSource, (instance) => {
+    instance.loop = false;
+    instance.muted = false;
+    instance.volume = 1;
+    instance.timeUpdateEventInterval = 0.2;
+  });
+  const timeUpdate = useEvent(player, 'timeUpdate', {
+    currentTime: 0,
+    currentLiveTimestamp: null,
+    currentOffsetFromLive: null,
+    bufferedPosition: 0,
+  });
+  const playingChange = useEvent(player, 'playingChange', {
+    isPlaying: false,
+  });
 
   useEffect(() => {
     fetchOrientationMap();
@@ -243,17 +352,15 @@ export default function VideoEditorScreen({ route, navigation }) {
     };
   }, []);
 
-  const stopPlayback = useCallback(async () => {
-    if (!videoRef.current) return;
+  const stopPlayback = useCallback(() => {
     try {
-      const status = await videoRef.current.getStatusAsync();
-      if (status?.isLoaded && status.isPlaying) {
-        await videoRef.current.pauseAsync();
+      if (player.playing) {
+        player.pause();
       }
-    } catch (error) {
+    } catch (_error) {
       // Best effort to avoid audio leakage when leaving the screen.
     }
-  }, []);
+  }, [player]);
 
   useFocusEffect(
     useCallback(() => {
@@ -263,7 +370,7 @@ export default function VideoEditorScreen({ route, navigation }) {
           tapTimeoutRef.current = null;
         }
         lastTapRef.current = 0;
-        void stopPlayback();
+        stopPlayback();
       };
     }, [stopPlayback])
   );
@@ -292,18 +399,57 @@ export default function VideoEditorScreen({ route, navigation }) {
     orientationOptions.find((option) => option.id === selectedOrientationId) ||
     orientationOptions[0];
 
-  const handlePlaybackStatusUpdate = (status) => {
-    if (!status || !status.isLoaded) return;
-    setCurrentTime(status.positionMillis / 1000);
-    setIsPlaying(status.isPlaying);
+  useEffect(() => {
+    const nextTime = Number(timeUpdate?.currentTime);
+    if (Number.isFinite(nextTime) && nextTime >= 0) {
+      setCurrentTime(nextTime);
+    }
+  }, [timeUpdate?.currentTime]);
 
-    if (status.durationMillis && status.durationMillis > 0) {
-      const nextDuration = status.durationMillis / 1000;
-      if (Math.abs(nextDuration - durationSeconds) > 0.01) {
-        setDurationSeconds(nextDuration);
+  useEffect(() => {
+    setIsPlaying(Boolean(playingChange?.isPlaying));
+  }, [playingChange?.isPlaying]);
+
+  useEventListener(player, 'sourceLoad', (event) => {
+    const nextDuration = Number(event?.duration);
+    if (Number.isFinite(nextDuration) && nextDuration > 0) {
+      setDurationSeconds((prev) =>
+        Math.abs(nextDuration - prev) > 0.01 ? nextDuration : prev
+      );
+    }
+    const firstTrack = (event?.availableVideoTracks || []).find((track) => {
+      const width = Number(track?.size?.width);
+      const height = Number(track?.size?.height);
+      return (
+        Number.isFinite(width) &&
+        Number.isFinite(height) &&
+        width > 0 &&
+        height > 0
+      );
+    });
+    if (firstTrack) {
+      setVideoAspectRatio(firstTrack.size.width / firstTrack.size.height);
+    }
+  });
+
+  useEventListener(player, 'statusChange', ({ status, error }) => {
+    if (status === 'error') {
+      console.warn('Video editor player error:', error?.message || error);
+      if (!hasShownPlaybackErrorRef.current) {
+        hasShownPlaybackErrorRef.current = true;
+        Alert.alert(t('common.error'), t('videoEditor.videoNotFoundMessage'));
+      }
+      return;
+    }
+    if (status === 'readyToPlay') {
+      const nextDuration = Number(player.duration);
+      if (Number.isFinite(nextDuration) && nextDuration > 0) {
+        setDurationSeconds((prev) =>
+          Math.abs(nextDuration - prev) > 0.01 ? nextDuration : prev
+        );
       }
     }
-  };
+  });
 
   useEffect(() => {
     setEndTime((prev) => {
@@ -316,42 +462,128 @@ export default function VideoEditorScreen({ route, navigation }) {
     );
   }, [safeDurationSeconds]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadThumbnails = async () => {
+      const resolvedAssetUri = ensurePlayableUri(assetUri);
+      const sourceCandidates = Array.from(
+        new Set([playbackUri, resolvedAssetUri].filter(Boolean))
+      );
+      if (
+        !sourceCandidates.length ||
+        !safeDurationSeconds ||
+        safeDurationSeconds <= 0
+      ) {
+        setThumbnails([]);
+        return;
+      }
+
+      try {
+        setIsGeneratingThumbnails(true);
+        const stepMs =
+          (safeDurationSeconds * 1000) / Math.max(THUMBNAIL_COUNT, 1);
+        const requests = Array.from({ length: THUMBNAIL_COUNT }, (_, index) =>
+          Math.round(stepMs * index + stepMs / 2)
+        );
+        const uniqueUris = [];
+        for (const sourceUri of sourceCandidates) {
+          const settled = await Promise.allSettled(
+            requests.map((time) =>
+              VideoThumbnails.getThumbnailAsync(sourceUri, { time })
+            )
+          );
+          const successfulUris = settled
+            .filter((item) => item.status === 'fulfilled')
+            .map((item) => item.value?.uri)
+            .filter(Boolean);
+          successfulUris.forEach((uri) => {
+            if (!uniqueUris.includes(uri)) uniqueUris.push(uri);
+          });
+          if (uniqueUris.length) break;
+        }
+        if (!uniqueUris.length) {
+          const fallbackTimes = [0, 500, 1000];
+          for (const sourceUri of sourceCandidates) {
+            for (const fallbackTime of fallbackTimes) {
+              try {
+                const fallback = await VideoThumbnails.getThumbnailAsync(
+                  sourceUri,
+                  { time: fallbackTime }
+                );
+                if (fallback?.uri) {
+                  uniqueUris.push(fallback.uri);
+                  break;
+                }
+              } catch (_error) {
+                // try next fallback timestamp
+              }
+            }
+            if (uniqueUris.length) {
+              break;
+            }
+          }
+        }
+        if (!cancelled) {
+          setThumbnails(uniqueUris);
+        }
+      } catch (_error) {
+        if (!cancelled) {
+          setThumbnails([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsGeneratingThumbnails(false);
+        }
+      }
+    };
+
+    void loadThumbnails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assetUri, playbackUri, safeDurationSeconds]);
+
   const handleCancel = () => {
-    void stopPlayback();
+    stopPlayback();
     navigation.navigate('Home', { resetHome: true });
   };
 
-  const handleTogglePlayback = async () => {
-    if (!videoRef.current) return;
-    const status = await videoRef.current.getStatusAsync();
-    if (!status.isLoaded) return;
-    if (status.isPlaying) {
-      await videoRef.current.pauseAsync();
+  const handleTogglePlayback = () => {
+    if (player.playing) {
+      player.pause();
     } else {
-      await videoRef.current.playAsync();
+      player.play();
     }
   };
 
   const seekToSeconds = useCallback(
-    async (nextSeconds) => {
-      if (!videoRef.current || safeDurationSeconds <= 0) return;
+    (nextSeconds) => {
+      if (safeDurationSeconds <= 0) return;
       const clampedSeconds = clamp(nextSeconds, 0, safeDurationSeconds);
       setCurrentTime(clampedSeconds);
-      await videoRef.current.setPositionAsync(clampedSeconds * 1000);
+      player.currentTime = clampedSeconds;
     },
-    [safeDurationSeconds]
+    [player, safeDurationSeconds]
   );
 
   const handleSeekBy = useCallback(
-    async (deltaSeconds) => {
-      if (!videoRef.current || safeDurationSeconds <= 0) return;
-      const status = await videoRef.current.getStatusAsync();
-      if (!status.isLoaded) return;
-      const currentSeconds = status.positionMillis / 1000;
-      await seekToSeconds(currentSeconds + deltaSeconds);
+    (deltaSeconds) => {
+      if (safeDurationSeconds <= 0) return;
+      const currentSeconds = Number(player.currentTime) || 0;
+      seekToSeconds(currentSeconds + deltaSeconds);
     },
-    [safeDurationSeconds, seekToSeconds]
+    [player, safeDurationSeconds, seekToSeconds]
   );
+
+  const handleSeekBackwardFine = () => {
+    void handleSeekBy(-FINE_SEEK_STEP_SECONDS);
+  };
+
+  const handleSeekForwardFine = () => {
+    void handleSeekBy(FINE_SEEK_STEP_SECONDS);
+  };
 
   const handleMarkStart = () => {
     const nextStart = clamp(currentTime, 0, safeDurationSeconds);
@@ -375,6 +607,28 @@ export default function VideoEditorScreen({ route, navigation }) {
     }
     setStartTime(nextStart);
     setEndTime(nextEnd);
+  };
+
+  const handleAdjustStart = (deltaSeconds) => {
+    setStartTime((prevStart) => {
+      const proposed = clamp(
+        prevStart + deltaSeconds,
+        0,
+        Math.max(0, endTime - MIN_GAP_SECONDS)
+      );
+      return proposed;
+    });
+  };
+
+  const handleAdjustEnd = (deltaSeconds) => {
+    setEndTime((prevEnd) => {
+      const proposed = clamp(
+        prevEnd + deltaSeconds,
+        Math.min(safeDurationSeconds, startTime + MIN_GAP_SECONDS),
+        safeDurationSeconds
+      );
+      return proposed;
+    });
   };
 
   const handleCycleOrientation = () => {
@@ -406,21 +660,6 @@ export default function VideoEditorScreen({ route, navigation }) {
 
   const handleVideoLayout = (event) => {
     setVideoWidth(event.nativeEvent.layout.width);
-  };
-
-  const handleReadyForDisplay = (event) => {
-    const naturalSize =
-      event?.naturalSize || event?.nativeEvent?.naturalSize || {};
-    const width = Number(naturalSize.width);
-    const height = Number(naturalSize.height);
-    if (
-      Number.isFinite(width) &&
-      Number.isFinite(height) &&
-      width > 0 &&
-      height > 0
-    ) {
-      setVideoAspectRatio(width / height);
-    }
   };
 
   const handleScrubBarLayout = (event) => {
@@ -617,15 +856,11 @@ export default function VideoEditorScreen({ route, navigation }) {
           onPress={handleVideoPress}
           onLayout={handleVideoLayout}
         >
-          <Video
-            ref={videoRef}
-            source={{ uri: assetUri }}
+          <VideoView
+            player={player}
             style={styles.editor}
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay={false}
-            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-            onReadyForDisplay={handleReadyForDisplay}
-            progressUpdateIntervalMillis={200}
+            contentFit="contain"
+            nativeControls={false}
           />
           <View pointerEvents="none" style={styles.overlay}>
             {lineStyle === 'vertical' ? (
@@ -656,6 +891,49 @@ export default function VideoEditorScreen({ route, navigation }) {
             total: formatTime(safeDurationSeconds),
           })}
         </Text>
+        <View style={styles.thumbnailRow}>
+          {thumbnails.length > 0 ? (
+            thumbnails.map((uri, index) => (
+              <Image
+                key={`${uri}-${index}`}
+                source={{ uri }}
+                style={styles.thumbnailImage}
+              />
+            ))
+          ) : (
+            <View style={styles.thumbnailPlaceholder}>
+              <Text style={styles.thumbnailPlaceholderText}>
+                {isGeneratingThumbnails
+                  ? t('videoEditor.generatingThumbnails')
+                  : t('videoEditor.noThumbnails')}
+              </Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.seekFineRow}>
+          <TouchableOpacity
+            style={styles.seekFineButton}
+            onPress={handleSeekBackwardFine}
+            accessibilityRole="button"
+            accessibilityLabel={t('videoEditor.seekFineBack')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.seekFineButtonText}>
+              {t('videoEditor.seekFineBack')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.seekFineButton}
+            onPress={handleSeekForwardFine}
+            accessibilityRole="button"
+            accessibilityLabel={t('videoEditor.seekFineForward')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.seekFineButtonText}>
+              {t('videoEditor.seekFineForward')}
+            </Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.scrubRow}>
           <View
             style={styles.scrubBar}
@@ -681,18 +959,80 @@ export default function VideoEditorScreen({ route, navigation }) {
           </View>
         </View>
         <View style={styles.markRow}>
-          <TouchableOpacity style={styles.markButton} onPress={handleMarkStart}>
+          <TouchableOpacity
+            style={styles.markButton}
+            onPress={handleMarkStart}
+            accessibilityRole="button"
+            accessibilityLabel={t('videoEditor.markStart')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Text style={styles.markButtonText}>
               {t('videoEditor.markStart')}
             </Text>
             <Text style={styles.markValue}>{formatTime(startTime)}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.markButton} onPress={handleMarkEnd}>
+          <TouchableOpacity
+            style={styles.markButton}
+            onPress={handleMarkEnd}
+            accessibilityRole="button"
+            accessibilityLabel={t('videoEditor.markEnd')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Text style={styles.markButtonText}>
               {t('videoEditor.markEnd')}
             </Text>
             <Text style={styles.markValue}>{formatTime(endTime)}</Text>
           </TouchableOpacity>
+        </View>
+        <View style={styles.trimFineRow}>
+          <View style={styles.trimFineGroup}>
+            <Text style={styles.trimFineLabel}>
+              {t('videoEditor.markStart')}
+            </Text>
+            <View style={styles.trimFineButtons}>
+              <TouchableOpacity
+                style={styles.trimFineButton}
+                onPress={() => handleAdjustStart(-FINE_SEEK_STEP_SECONDS)}
+                accessibilityRole="button"
+                accessibilityLabel={t('videoEditor.trimStartBack')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.trimFineButtonText}>-0.25s</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.trimFineButton}
+                onPress={() => handleAdjustStart(FINE_SEEK_STEP_SECONDS)}
+                accessibilityRole="button"
+                accessibilityLabel={t('videoEditor.trimStartForward')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.trimFineButtonText}>+0.25s</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.trimFineGroup}>
+            <Text style={styles.trimFineLabel}>{t('videoEditor.markEnd')}</Text>
+            <View style={styles.trimFineButtons}>
+              <TouchableOpacity
+                style={styles.trimFineButton}
+                onPress={() => handleAdjustEnd(-FINE_SEEK_STEP_SECONDS)}
+                accessibilityRole="button"
+                accessibilityLabel={t('videoEditor.trimEndBack')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.trimFineButtonText}>-0.25s</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.trimFineButton}
+                onPress={() => handleAdjustEnd(FINE_SEEK_STEP_SECONDS)}
+                accessibilityRole="button"
+                accessibilityLabel={t('videoEditor.trimEndForward')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.trimFineButtonText}>+0.25s</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
         <View style={styles.adjustmentsRow}>
           <View style={styles.lineAdjustGroup}>
@@ -831,6 +1171,48 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontSize: 14,
   },
+  thumbnailRow: {
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  thumbnailImage: {
+    width: '18%',
+    aspectRatio: 1.4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  thumbnailPlaceholder: {
+    width: '100%',
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+  },
+  thumbnailPlaceholderText: {
+    color: '#9ca3af',
+    fontSize: 12,
+  },
+  seekFineRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  seekFineButton: {
+    flex: 1,
+    backgroundColor: '#1f2937',
+    marginHorizontal: 4,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  seekFineButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   scrubRow: {
     marginBottom: 10,
   },
@@ -909,6 +1291,38 @@ const styles = StyleSheet.create({
   lineAdjustText: {
     color: '#fff',
     fontSize: 13,
+    fontWeight: '600',
+  },
+  trimFineRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  trimFineGroup: {
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  trimFineLabel: {
+    color: '#9ca3af',
+    fontSize: 12,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  trimFineButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  trimFineButton: {
+    flex: 1,
+    backgroundColor: '#111827',
+    borderRadius: 8,
+    paddingVertical: 7,
+    marginHorizontal: 2,
+    alignItems: 'center',
+  },
+  trimFineButtonText: {
+    color: '#fff',
+    fontSize: 12,
     fontWeight: '600',
   },
   adjustmentsRow: {

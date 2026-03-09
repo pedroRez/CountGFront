@@ -1,11 +1,13 @@
-"""Simple in-memory task queue with worker threads."""
+"""Task queue with worker threads and optional durable state persistence."""
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Deque, Dict, Optional, Tuple
 
 STATUS_QUEUED = "queued"
@@ -38,21 +40,46 @@ class QueueJob:
             "error": self.error,
             "metadata": self.metadata,
             "cancel_requested": self.cancel_requested,
+            "queue_name": self.queue_name,
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "QueueJob":
+        return cls(
+            job_id=data.get("job_id", ""),
+            status=data.get("status", STATUS_QUEUED),
+            enqueued_at=data.get("enqueued_at") or time.time(),
+            started_at=data.get("started_at"),
+            finished_at=data.get("finished_at"),
+            result=data.get("result"),
+            error=data.get("error"),
+            metadata=data.get("metadata") or {},
+            cancel_requested=bool(data.get("cancel_requested", False)),
+            queue_name=data.get("queue_name", ""),
+        )
 
 
 class TaskQueue:
-    def __init__(self, name: str = "task-queue", max_workers: int = 1):
+    def __init__(
+        self,
+        name: str = "task-queue",
+        max_workers: int = 1,
+        persistence_path: Optional[str] = None,
+    ):
         if max_workers < 1:
             raise ValueError("max_workers must be >= 1")
         self.name = name
         self.max_workers = max_workers
+        self.persistence_path = persistence_path
         self._queue: Deque[str] = deque()
         self._jobs: Dict[str, QueueJob] = {}
         self._lock = threading.Lock()
         self._condition = threading.Condition(self._lock)
         self._stop_event = threading.Event()
         self._workers = []
+
+        self._load_state()
+
         for index in range(max_workers):
             worker = threading.Thread(
                 target=self._worker_loop,
@@ -83,6 +110,7 @@ class TaskQueue:
             self._jobs[job_id] = job
             self._queue.append(job_id)
             position = len(self._queue)
+            self._persist_state_locked()
             self._condition.notify()
             return job, position
 
@@ -134,16 +162,19 @@ class TaskQueue:
                 job.status = STATUS_CANCELED
                 job.cancel_requested = True
                 job.finished_at = time.time()
+                self._persist_state_locked()
                 self._condition.notify()
                 return True
             if job.status == STATUS_RUNNING:
                 job.cancel_requested = True
+                self._persist_state_locked()
                 return True
             return False
 
     def shutdown(self, wait: bool = True) -> None:
         self._stop_event.set()
         with self._condition:
+            self._persist_state_locked()
             self._condition.notify_all()
         if wait:
             for worker in self._workers:
@@ -162,9 +193,11 @@ class TaskQueue:
                     continue
                 if job.status == STATUS_CANCELED:
                     job.finished_at = time.time()
+                    self._persist_state_locked()
                     continue
                 job.status = STATUS_RUNNING
                 job.started_at = time.time()
+                self._persist_state_locked()
                 task = job._task
                 args = job._args
                 kwargs = job._kwargs
@@ -174,15 +207,64 @@ class TaskQueue:
                     result = task(job, *args, **kwargs)
                 else:
                     result = task(*args, **kwargs)
-                with self._lock:
+                with self._condition:
+                    if job.cancel_requested and job.status != STATUS_CANCELED:
+                        job.status = STATUS_CANCELED
+                    elif job.status != STATUS_CANCELED:
+                        job.status = STATUS_FINISHED
+                        job.result = result
+                    job.finished_at = time.time()
+                    self._persist_state_locked()
+            except Exception as exc:  # pragma: no cover - defensive path
+                with self._condition:
                     if job.cancel_requested:
                         job.status = STATUS_CANCELED
                     else:
-                        job.status = STATUS_FINISHED
-                    job.result = result
+                        job.status = STATUS_FAILED
+                        job.error = str(exc)
                     job.finished_at = time.time()
-            except Exception as exc:
-                with self._lock:
-                    job.status = STATUS_FAILED
-                    job.error = str(exc)
-                    job.finished_at = time.time()
+                    self._persist_state_locked()
+
+    def _load_state(self) -> None:
+        if not self.persistence_path:
+            return
+        path = Path(self.persistence_path)
+        if not path.exists():
+            return
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return
+
+        jobs_payload = payload.get("jobs") if isinstance(payload, dict) else None
+        if not isinstance(jobs_payload, list):
+            return
+
+        now = time.time()
+        for item in jobs_payload:
+            if not isinstance(item, dict) or not item.get("job_id"):
+                continue
+            job = QueueJob.from_dict(item)
+            if job.status in {STATUS_QUEUED, STATUS_RUNNING}:
+                job.status = STATUS_FAILED
+                job.error = (
+                    "Recovered after restart: job state was not terminal. "
+                    "Please retry this request."
+                )
+                job.finished_at = now
+            self._jobs[job.job_id] = job
+
+    def _persist_state_locked(self) -> None:
+        if not self.persistence_path:
+            return
+        path = Path(self.persistence_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "queue_name": self.name,
+            "saved_at": time.time(),
+            "jobs": [job.to_dict() for job in self._jobs.values()],
+        }
+        try:
+            path.write_text(json.dumps(payload), encoding="utf-8")
+        except Exception:
+            return

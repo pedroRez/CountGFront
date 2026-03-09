@@ -21,12 +21,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 # Create the FastAPI application instance
 app = FastAPI(
     title="CountG API",
     version="0.1.0",
     description="FastAPI backend for counting and tracking objects in video.",
 )
+
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 PROCESSED_VIDEOS_DIR = os.getenv("PROCESSED_VIDEOS_DIR")
@@ -42,16 +44,39 @@ app.mount(
     name="videos_processados",
 )
 
+
+def _is_production_env(env_value: str | None) -> bool:
+    normalized = (env_value or "").strip().lower()
+    return normalized in {"prod", "production"}
+
+
+def _parse_allowed_origins(raw_origins: str | None) -> list[str]:
+    if not raw_origins:
+        return []
+    values = [origin.strip() for origin in raw_origins.split(",")]
+    return [origin for origin in values if origin]
+
+
+backend_env = os.getenv("BACKEND_ENV", "development")
+allowed_origins = _parse_allowed_origins(os.getenv("CORS_ALLOWED_ORIGINS"))
+
+if _is_production_env(backend_env):
+    if "*" in allowed_origins:
+        logger.warning(
+            "[CORS] Ignoring '*' origin in production. Set explicit CORS_ALLOWED_ORIGINS."
+        )
+        allowed_origins = [origin for origin in allowed_origins if origin != "*"]
+    logger.info("[CORS] Production mode enabled. Origins: %s", allowed_origins)
+else:
+    if not allowed_origins:
+        allowed_origins = ["*"]
+    logger.info("[CORS] Development mode enabled. Origins: %s", allowed_origins)
+
 # CORS configuration (allows frontend to communicate with backend)
 # Allows a React Native app (running on a different origin) to talk to the API.
-origins = [
-    "*",  # For development '*' is fine. For production be more specific.
-    # E.g.: "http://localhost:8081", "https://your-pwa.com"
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods (GET, POST, etc.)
     allow_headers=["*"],  # Allow all headers

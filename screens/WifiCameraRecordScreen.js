@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ModernFileSystem from 'expo-file-system';
 import * as Clipboard from 'expo-clipboard';
@@ -45,6 +46,10 @@ const RTSP_USER_AGENT = 'AndroidXMedia3/1.8.0';
 const NETWORK_DIAG_TIMEOUT_MS = 800;
 const NETWORK_HTTP_TIMEOUT_MS = 1500;
 const DEFAULT_BACKEND_DIAG_URL = 'http://192.168.0.17:8000';
+const WIFI_CAMERA_LAST_IPS_KEY = '@wifi_camera_last_ips';
+const WIFI_CAMERA_LAST_IPS_LIMIT = 8;
+const WIFI_CAMERA_LAST_DEVICES_KEY = '@wifi_camera_last_devices';
+const WIFI_CAMERA_LAST_DEVICES_LIMIT = 12;
 const FILESYSTEM_DEBUG_UI =
   String(process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG || '') === '1';
 
@@ -81,13 +86,43 @@ const buildRecordingFilePath = (directory) => {
   return `${normalizedDir}wifi_camera_${timestamp}.${RECORDING_EXTENSION}`;
 };
 
+const getPathExtension = (path) => {
+  if (!path || typeof path !== 'string') return null;
+  const normalizedPath = stripFileScheme(path).split('?')[0].split('#')[0];
+  const fileName = normalizedPath.split('/').pop() || '';
+  const dotIndex = fileName.lastIndexOf('.');
+  if (dotIndex <= 0 || dotIndex >= fileName.length - 1) return null;
+  return fileName.slice(dotIndex + 1).toLowerCase();
+};
+
+const replacePathExtension = (path, extension) => {
+  if (!path || typeof path !== 'string') return path;
+  const normalizedExtension = String(extension || '')
+    .replace(/^\.+/, '')
+    .toLowerCase();
+  if (!normalizedExtension) return path;
+
+  const normalizedPath = stripFileScheme(path).split('?')[0].split('#')[0];
+  const slashIndex = normalizedPath.lastIndexOf('/');
+  const prefix =
+    slashIndex >= 0 ? normalizedPath.slice(0, slashIndex + 1) : '';
+  const fileName =
+    slashIndex >= 0 ? normalizedPath.slice(slashIndex + 1) : normalizedPath;
+  const dotIndex = fileName.lastIndexOf('.');
+  const baseName = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+  return `${prefix}${baseName}.${normalizedExtension}`;
+};
+
 const getMimeTypeForPath = (path) => {
   if (!path) return 'video/mp4';
-  const lower = path.toLowerCase();
-  if (lower.endsWith('.ts')) return 'video/mp2t';
-  if (lower.endsWith('.mkv')) return 'video/x-matroska';
-  if (lower.endsWith('.mov')) return 'video/quicktime';
-  if (lower.endsWith('.avi')) return 'video/x-msvideo';
+  const extension = getPathExtension(path);
+  if (extension === 'ts') return 'video/mp2t';
+  if (extension === 'mkv') return 'video/x-matroska';
+  if (extension === 'mov') return 'video/quicktime';
+  if (extension === 'avi') return 'video/x-msvideo';
+  if (extension === 'm4v') return 'video/x-m4v';
+  if (extension === 'webm') return 'video/webm';
+  if (extension === '3gp') return 'video/3gpp';
   return 'video/mp4';
 };
 
@@ -292,6 +327,156 @@ const parseRtspTarget = (value) => {
     port: Number.isFinite(port) ? port : null,
     path,
   };
+};
+
+const isValidIpAddress = (value) => {
+  if (!value || typeof value !== 'string') return false;
+  const parts = value.split('.');
+  if (parts.length !== 4) return false;
+  return parts.every((part) => {
+    if (!/^\d+$/.test(part)) return false;
+    const num = Number(part);
+    return num >= 0 && num <= 255;
+  });
+};
+
+const normalizeIpList = (values, limit = null) => {
+  if (!Array.isArray(values)) return [];
+  const output = [];
+  const seen = new Set();
+  values.forEach((value) => {
+    if (typeof value !== 'string') return;
+    const ip = value.trim();
+    if (!isValidIpAddress(ip)) return;
+    if (seen.has(ip)) return;
+    seen.add(ip);
+    output.push(ip);
+  });
+  if (limit && output.length > limit) {
+    return output.slice(0, limit);
+  }
+  return output;
+};
+
+const mergeIpLists = (...lists) => {
+  const output = [];
+  const seen = new Set();
+  lists.forEach((list) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((value) => {
+      if (typeof value !== 'string') return;
+      const ip = value.trim();
+      if (!isValidIpAddress(ip)) return;
+      if (seen.has(ip)) return;
+      seen.add(ip);
+      output.push(ip);
+    });
+  });
+  return output;
+};
+
+const getSavedCameraId = (device) => {
+  if (!device?.ip) return null;
+  const port = Number(device.rtspPort);
+  const safePort = Number.isFinite(port) && port > 0 ? port : '';
+  return `${device.ip}:${safePort}`.toLowerCase();
+};
+
+const normalizeSavedCamera = (device) => {
+  if (!device?.ip || !isValidIpAddress(device.ip)) return null;
+  const port = Number(device.rtspPort);
+  const normalizedPort = Number.isFinite(port) && port > 0 ? port : null;
+  const id = getSavedCameraId({ ...device, rtspPort: normalizedPort });
+  if (!id) return null;
+  return {
+    id,
+    ip: device.ip,
+    rtspPort: normalizedPort,
+    rtspPath: device.rtspPath || null,
+    discoverySource: device.discoverySource || null,
+    possibleCamera: Boolean(device.possibleCamera),
+    onvifOk: Boolean(device.onvifOk),
+    xaddrs: Array.isArray(device.xaddrs) ? device.xaddrs : [],
+    name: device.name || null,
+    manufacturer: device.manufacturer || null,
+    model: device.model || null,
+    lastSeenAt: Date.now(),
+  };
+};
+
+const loadSavedCameras = async () => {
+  try {
+    const raw = await AsyncStorage.getItem(WIFI_CAMERA_LAST_DEVICES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeSavedCamera).filter(Boolean);
+  } catch (_error) {
+    return [];
+  }
+};
+
+const saveSavedCameras = async (devices) => {
+  const normalized = (Array.isArray(devices) ? devices : [])
+    .map(normalizeSavedCamera)
+    .filter(Boolean)
+    .sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0))
+    .slice(0, WIFI_CAMERA_LAST_DEVICES_LIMIT);
+  try {
+    await AsyncStorage.setItem(
+      WIFI_CAMERA_LAST_DEVICES_KEY,
+      JSON.stringify(normalized)
+    );
+  } catch (_error) {
+    // ignore storage failures
+  }
+  return normalized;
+};
+
+const saveLastKnownIps = async (ips) => {
+  const normalized = normalizeIpList(ips, WIFI_CAMERA_LAST_IPS_LIMIT);
+  try {
+    await AsyncStorage.setItem(
+      WIFI_CAMERA_LAST_IPS_KEY,
+      JSON.stringify(normalized)
+    );
+  } catch (_error) {
+    // ignore storage failures
+  }
+  return normalized;
+};
+
+const upsertSavedCamera = async (incoming) => {
+  const normalized = normalizeSavedCamera(incoming);
+  if (!normalized) return null;
+  const existing = await loadSavedCameras();
+  const index = existing.findIndex(
+    (item) => item.id === normalized.id || item.ip === normalized.ip
+  );
+  if (index >= 0) {
+    const current = existing[index];
+    existing[index] = {
+      ...current,
+      ...normalized,
+      xaddrs: Array.from(
+        new Set([...(current.xaddrs || []), ...(normalized.xaddrs || [])])
+      ),
+      possibleCamera: false,
+      lastSeenAt: Date.now(),
+    };
+  } else {
+    existing.unshift(normalized);
+  }
+  await saveSavedCameras(existing);
+  try {
+    const rawIps = await AsyncStorage.getItem(WIFI_CAMERA_LAST_IPS_KEY);
+    const parsedIps = rawIps ? JSON.parse(rawIps) : [];
+    const mergedIps = mergeIpLists([normalized.ip], parsedIps);
+    await saveLastKnownIps(mergedIps);
+  } catch (_error) {
+    await saveLastKnownIps([normalized.ip]);
+  }
+  return normalized;
 };
 
 const resolveMaybePromise = async (value) => {
@@ -563,6 +748,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
   const appStateRef = useRef(AppState.currentState);
   const playerSessionRef = useRef(0);
   const debugActionTimerRef = useRef(null);
+  const successfulCameraKeyRef = useRef('');
   const diagnosticsRef = useRef({
     running: false,
     lastKey: '',
@@ -676,15 +862,17 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
         clearTimeout(playerMountTimerRef.current);
         playerMountTimerRef.current = null;
       }
-      if (isPlayerMounted) {
-        logPlayerStage('vlc_unmount', { reason: reason || '-' });
-      }
-      setIsPlayerMounted(false);
+      setIsPlayerMounted((prevMounted) => {
+        if (prevMounted) {
+          logPlayerStage('vlc_unmount', { reason: reason || '-' });
+        }
+        return false;
+      });
       if (reason) {
         setPlayerDisabledReason(reason);
       }
     },
-    [isPlayerMounted, logPlayerStage]
+    [logPlayerStage]
   );
 
   const showSafeAlert = useCallback(
@@ -1299,8 +1487,14 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
 
       let { uri: outputUri, info } = fileResult;
       const targetPath = recordingFileRef.current;
+      const outputPath = stripFileScheme(outputUri);
+      const sourceExtension = getPathExtension(outputPath);
+      const normalizedTargetPath =
+        targetPath && sourceExtension
+          ? replacePathExtension(targetPath, sourceExtension)
+          : targetPath;
       if (targetPath && outputUri) {
-        const targetUri = ensureFileUri(targetPath);
+        const targetUri = ensureFileUri(normalizedTargetPath);
         if (targetUri && targetUri !== outputUri) {
           try {
             await FileSystem.moveAsync({ from: outputUri, to: targetUri });
@@ -1476,6 +1670,33 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
     setConnectError('');
     setRtspUrl(manualUrl);
   };
+
+  const persistConnectedCamera = useCallback(async () => {
+    const parsed = parseRtspTarget(stableRtspUrl || rtspUrl);
+    const ip = parsed?.host || wifiCamera?.ip || null;
+    if (!isValidIpAddress(ip || '')) return;
+    const rtspPort =
+      parsed?.port || Number(wifiCamera?.rtspPort) || 554;
+    const rtspPath =
+      parsed?.path || wifiCamera?.rtspPath || DEFAULT_RTSP_PATH;
+    const key = `${ip}:${rtspPort}:${rtspPath}`.toLowerCase();
+    if (successfulCameraKeyRef.current === key) return;
+    successfulCameraKeyRef.current = key;
+    await upsertSavedCamera({
+      ip,
+      rtspPort,
+      rtspPath,
+      discoverySource:
+        wifiCamera?.discoverySource ||
+        (wifiCamera?.manualConnect ? 'manual' : 'rtsp-scan'),
+      possibleCamera: false,
+      onvifOk: Boolean(wifiCamera?.onvifOk),
+      xaddrs: Array.isArray(wifiCamera?.xaddrs) ? wifiCamera.xaddrs : [],
+      name: wifiCamera?.name || null,
+      manufacturer: wifiCamera?.manufacturer || null,
+      model: wifiCamera?.model || null,
+    });
+  }, [rtspUrl, stableRtspUrl, wifiCamera]);
 
   const startRecording = async () => {
     logPlayerStage('start_recording');
@@ -1732,6 +1953,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
                       setIsStreamReady(true);
                       setConnectError('');
                       setPlayerDisabledReason('');
+                      void persistConnectedCamera();
                     }}
                     onRecordingCreated={handleRecordingCreated}
                   />

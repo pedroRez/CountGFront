@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Alert, StyleSheet, AppState } from 'react-native';
+import { View, Alert, StyleSheet, AppState, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import axios from 'axios';
 import BigButton from './BigButton';
@@ -7,9 +7,23 @@ import { useApi } from '../context/ApiContext';
 import { useLanguage } from '../context/LanguageContext';
 const CONNECTIVITY_TIMEOUT_MS = 5000;
 const RETRY_INTERVAL_MS = 10000;
+const ANDROID_UPLOAD_PROGRESS_SCALE = 2;
+const MAX_PROGRESS_BEFORE_UPLOAD_FINISH = 0.99;
 
 const isValidTrimRange = (startMs, endMs) =>
   Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs;
+
+const pad2 = (value) => String(value).padStart(2, '0');
+
+const buildAutomaticCountName = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  const hours = pad2(date.getHours());
+  const minutes = pad2(date.getMinutes());
+  const seconds = pad2(date.getSeconds());
+  return `contagem_${year}${month}${day}_${hours}${minutes}${seconds}`;
+};
 
 const InternalProgressBar = ({ progress }) => (
   <View style={styles.progressBarContainer}>
@@ -31,8 +45,9 @@ export default function VideoUploadSender({
   targetClasses,
   onProcessingStarted,
   onUploadError,
+  onCountNameResolved,
 }) {
-  const { apiUrl } = useApi();
+  const { apiUrl, apiHeaders } = useApi();
   const { t } = useLanguage();
   const [isUploading, setIsUploading] = useState(false);
   const [isQueued, setIsQueued] = useState(false);
@@ -44,6 +59,7 @@ export default function VideoUploadSender({
   const isRetryingRef = useRef(false);
   const appStateRef = useRef(AppState.currentState);
   const uploadTotalRef = useRef(null);
+  const uploadProgressScaleRef = useRef(1);
   const [status, setStatus] = useState({
     key: 'upload.processVideo',
     params: {},
@@ -153,10 +169,7 @@ export default function VideoUploadSender({
     safeSetUploadProgress(0);
     safeSetStatus({ key: 'upload.waitingForConnection', params: {} });
     if (showAlert) {
-      Alert.alert(
-        t('upload.noInternetTitle'),
-        t('upload.noInternetMessage')
-      );
+      Alert.alert(t('upload.noInternetTitle'), t('upload.noInternetMessage'));
     }
     scheduleRetry();
   };
@@ -184,18 +197,9 @@ export default function VideoUploadSender({
     const assetUri = videoAsset?.uri || videoAsset?.localUri;
     const finalOrientation = orientation || videoAsset?.orientation;
     const trimmedCountName = (countName || '').trim();
-    if (!trimmedCountName) {
-      Alert.alert(
-        t('upload.missingCountNameTitle'),
-        t('upload.missingCountNameMessage')
-      );
-      return;
-    }
+    const resolvedCountName = trimmedCountName || buildAutomaticCountName();
     if (!assetUri || !finalOrientation || !modelChoice) {
-      Alert.alert(
-        t('upload.missingDataTitle'),
-        t('upload.missingDataMessage')
-      );
+      Alert.alert(t('upload.missingDataTitle'), t('upload.missingDataMessage'));
       return;
     }
     if (!apiUrl) {
@@ -236,6 +240,7 @@ export default function VideoUploadSender({
       trimStartMs: hasTrimRange ? trimStartMs : null,
       trimEndMs: hasTrimRange ? trimEndMs : null,
       targetClasses,
+      countName: resolvedCountName,
     };
   };
 
@@ -243,6 +248,8 @@ export default function VideoUploadSender({
     if (!payload || isRetryingRef.current) return;
     isRetryingRef.current = true;
     uploadTotalRef.current = null;
+    uploadProgressScaleRef.current =
+      Platform.OS === 'android' ? ANDROID_UPLOAD_PROGRESS_SCALE : 1;
     if (retryTimerRef.current) {
       clearInterval(retryTimerRef.current);
       retryTimerRef.current = null;
@@ -257,13 +264,19 @@ export default function VideoUploadSender({
 
     safeSetIsUploading(true);
     safeSetUploadProgress(0);
-    safeSetStatus({ key: 'upload.uploadingWithPercent', params: { percent: 0 } });
+    safeSetStatus({
+      key: 'upload.uploadingWithPercent',
+      params: { percent: 0 },
+    });
 
     try {
       const responseData = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         uploadRequestRef.current = xhr;
         xhr.open('POST', `${apiUrl}/upload-video/`);
+        Object.entries(apiHeaders || {}).forEach(([key, value]) => {
+          if (value) xhr.setRequestHeader(key, value);
+        });
         xhr.timeout = 600000;
 
         xhr.upload.onprogress = (event) => {
@@ -276,7 +289,10 @@ export default function VideoUploadSender({
             return;
           }
           if (!uploadTotalRef.current) {
-            const inferredTotal = pickUploadTotal(event.total, payload.fileSize);
+            const inferredTotal = pickUploadTotal(
+              event.total,
+              payload.fileSize
+            );
             if (inferredTotal > 0) {
               uploadTotalRef.current = inferredTotal;
             }
@@ -286,8 +302,11 @@ export default function VideoUploadSender({
             safeSetStatus({ key: 'upload.uploading', params: {} });
             return;
           }
-          const safeTotal = Math.max(totalForProgress, loaded);
-          const clampedProgress = Math.min(loaded / safeTotal, 1);
+          const scaledTotal = totalForProgress * uploadProgressScaleRef.current;
+          const clampedProgress = Math.min(
+            loaded / Math.max(scaledTotal, 1),
+            MAX_PROGRESS_BEFORE_UPLOAD_FINISH
+          );
 
           safeSetUploadProgress(clampedProgress);
           safeSetStatus({
@@ -349,14 +368,16 @@ export default function VideoUploadSender({
             }
           : {}),
         target_classes:
-          Array.isArray(payload.targetClasses) && payload.targetClasses.length > 0
+          Array.isArray(payload.targetClasses) &&
+          payload.targetClasses.length > 0
             ? payload.targetClasses
             : null,
       };
 
       const predictResponse = await axios.post(
         `${apiUrl}/predict-video/`,
-        predictPayload
+        predictPayload,
+        { headers: apiHeaders }
       );
 
       safeSetUploadProgress(1);
@@ -364,7 +385,9 @@ export default function VideoUploadSender({
       clearQueuedUpload();
 
       if (onProcessingStarted) {
-        onProcessingStarted(predictResponse.data);
+        onProcessingStarted(predictResponse.data, {
+          countName: payload.countName,
+        });
       }
     } catch (error) {
       if (!isMountedRef.current) return;
@@ -409,6 +432,13 @@ export default function VideoUploadSender({
       safeSetIsUploading(false);
       safeSetStatus({ key: 'upload.processVideo', params: {} });
       return;
+    }
+    if (
+      !String(countName || '').trim() &&
+      payload.countName &&
+      onCountNameResolved
+    ) {
+      onCountNameResolved(payload.countName);
     }
     const reachable = await checkServerReachable();
     if (!reachable) {

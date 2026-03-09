@@ -291,6 +291,9 @@ const SettingsScreen = () => {
               }
               onPress={handleTestConnection}
               disabled={isTesting}
+              accessibilityRole="button"
+              accessibilityLabel={t('settings.a11y.testConnection')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             />
           </>
         )}

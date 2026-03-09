@@ -19,39 +19,89 @@ CountGFront is the mobile interface for the CountG project. Built with React Nat
    python3.10 -m venv venv
    source venv/bin/activate            # Windows: venv\Scripts\activate
    pip install -r requirements.txt
+   cp .env.example .env                # Windows (PowerShell): Copy-Item .env.example .env
    # Download YOLOv8 weights (run inside the backend folder that has main.py)
    curl -L -o yolov8n.pt https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8n.pt
    curl -L -o yolov8m.pt https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8m.pt
    curl -L -o yolov8l.pt https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8l.pt
    uvicorn main:app --host 0.0.0.0 --port 8000
    ```
+
+### Banco de dados do backend (PostgreSQL)
+
+O backend usa PostgreSQL para persistir o progresso do processamento de videos
+na tabela `video_progress`.
+
+1. Suba um PostgreSQL local (exemplo com Docker):
+   ```bash
+   docker run --name countg-postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
+   ```
+2. Crie banco/usuario e permissoes usando o script do backend:
+   ```bash
+   # na raiz do projeto:
+   psql -h localhost -U postgres -f backend/setup_db.SQL
+   # se voce ja estiver dentro da pasta backend:
+   psql -h localhost -U postgres -f setup_db.SQL
+   ```
+3. No `.env` do backend (`backend/.env`), configure a conexao:
+   ```env
+   DATABASE_URL=postgresql://kyoday_user:root@localhost:5432/kyoday_db
+   ```
+
+Observacoes:
+
+- O backend cria automaticamente a tabela `video_progress` ao iniciar (se o
+  usuario do banco tiver permissao de criacao no schema).
+- Se `DATABASE_URL` nao estiver definida, as rotas que dependem de progresso no
+  banco podem falhar.
+- Para validar rapidamente, acesse `GET /` e confira o campo
+  `database_url_loaded: true`.
+
 2. **Frontend**
    ```bash
    cd CountGFront
    npm install
    ```
-  Configure o arquivo `.env` para apontar para o backend local:
-  ```bash
-  EXPO_PUBLIC_API_URL="http://<seu-ip-local>:8000"
-  ```
-  Variaveis publicas do Expo devem usar o prefixo `EXPO_PUBLIC_`. O Expo CLI
-  carrega automaticamente o `.env` ao rodar `npx expo start`.
-  Exemplo para habilitar logs de descoberta de camera:
-  ```bash
-  EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG_LOGS=1
-  ```
+   Configure o arquivo `.env` para apontar para o backend local:
 
-  No codigo, acesse assim:
-  ```js
-  const enabled = process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG_LOGS === '1';
-  ```
+```bash
+EXPO_PUBLIC_API_URL="http://<seu-ip-local>:8000"
+```
+
+Variaveis publicas do Expo devem usar o prefixo `EXPO_PUBLIC_`. O Expo CLI
+carrega automaticamente o `.env` ao rodar `npx expo start`.
+Exemplo para habilitar logs de descoberta de camera:
+
+```bash
+EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG_LOGS=1
+# habilita WS-Discovery ONVIF no scan para comparacao com outros apps
+EXPO_PUBLIC_CAMERA_SCAN_ENABLE_ONVIF_DISCOVERY=1
+```
+
+Guia de captura comparativa (`.pcap` + logs internos):
+`docs/README_DISCOVERY.md`.
+
+Configuracao do wake-up automatico do backend (App lifecycle):
+
+```bash
+# 1/true habilita, 0/false desabilita
+EXPO_PUBLIC_WAKEUP_ENABLED=1
+# Janela minima entre tentativas de wake-up (em ms)
+EXPO_PUBLIC_WAKEUP_MIN_INTERVAL_MS=30000
+```
+
+No codigo, acesse assim:
+
+```js
+const enabled = process.env.EXPO_PUBLIC_CAMERA_DISCOVERY_DEBUG_LOGS === '1';
+```
 
 ## Media Dependencies
 
 The app manipulates audio and video and relies on a few extra packages:
 
-- [`expo-av`](https://docs.expo.dev/versions/latest/sdk/av/) for playback and
-  preview.
+- [`expo-video`](https://docs.expo.dev/versions/latest/sdk/video/) for
+  playback and preview.
 - [`@react-native-community/slider`](https://github.com/callstack/react-native-slider)
   for trim selection UI.
 - [`react-native-vlc-media-player`](https://github.com/razorRun/react-native-vlc-media-player)
@@ -62,7 +112,7 @@ The backend uses trim start/end metadata to process only the selected segment.
 Install the packages:
 
 ```bash
-npx expo install expo-av @react-native-community/slider
+npx expo install expo-video @react-native-community/slider
 npm install react-native-vlc-media-player react-native-udp
 ```
 

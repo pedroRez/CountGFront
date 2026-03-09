@@ -5,7 +5,7 @@ const DEBUG_FLAG = String(
     ''
 ).toLowerCase();
 const DEBUG_ENABLED = ['1', 'true', 'yes', 'on'].includes(DEBUG_FLAG);
-const MAX_LOGS = DEBUG_ENABLED ? 800 : 240;
+const MAX_LOGS = DEBUG_ENABLED ? 6000 : 240;
 const THROTTLE_MS = DEBUG_ENABLED ? 0 : 200;
 
 const lastLogTimes = new Map();
