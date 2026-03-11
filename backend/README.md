@@ -55,6 +55,36 @@ pip install -r requirements-dev.txt
 pytest tests
 ```
 
+### Rodada Automatizada de Treino (Active Learning)
+
+Pipeline em duas etapas para melhorar precisao com menos revisao manual:
+
+1. Preparar rodada (extrai frames, pseudo-label, e cria fila de revisao):
+   ```bash
+   python scripts/active_learning_round.py prepare \
+     --videos-dir videos \
+     --base-model yolov8l.pt \
+     --device cuda \
+     --frame-step 15 \
+     --max-review 400
+   ```
+2. Revisar apenas os casos dificeis em `training_rounds/.../review/`:
+   - `review/images/`: imagens para revisar
+   - `review/labels/`: labels YOLO (classe `0` = cattle)
+   - `review/review_queue.csv`: motivo de cada item
+3. Treinar o modelo com os labels revisados:
+   ```bash
+   python scripts/active_learning_round.py train \
+     --work-dir training_rounds/round_YYYYMMDD_HHMMSS \
+     --base-model yolov8l.pt \
+     --device cuda \
+     --epochs 80 \
+     --batch 8 \
+     --export-best-path best.pt
+   ```
+
+Depois, use `model_choice: "p"` na API para inferir com `best.pt`.
+
 ### Estrutura do Projeto
 
 ```text
@@ -224,6 +254,36 @@ Install development dependencies and run the test suite with **pytest**:
 pip install -r requirements-dev.txt
 pytest tests
 ```
+
+### Automated Training Round (Active Learning)
+
+Two-step pipeline to improve precision with minimal manual review:
+
+1. Prepare round (extract frames, pseudo-label, create review queue):
+   ```bash
+   python scripts/active_learning_round.py prepare \
+     --videos-dir videos \
+     --base-model yolov8l.pt \
+     --device cuda \
+     --frame-step 15 \
+     --max-review 400
+   ```
+2. Review hard samples in `training_rounds/.../review/`:
+   - `review/images/`: images to check
+   - `review/labels/`: YOLO labels (`0` = cattle)
+   - `review/review_queue.csv`: reason per sample
+3. Train with reviewed labels:
+   ```bash
+   python scripts/active_learning_round.py train \
+     --work-dir training_rounds/round_YYYYMMDD_HHMMSS \
+     --base-model yolov8l.pt \
+     --device cuda \
+     --epochs 80 \
+     --batch 8 \
+     --export-best-path best.pt
+   ```
+
+Then use `model_choice: "p"` in the API to run inference with `best.pt`.
 
 ### Project Structure
 

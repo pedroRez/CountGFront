@@ -32,6 +32,15 @@ BOVINE_CLASS_ALIASES = {
     'gado': 'cow',
     'boi': 'cow',
     'vaca': 'cow',
+    'bezerro': 'cow',
+    'bezerra': 'cow',
+    'novilho': 'cow',
+    'novilha': 'cow',
+    'garrote': 'cow',
+    'touro': 'cow',
+    'calf': 'cow',
+    'heifer': 'cow',
+    'steer': 'cow',
     'bull': 'cow',
     'ox': 'cow',
 }
@@ -53,6 +62,11 @@ def normalize_bovine_target_classes(target_classes: Optional[List[str]]) -> List
         return list(DEFAULT_BOVINE_TARGET_CLASSES)
 
     return normalized
+
+
+def normalize_detected_bovine_class(class_name: Optional[str]) -> str:
+    key = str(class_name or '').strip().lower()
+    return BOVINE_CLASS_ALIASES.get(key, key)
 
 def _get_env_int(name: str, default: int) -> int:
     value = os.getenv(name)
@@ -528,7 +542,8 @@ def contar_gado_em_video(
                     track_id = int(r_id)
                     x1, y1, x2, y2 = map(int, box_coord)
                     curr_x, curr_y = (x1 + x2) // 2, (y1 + y2) // 2
-                    nome_cls = model.names[int(cls_id)]
+                    nome_cls_raw = str(model.names[int(cls_id)])
+                    nome_cls = normalize_detected_bovine_class(nome_cls_raw)
 
                     if track_id not in track_ids_contados:
                         crossed = False
@@ -592,7 +607,7 @@ def contar_gado_em_video(
                         cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
                         cv2.putText(
                             annotated_frame,
-                            f"{nome_cls} ID:{track_id}",
+                            f"{nome_cls_raw} ID:{track_id}",
                             (x1, y1 - 10),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.6,
