@@ -275,6 +275,17 @@ const saveLastKnownDevices = async (devices) => {
   return normalized;
 };
 
+
+const getDiscoveryPriorityScore = (device) => {
+  if (!device) return 0;
+  const rtspPort = Number(device.rtspPort || 0);
+  if (device.possibleCamera && rtspPort === 554) return 5;
+  if (device.onvifOk) return 4;
+  if (device.discoverySource === 'rtsp-scan') return 3;
+  if (device.possibleCamera) return 2;
+  return 1;
+};
+
 const mergeDeviceLists = (current, incoming) => {
   const map = new Map();
   (current || []).forEach((device) => {
@@ -300,9 +311,11 @@ const mergeDeviceLists = (current, incoming) => {
       lastSeenAt: Math.max(existing.lastSeenAt || 0, device.lastSeenAt || 0),
     });
   });
-  return Array.from(map.values()).sort(
-    (a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0)
-  );
+  return Array.from(map.values()).sort((a, b) => {
+    const scoreDiff = getDiscoveryPriorityScore(b) - getDiscoveryPriorityScore(a);
+    if (scoreDiff !== 0) return scoreDiff;
+    return (b.lastSeenAt || 0) - (a.lastSeenAt || 0);
+  });
 };
 
 const buildScanPrefixes = async (
