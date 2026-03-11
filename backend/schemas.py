@@ -54,11 +54,11 @@ class VideoRequest(BaseModel):
     )
 
     target_classes: Optional[List[str]] = Field(
-        default=None,
+        default=["cow"],
         example=["cow"],
         description=(
-            "Lista de classes alvo para contagem. Se Nulo (None), todas as classes detectadas serão contadas.\n"
-            "English: List of target classes for counting. If Null (None), all detected classes will be counted."
+            "Lista de classes alvo para contagem. Esta API conta apenas bovinos; entradas fora desse grupo serao ignoradas e o padrao sera [\"cow\"].\n"
+            "English: Target classes for counting. This API counts bovines only; non-bovine classes are ignored and default to [\"cow\"]."
         ),
     )
 

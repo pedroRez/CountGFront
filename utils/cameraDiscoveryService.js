@@ -199,6 +199,7 @@ export const startScan = ({
   allowConnectOnly = false,
   includePossibleCameras = false,
   enableFastRtspScan = true,
+  fastRtspPaths = null,
   fastRtspPath = '/onvif1',
   fastRtspPort = 554,
   fastRtspTimeoutMs = DEFAULT_FAST_RTSP_TIMEOUT_MS,
@@ -467,8 +468,19 @@ export const startScan = ({
         }
 
         if (enableFastRtspScan) {
+          const normalizedFastPaths = Array.from(
+            new Set(
+              [
+                ...(Array.isArray(fastRtspPaths) ? fastRtspPaths : []),
+                fastRtspPath,
+              ].filter(Boolean)
+            )
+          );
+          const fastPathCandidates = normalizedFastPaths.length
+            ? normalizedFastPaths
+            : ['/onvif1'];
           const fastFound = await runScanForPrefix(prefix, {
-            paths: [fastRtspPath],
+            paths: fastPathCandidates,
             openPorts: [fastRtspPort],
             timeoutMs: fastRtspTimeoutMs,
             openPortTimeoutMs: fastOpenPortTimeoutMs,
