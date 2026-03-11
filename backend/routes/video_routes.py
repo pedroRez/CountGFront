@@ -9,7 +9,11 @@ from fastapi import APIRouter, File, Header, UploadFile
 from fastapi.responses import JSONResponse
 
 from schemas import VideoRequest
-from utils.contagem_video import contar_gado_em_video, get_line_and_direction_config
+from utils.contagem_video import (
+    contar_gado_em_video,
+    get_line_and_direction_config,
+    normalize_bovine_target_classes,
+)
 from utils.gerenciador_progresso import ProgressoManager
 from utils.task_queue import TaskQueue
 
@@ -217,7 +221,7 @@ async def predict_video_endpoint(
     request_payload = {
         "model_choice": request.model_choice,
         "orientation": request.orientation,
-        "target_classes": request.target_classes,
+        "target_classes": normalize_bovine_target_classes(request.target_classes),
         "line_position_ratio": request.line_position_ratio,
         "trim_start_ms": trim_start_ms,
         "trim_end_ms": trim_end_ms,

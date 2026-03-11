@@ -1,5 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  Image,
+  Alert,
+  Share,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -69,6 +78,31 @@ const CountsScreen = () => {
     navigation.navigate('ProcessedVideo', { count });
   };
 
+  const handleShareVideo = async (count) => {
+    const videoUri = count?.local_video_uri;
+    if (!videoUri) {
+      Alert.alert(t('common.error'), t('home.counts.noVideo'));
+      return;
+    }
+
+    try {
+      const result = await Share.share({
+        title: count?.name || t('home.counts.unnamed'),
+        message: `${count?.name || t('home.counts.unnamed')}
+${videoUri}`,
+        url: videoUri,
+      });
+      if (result?.action !== Share.dismissedAction) {
+        return;
+      }
+    } catch (_error) {
+      Alert.alert(
+        t('common.error'),
+        t('home.counts.shareError')
+      );
+    }
+  };
+
   const renderEmpty = () => (
     <View style={styles.emptyState}>
       {isLoading ? (
@@ -136,20 +170,36 @@ const CountsScreen = () => {
           </View>
         </View>
         {hasVideo ? (
-          <TouchableOpacity
-            onPress={() => handleOpenCount(item)}
-            style={styles.countPlayButton}
-          >
-            <MaterialCommunityIcons
-              name="play-circle-outline"
-              size={18}
-              color="#1d4ed8"
-              style={styles.playIcon}
-            />
-            <Text style={styles.countPlayText}>
-              {t('home.counts.playVideo')}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.countActionsRow}>
+            <TouchableOpacity
+              onPress={() => handleOpenCount(item)}
+              style={styles.countPlayButton}
+            >
+              <MaterialCommunityIcons
+                name="play-circle-outline"
+                size={18}
+                color="#1d4ed8"
+                style={styles.playIcon}
+              />
+              <Text style={styles.countPlayText}>
+                {t('home.counts.playVideo')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleShareVideo(item)}
+              style={styles.countShareButton}
+            >
+              <MaterialCommunityIcons
+                name="share-variant-outline"
+                size={18}
+                color="#065f46"
+                style={styles.playIcon}
+              />
+              <Text style={styles.countShareText}>
+                {t('home.counts.shareVideo')}
+              </Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <Text style={styles.countNoVideo}>{t('home.counts.noVideo')}</Text>
         )}
@@ -262,8 +312,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111827',
   },
-  countPlayButton: {
+  countActionsRow: {
     marginTop: 10,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  countPlayButton: {
+    flex: 1,
     paddingVertical: 8,
     borderRadius: 8,
     backgroundColor: '#eef2ff',
@@ -276,6 +331,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#1d4ed8',
+  },
+  countShareButton: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#34d399',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  countShareText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#065f46',
   },
   countNoVideo: {
     marginTop: 10,

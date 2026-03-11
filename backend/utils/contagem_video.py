@@ -22,6 +22,38 @@ MOVE_LR: str = "left_right"
 MOVE_RL: str = "right_left"
 
 
+
+BOVINE_CLASS_ALIASES = {
+    'cow': 'cow',
+    'cattle': 'cow',
+    'bovine': 'cow',
+    'bovino': 'cow',
+    'bovinos': 'cow',
+    'gado': 'cow',
+    'boi': 'cow',
+    'vaca': 'cow',
+    'bull': 'cow',
+    'ox': 'cow',
+}
+DEFAULT_BOVINE_TARGET_CLASSES = ['cow']
+
+
+def normalize_bovine_target_classes(target_classes: Optional[List[str]]) -> List[str]:
+    if not target_classes:
+        return list(DEFAULT_BOVINE_TARGET_CLASSES)
+
+    normalized = []
+    for class_name in target_classes:
+        key = str(class_name or '').strip().lower()
+        mapped = BOVINE_CLASS_ALIASES.get(key)
+        if mapped and mapped not in normalized:
+            normalized.append(mapped)
+
+    if not normalized:
+        return list(DEFAULT_BOVINE_TARGET_CLASSES)
+
+    return normalized
+
 def _get_env_int(name: str, default: int) -> int:
     value = os.getenv(name)
     if value is None or value == "":
@@ -269,6 +301,8 @@ def contar_gado_em_video(
         the error is logged.
     """
 
+    target_classes = normalize_bovine_target_classes(target_classes)
+
     USE_SFTP = os.getenv("USE_SFTP", "false").lower() == "true"
     if USE_SFTP:
         try:
@@ -484,9 +518,10 @@ def contar_gado_em_video(
 
             annotated_frame = frame.copy() if CREATE_ANNOTATED_VIDEO else None
             if results[0].boxes is not None and results[0].boxes.id is not None:
-                current_tracked_ids = set(results[0].boxes.id.cpu().numpy().astype(int))
+                tracked_ids_array = results[0].boxes.id.cpu().numpy().astype(int)
+                current_tracked_ids = set(tracked_ids_array)
                 for r_id, cls_id, box_coord in zip(
-                    current_tracked_ids,
+                    tracked_ids_array,
                     results[0].boxes.cls.cpu().numpy(),
                     results[0].boxes.xyxy.cpu().numpy(),
                 ):
