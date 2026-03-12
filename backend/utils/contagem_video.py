@@ -4,6 +4,7 @@ import logging
 import os
 import subprocess
 from collections import defaultdict
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import cv2
@@ -368,15 +369,31 @@ def contar_gado_em_video(
         )
 
     model_files = {
-        "n": "yolov8n.pt",
+        # Use the fine-tuned model for the "fast" option in the app.
+        "n": "best.pt",
         "m": "yolov8m.pt",
         "l": "yolov8l.pt",
         "p": "best.pt",
     }
     actual_model_path = model_files.get(str(model_choice).lower(), "yolov8l.pt")
+    resolved_model_path = os.path.abspath(actual_model_path)
+    model_exists = os.path.exists(resolved_model_path)
+    logger.info(
+        "[MODEL] requested=%s resolved=%s exists=%s",
+        model_choice,
+        resolved_model_path,
+        model_exists,
+    )
+    if model_exists:
+        stat = os.stat(resolved_model_path)
+        logger.info(
+            "[MODEL] size_bytes=%s mtime=%s",
+            stat.st_size,
+            datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+        )
 
     try:
-        model = YOLO(actual_model_path)
+        model = YOLO(resolved_model_path)
     except Exception as e:
         if progresso_manager:
             progresso_manager.erro(video_name, f"Falha ao carregar modelo: {e}")

@@ -226,6 +226,13 @@ async def predict_video_endpoint(
         "trim_start_ms": trim_start_ms,
         "trim_end_ms": trim_end_ms,
     }
+    logger.info(
+        "[PREDICT] video=%s model_choice=%s orientation=%s target_classes=%s",
+        video_name_on_server,
+        request.model_choice,
+        request.orientation,
+        request_payload["target_classes"],
+    )
 
     job, _ = video_queue.enqueue(
         video_name_on_server, _process_video_job, video_name_on_server, request_payload
