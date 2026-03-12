@@ -29,6 +29,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
+import { useRecordings } from '../context/RecordingsContext';
 import {
   normalizeManualRtspInput,
   buildRtspUrlFromPath,
@@ -80,6 +81,14 @@ const ensureFileUri = (value) => {
 const normalizeDirectoryPath = (value) => {
   if (!value) return value;
   return value.endsWith('/') ? value : `${value}/`;
+};
+
+const buildWifiRecordingName = (wifiCamera, fileName) => {
+  const cameraIp = wifiCamera?.ip ? String(wifiCamera.ip).trim() : '';
+  const baseName = fileName ? String(fileName).replace(/\.[^.]+$/, '') : '';
+  if (cameraIp && baseName) return `${cameraIp} - ${baseName}`;
+  if (cameraIp) return `wifi_${cameraIp}_${Date.now()}`;
+  return baseName || `wifi_recording_${Date.now()}`;
 };
 
 const buildRecordingFilePath = (directory) => {
@@ -805,6 +814,7 @@ const getRecordingDir = async () => {
 
 export default function WifiCameraRecordScreen({ route, navigation }) {
   const { t } = useLanguage();
+  const { addRecording } = useRecordings();
   const wifiCamera = route?.params?.wifiCamera || {};
   const [rtspUrl, setRtspUrl] = useState('');
   const [connectError, setConnectError] = useState('');
@@ -1619,12 +1629,48 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
         fileName: outputUri.split('/').pop(),
         mimeType: getMimeTypeForPath(outputUri),
         duration: elapsedRef.current * 1000,
+        originalDurationMs: elapsedRef.current * 1000,
       };
 
-      navigation.replace('VideoEditor', { asset: recordedAsset });
+      let recordingId = null;
+      try {
+        recordingId = await addRecording({
+          name: buildWifiRecordingName(wifiCamera, recordedAsset.fileName),
+          createdAt: new Date().toISOString(),
+          localVideoUri: recordedAsset.uri,
+          fileName: recordedAsset.fileName,
+          mimeType: recordedAsset.mimeType,
+          durationMs: recordedAsset.duration,
+          source: 'wifi_camera',
+          cameraIp: wifiCamera?.ip || null,
+          cameraName: wifiCamera?.name || null,
+          cameraModel: wifiCamera?.model || null,
+          cameraManufacturer: wifiCamera?.manufacturer || null,
+          rtspUrl: stableRtspUrl || rtspUrl || null,
+        });
+      } catch (error) {
+        console.warn('Failed to save wifi recording metadata:', error);
+      }
+
+      navigation.replace('VideoEditor', {
+        asset: {
+          ...recordedAsset,
+          recordingId,
+        },
+      });
       isFinalizingRef.current = false;
     },
-    [buildRecordErrorMessage, navigation, showSafeAlert, stopTimer, t]
+    [
+      addRecording,
+      buildRecordErrorMessage,
+      navigation,
+      rtspUrl,
+      showSafeAlert,
+      stableRtspUrl,
+      stopTimer,
+      t,
+      wifiCamera,
+    ]
   );
 
   const handleRecordingCreated = useCallback(

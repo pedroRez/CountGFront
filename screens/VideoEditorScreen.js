@@ -768,6 +768,10 @@ export default function VideoEditorScreen({ route, navigation }) {
       originalDurationMs: Math.round(safeDurationSeconds * 1000),
       trimStartMs: Math.round(safeStart * 1000),
       trimEndMs: Math.round(safeEnd * 1000),
+      recordingId: asset?.recordingId ?? null,
+      countName: asset?.countName ?? null,
+      countDescription: asset?.countDescription ?? null,
+      modelChoice: asset?.modelChoice ?? null,
     };
 
     navigation.navigate('Home', { trimmedVideo: trimmedAsset });

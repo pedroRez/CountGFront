@@ -13,6 +13,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as VideoThumbnails from 'expo-video-thumbnails';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useCounts } from '../context/CountsContext';
@@ -23,6 +25,13 @@ const formatDateTime = (value) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return String(value);
   return parsed.toLocaleString();
+};
+
+const toShareableUri = (value) => {
+  if (!value || typeof value !== 'string') return null;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return value;
+  if (value.startsWith('/')) return `file://${value}`;
+  return `file:///${value}`;
 };
 
 const CountsScreen = () => {
@@ -84,21 +93,31 @@ const CountsScreen = () => {
       Alert.alert(t('common.error'), t('home.counts.noVideo'));
       return;
     }
+    const shareUri = toShareableUri(videoUri);
+    if (!shareUri) {
+      Alert.alert(t('common.error'), t('home.counts.noVideo'));
+      return;
+    }
 
     try {
+      if (await Sharing.isAvailableAsync()) {
+        const info = await FileSystem.getInfoAsync(shareUri);
+        if (info?.exists && !info?.isDirectory) {
+          await Sharing.shareAsync(shareUri, {
+            dialogTitle: count?.name || t('home.counts.unnamed'),
+          });
+          return;
+        }
+      }
       const result = await Share.share({
         title: count?.name || t('home.counts.unnamed'),
-        message: `${count?.name || t('home.counts.unnamed')}
-${videoUri}`,
-        url: videoUri,
+        url: shareUri,
       });
-      if (result?.action !== Share.dismissedAction) {
-        return;
-      }
+      if (result?.action !== Share.dismissedAction) return;
     } catch (_error) {
       Alert.alert(
-        t('common.error'),
-        t('home.counts.shareError')
+        t('home.counts.shareUnsupportedTitle'),
+        t('home.counts.shareUnsupportedMessage')
       );
     }
   };

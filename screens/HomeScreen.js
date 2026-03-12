@@ -32,6 +32,7 @@ import { useApi } from '../context/ApiContext';
 import { useOrientationMap } from '../context/OrientationMapContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useCounts } from '../context/CountsContext';
+import { useRecordings } from '../context/RecordingsContext';
 
 const BackendProgressBar = ({ progress, text }) => (
   <View style={styles.backendProgressContainer}>
@@ -157,6 +158,7 @@ const HomeScreen = ({ route }) => {
   const { orientationMap, fetchOrientationMap } = useOrientationMap();
   const { t } = useLanguage();
   const { addCount } = useCounts();
+  const { updateRecordingProcessing } = useRecordings();
   const [selectedVideoAsset, setSelectedVideoAsset] = useState(null);
   const [isPickerLoading, setIsPickerLoading] = useState(false);
   const [appStatus, setAppStatus] = useState('idle');
@@ -266,9 +268,23 @@ const HomeScreen = ({ route }) => {
       }
       const rawVideo = trimmedVideo || newlyRecordedVideo;
       if (rawVideo?.uri) {
+        const incomingCountName =
+          typeof rawVideo.countName === 'string' ? rawVideo.countName : null;
+        const incomingCountDescription =
+          typeof rawVideo.countDescription === 'string'
+            ? rawVideo.countDescription
+            : null;
+        const incomingModelChoice =
+          typeof rawVideo.modelChoice === 'string'
+            ? rawVideo.modelChoice
+            : null;
         const keepCountInputs =
-          !!trimmedVideo && (countName || countDescription);
-        resetAllStates({ keepCountInputs });
+          !!trimmedVideo &&
+          !incomingCountName &&
+          !incomingCountDescription &&
+          (countName || countDescription);
+        const keepModelChoice = !!trimmedVideo && !incomingModelChoice;
+        resetAllStates({ keepCountInputs, keepModelChoice });
         const enrichedVideo = {
           uri: rawVideo.uri,
           fileName: rawVideo.fileName || rawVideo.uri.split('/').pop(),
@@ -284,10 +300,23 @@ const HomeScreen = ({ route }) => {
           trimStartMs: rawVideo.trimStartMs ?? null,
           trimEndMs: rawVideo.trimEndMs ?? null,
           linePositionRatio: rawVideo.linePositionRatio ?? null,
+          recordingId: rawVideo.recordingId ?? null,
+          countName: incomingCountName,
+          countDescription: incomingCountDescription,
+          modelChoice: incomingModelChoice,
         };
         setSelectedVideoAsset(enrichedVideo);
         if (enrichedVideo.orientation) {
           setSelectedOrientation(enrichedVideo.orientation);
+        }
+        if (incomingCountName !== null) {
+          setCountName(incomingCountName);
+        }
+        if (incomingCountDescription !== null) {
+          setCountDescription(incomingCountDescription);
+        }
+        if (incomingModelChoice) {
+          setModelChoice(incomingModelChoice);
         }
         setAppStatus('selected');
         navigation.setParams({
@@ -304,6 +333,7 @@ const HomeScreen = ({ route }) => {
       route.params?.resetHome,
       countName,
       countDescription,
+      modelChoice,
       appStatus,
       navigation,
     ])
@@ -326,7 +356,10 @@ const HomeScreen = ({ route }) => {
     };
   }, [appStatus, processingVideoName]);
 
-  const resetAllStates = ({ keepCountInputs = false } = {}) => {
+  const resetAllStates = ({
+    keepCountInputs = false,
+    keepModelChoice = false,
+  } = {}) => {
     AsyncStorage.removeItem(PROCESSING_STATE_KEY).catch((error) => {
       console.warn('Failed to clear processing state:', error);
     });
@@ -342,7 +375,9 @@ const HomeScreen = ({ route }) => {
       setCountDescription('');
     }
     setSelectedOrientation(null);
-    setModelChoice('m');
+    if (!keepModelChoice) {
+      setModelChoice('m');
+    }
     setProcessingMeta(null);
     setIsFinalizing(false);
     isFinalizingRef.current = false;
@@ -401,10 +436,13 @@ const HomeScreen = ({ route }) => {
       typeof overrides.countDescription === 'string'
         ? overrides.countDescription.trim()
         : (countDescription || '').trim();
+    const parsedRecordingId = Number(asset?.recordingId);
     return {
       countName: resolvedCountName,
       countDescription: resolvedCountDescription,
       originalVideoName: fileName,
+      recordingId: Number.isFinite(parsedRecordingId) ? parsedRecordingId : null,
+      localVideoUri: asset?.uri || null,
       orientation: selectedOrientation || asset?.orientation || null,
       trimStartMs:
         asset?.trimStartMs === null || asset?.trimStartMs === undefined
@@ -581,6 +619,7 @@ const HomeScreen = ({ route }) => {
       trimEndMs: meta.trimEndMs,
       linePositionRatio: meta.linePositionRatio,
       modelChoice: meta.modelChoice,
+      recordingId: meta.recordingId,
     };
 
     try {
@@ -590,6 +629,25 @@ const HomeScreen = ({ route }) => {
         t('home.processing.saveErrorTitle'),
         t('home.processing.saveErrorMessage')
       );
+    }
+
+    try {
+      await updateRecordingProcessing(meta.recordingId, {
+        localVideoUri: meta.localVideoUri,
+        orientation: meta.orientation,
+        trimStartMs: meta.trimStartMs,
+        trimEndMs: meta.trimEndMs,
+        linePositionRatio: meta.linePositionRatio,
+        modelChoice: meta.modelChoice,
+        countName: meta.countName,
+        countDescription: meta.countDescription,
+        totalCount,
+        processedVideoUrl: processedUrl,
+        processedLocalVideoUri:
+          savedVideoInfo?.savedUri || savedVideoInfo?.downloadUri || null,
+      });
+    } catch (error) {
+      console.warn('Failed to update recording processing metadata:', error);
     }
 
     try {
@@ -795,10 +853,17 @@ const HomeScreen = ({ route }) => {
                 accessibilityLabel={t('home.a11y.openWifiCamera')}
               />
               <MenuButton
+                label={t('home.menu.recordings')}
+                icon="video-box-multiple-outline"
+                onPress={() => navigation.navigate('Recordings')}
+                index={4}
+                accessibilityLabel={t('home.a11y.openRecordings')}
+              />
+              <MenuButton
                 label={t('home.menu.tutorial')}
                 icon="help-circle-outline"
                 onPress={() => navigation.navigate('OnboardingTutorial')}
-                index={4}
+                index={5}
                 accessibilityLabel={t('home.a11y.openTutorial')}
               />
             </View>

@@ -9,6 +9,7 @@ import { ApiProvider, useApi } from './context/ApiContext';
 import { OrientationMapProvider } from './context/OrientationMapContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { CountsProvider } from './context/CountsContext';
+import { RecordingsProvider } from './context/RecordingsContext';
 
 const APP_LAUNCHED_KEY = 'appAlreadyLaunched';
 const DEFAULT_WAKEUP_MIN_INTERVAL_MS = __DEV__ ? 30_000 : 5 * 60_000;
@@ -176,9 +177,11 @@ export default function App() {
     <LanguageProvider>
       <ApiProvider>
         <CountsProvider>
-          <OrientationMapProvider>
-            <AppContent />
-          </OrientationMapProvider>
+          <RecordingsProvider>
+            <OrientationMapProvider>
+              <AppContent />
+            </OrientationMapProvider>
+          </RecordingsProvider>
         </CountsProvider>
       </ApiProvider>
     </LanguageProvider>
