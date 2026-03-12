@@ -8,6 +8,9 @@ videos_processados/
 videos_processados_temp/
 data/
 model/
+training_rounds/
+runs/
 # YOLOv8 weights (download locally)
 yolov8*.pt
+yolo26n.pt
 .env

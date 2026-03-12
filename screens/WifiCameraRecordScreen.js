@@ -29,11 +29,13 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import CustomActivityIndicator from '../components/CustomActivityIndicator';
 import { useLanguage } from '../context/LanguageContext';
+import { useRecordings } from '../context/RecordingsContext';
 import {
   normalizeManualRtspInput,
   buildRtspUrlFromPath,
   resolveOnvifRtspUrl,
 } from '../utils/onvifClient';
+import { buildRtspPathCandidates } from '../utils/rtspPaths';
 
 const MIN_FILE_BYTES = 200 * 1024;
 const DEFAULT_RTSP_PATH = '/onvif1';
@@ -42,6 +44,8 @@ const VLC_MEDIA_OPTIONS = [':network-caching=300', ':rtsp-tcp'];
 const RECORDING_EXTENSION = 'mp4';
 const RECORDING_READY_DELAY_MS = 150;
 const RECORDING_READY_ATTEMPTS = 8;
+const RECORDING_STABILIZE_ATTEMPTS = 6;
+const RECORDING_STABILIZE_DELAY_MS = 350;
 const RTSP_USER_AGENT = 'AndroidXMedia3/1.8.0';
 const NETWORK_DIAG_TIMEOUT_MS = 800;
 const NETWORK_HTTP_TIMEOUT_MS = 1500;
@@ -77,6 +81,14 @@ const ensureFileUri = (value) => {
 const normalizeDirectoryPath = (value) => {
   if (!value) return value;
   return value.endsWith('/') ? value : `${value}/`;
+};
+
+const buildWifiRecordingName = (wifiCamera, fileName) => {
+  const cameraIp = wifiCamera?.ip ? String(wifiCamera.ip).trim() : '';
+  const baseName = fileName ? String(fileName).replace(/\.[^.]+$/, '') : '';
+  if (cameraIp && baseName) return `${cameraIp} - ${baseName}`;
+  if (cameraIp) return `wifi_${cameraIp}_${Date.now()}`;
+  return baseName || `wifi_recording_${Date.now()}`;
 };
 
 const buildRecordingFilePath = (directory) => {
@@ -126,6 +138,23 @@ const getMimeTypeForPath = (path) => {
   return 'video/mp4';
 };
 
+
+const waitForStableRecording = async (uri) => {
+  if (!uri) return null;
+  let lastSize = null;
+  for (let attempt = 0; attempt < RECORDING_STABILIZE_ATTEMPTS; attempt += 1) {
+    const info = await FileSystem.getInfoAsync(uri, { size: true });
+    if (info?.exists && Number.isFinite(info.size) && info.size > MIN_FILE_BYTES) {
+      if (lastSize !== null && Math.abs(info.size - lastSize) < 2048) {
+        return info;
+      }
+      lastSize = info.size;
+    }
+    await new Promise((resolve) => setTimeout(resolve, RECORDING_STABILIZE_DELAY_MS));
+  }
+  return FileSystem.getInfoAsync(uri, { size: true });
+};
+
 const normalizeRecordingPath = (value) => {
   if (!value) return null;
   if (typeof value === 'string') return value;
@@ -164,6 +193,76 @@ const encodeBase64 = (input) => {
       'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='.charAt(enc4);
   }
   return output;
+};
+
+
+const isUsableRtspStatus = (statusCode) =>
+  [200, 401, 403, 405, 454].includes(Number(statusCode));
+
+const tryResolveRtspPathFromProbes = async ({
+  ip,
+  port,
+  preferredPath,
+  username,
+  password,
+} = {}) => {
+  if (!ip || !port) return null;
+  const candidates = buildRtspPathCandidates(preferredPath);
+
+  for (const path of candidates) {
+    const describeNoAuth = await probeRtspRequest({
+      ip,
+      port,
+      path,
+      method: 'DESCRIBE',
+      timeoutMs: 1300,
+    });
+    if (isUsableRtspStatus(describeNoAuth?.statusCode)) {
+      return {
+        path,
+        statusCode: describeNoAuth.statusCode,
+        requiresAuth: describeNoAuth.statusCode === 401,
+      };
+    }
+
+    const optionsNoAuth = await probeRtspRequest({
+      ip,
+      port,
+      path,
+      method: 'OPTIONS',
+      timeoutMs: 1300,
+    });
+    if (isUsableRtspStatus(optionsNoAuth?.statusCode)) {
+      return {
+        path,
+        statusCode: optionsNoAuth.statusCode,
+        requiresAuth: optionsNoAuth.statusCode === 401,
+      };
+    }
+
+    if (username || password) {
+      const describeWithAuth = await probeRtspRequest({
+        ip,
+        port,
+        path,
+        method: 'DESCRIBE',
+        auth: {
+          username: username || '',
+          password: password || '',
+        },
+        timeoutMs: 1600,
+      });
+      if (isUsableRtspStatus(describeWithAuth?.statusCode)) {
+        return {
+          path,
+          statusCode: describeWithAuth.statusCode,
+          requiresAuth: false,
+        };
+      }
+    }
+  }
+
+  return null;
 };
 
 const buildRtspRequest = (method, url, authHeader = null) => {
@@ -715,6 +814,7 @@ const getRecordingDir = async () => {
 
 export default function WifiCameraRecordScreen({ route, navigation }) {
   const { t } = useLanguage();
+  const { addRecording } = useRecordings();
   const wifiCamera = route?.params?.wifiCamera || {};
   const [rtspUrl, setRtspUrl] = useState('');
   const [connectError, setConnectError] = useState('');
@@ -1510,6 +1610,11 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
           }
         }
       }
+      const stableInfo = await waitForStableRecording(outputUri);
+      if (stableInfo?.exists) {
+        info = stableInfo;
+      }
+
       if (!info?.exists || !info.size || info.size < MIN_FILE_BYTES) {
         showSafeAlert(
           t('wifiCameraRecord.recordTooShortTitle'),
@@ -1524,12 +1629,48 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
         fileName: outputUri.split('/').pop(),
         mimeType: getMimeTypeForPath(outputUri),
         duration: elapsedRef.current * 1000,
+        originalDurationMs: elapsedRef.current * 1000,
       };
 
-      navigation.replace('VideoEditor', { asset: recordedAsset });
+      let recordingId = null;
+      try {
+        recordingId = await addRecording({
+          name: buildWifiRecordingName(wifiCamera, recordedAsset.fileName),
+          createdAt: new Date().toISOString(),
+          localVideoUri: recordedAsset.uri,
+          fileName: recordedAsset.fileName,
+          mimeType: recordedAsset.mimeType,
+          durationMs: recordedAsset.duration,
+          source: 'wifi_camera',
+          cameraIp: wifiCamera?.ip || null,
+          cameraName: wifiCamera?.name || null,
+          cameraModel: wifiCamera?.model || null,
+          cameraManufacturer: wifiCamera?.manufacturer || null,
+          rtspUrl: stableRtspUrl || rtspUrl || null,
+        });
+      } catch (error) {
+        console.warn('Failed to save wifi recording metadata:', error);
+      }
+
+      navigation.replace('VideoEditor', {
+        asset: {
+          ...recordedAsset,
+          recordingId,
+        },
+      });
       isFinalizingRef.current = false;
     },
-    [buildRecordErrorMessage, navigation, showSafeAlert, stopTimer, t]
+    [
+      addRecording,
+      buildRecordErrorMessage,
+      navigation,
+      rtspUrl,
+      showSafeAlert,
+      stableRtspUrl,
+      stopTimer,
+      t,
+      wifiCamera,
+    ]
   );
 
   const handleRecordingCreated = useCallback(
@@ -1556,27 +1697,47 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
       username: wifiCamera?.username,
       password: wifiCamera?.password,
     });
-    if (wifiCamera?.rtspPath || wifiCamera?.rtspPort) {
-      if (fallbackUrl) {
-        setRtspUrl(fallbackUrl);
-        setManualInput((prev) => prev || fallbackUrl);
-        setIsConnecting(false);
-        return;
-      }
-    }
     setIsConnecting(true);
     setConnectError('');
     try {
-      const resolved = await resolveOnvifRtspUrl({
-        ip: wifiCamera.ip,
-        xaddrs: wifiCamera.xaddrs,
-        username: wifiCamera.username,
-        password: wifiCamera.password,
-      });
+      let resolved = null;
+      try {
+        resolved = await resolveOnvifRtspUrl({
+          ip: wifiCamera.ip,
+          xaddrs: wifiCamera.xaddrs,
+          username: wifiCamera.username,
+          password: wifiCamera.password,
+        });
+      } catch (onvifError) {
+        logPlayerStage('connect_onvif_resolve_failed', onvifError?.message || 'unknown');
+      }
+
       if (!resolved) {
+        const probeHit = await tryResolveRtspPathFromProbes({
+          ip: wifiCamera.ip,
+          port: wifiCamera?.rtspPort || 554,
+          preferredPath: wifiCamera?.rtspPath || DEFAULT_RTSP_PATH,
+          username: wifiCamera?.username,
+          password: wifiCamera?.password,
+        });
+        if (probeHit?.path) {
+          resolved = buildRtspUrlFromPath({
+            ip: wifiCamera.ip,
+            path: probeHit.path,
+            port: wifiCamera?.rtspPort || 554,
+            username: wifiCamera?.username,
+            password: wifiCamera?.password,
+          });
+          logPlayerStage('connect_rtsp_probe_hit', probeHit);
+        }
+      }
+
+      const finalUrl = resolved || fallbackUrl;
+      if (!finalUrl) {
         throw new Error('RTSP not found');
       }
-      setRtspUrl(resolved);
+      setRtspUrl(finalUrl);
+      setManualInput((prev) => prev || finalUrl);
     } catch (error) {
       logPlayerStage('connect_onvif_error', error?.message || 'unknown');
       setConnectError(t('wifiCameraRecord.connectError'));
@@ -1586,15 +1747,7 @@ export default function WifiCameraRecordScreen({ route, navigation }) {
       }
       setManualInput((prev) => {
         if (prev) return prev;
-        return (
-          buildRtspUrlFromPath({
-            ip: wifiCamera?.ip,
-            path: wifiCamera?.rtspPath || DEFAULT_RTSP_PATH,
-            port: wifiCamera?.rtspPort || 554,
-            username: wifiCamera?.username,
-            password: wifiCamera?.password,
-          }) || DEFAULT_RTSP_PATH
-        );
+        return fallbackUrl || DEFAULT_RTSP_PATH;
       });
     } finally {
       setIsConnecting(false);

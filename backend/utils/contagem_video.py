@@ -4,6 +4,7 @@ import logging
 import os
 import subprocess
 from collections import defaultdict
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import cv2
@@ -21,6 +22,52 @@ MOVE_BT: str = "bottom_top"
 MOVE_LR: str = "left_right"
 MOVE_RL: str = "right_left"
 
+
+
+BOVINE_CLASS_ALIASES = {
+    'cow': 'cow',
+    'cattle': 'cow',
+    'bovine': 'cow',
+    'bovino': 'cow',
+    'bovinos': 'cow',
+    'gado': 'cow',
+    'boi': 'cow',
+    'vaca': 'cow',
+    'bezerro': 'cow',
+    'bezerra': 'cow',
+    'novilho': 'cow',
+    'novilha': 'cow',
+    'garrote': 'cow',
+    'touro': 'cow',
+    'calf': 'cow',
+    'heifer': 'cow',
+    'steer': 'cow',
+    'bull': 'cow',
+    'ox': 'cow',
+}
+DEFAULT_BOVINE_TARGET_CLASSES = ['cow']
+
+
+def normalize_bovine_target_classes(target_classes: Optional[List[str]]) -> List[str]:
+    if not target_classes:
+        return list(DEFAULT_BOVINE_TARGET_CLASSES)
+
+    normalized = []
+    for class_name in target_classes:
+        key = str(class_name or '').strip().lower()
+        mapped = BOVINE_CLASS_ALIASES.get(key)
+        if mapped and mapped not in normalized:
+            normalized.append(mapped)
+
+    if not normalized:
+        return list(DEFAULT_BOVINE_TARGET_CLASSES)
+
+    return normalized
+
+
+def normalize_detected_bovine_class(class_name: Optional[str]) -> str:
+    key = str(class_name or '').strip().lower()
+    return BOVINE_CLASS_ALIASES.get(key, key)
 
 def _get_env_int(name: str, default: int) -> int:
     value = os.getenv(name)
@@ -269,6 +316,8 @@ def contar_gado_em_video(
         the error is logged.
     """
 
+    target_classes = normalize_bovine_target_classes(target_classes)
+
     USE_SFTP = os.getenv("USE_SFTP", "false").lower() == "true"
     if USE_SFTP:
         try:
@@ -320,15 +369,31 @@ def contar_gado_em_video(
         )
 
     model_files = {
-        "n": "yolov8n.pt",
+        # Use the fine-tuned model for the "fast" option in the app.
+        "n": "best.pt",
         "m": "yolov8m.pt",
         "l": "yolov8l.pt",
         "p": "best.pt",
     }
     actual_model_path = model_files.get(str(model_choice).lower(), "yolov8l.pt")
+    resolved_model_path = os.path.abspath(actual_model_path)
+    model_exists = os.path.exists(resolved_model_path)
+    logger.info(
+        "[MODEL] requested=%s resolved=%s exists=%s",
+        model_choice,
+        resolved_model_path,
+        model_exists,
+    )
+    if model_exists:
+        stat = os.stat(resolved_model_path)
+        logger.info(
+            "[MODEL] size_bytes=%s mtime=%s",
+            stat.st_size,
+            datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+        )
 
     try:
-        model = YOLO(actual_model_path)
+        model = YOLO(resolved_model_path)
     except Exception as e:
         if progresso_manager:
             progresso_manager.erro(video_name, f"Falha ao carregar modelo: {e}")
@@ -484,16 +549,18 @@ def contar_gado_em_video(
 
             annotated_frame = frame.copy() if CREATE_ANNOTATED_VIDEO else None
             if results[0].boxes is not None and results[0].boxes.id is not None:
-                current_tracked_ids = set(results[0].boxes.id.cpu().numpy().astype(int))
+                tracked_ids_array = results[0].boxes.id.cpu().numpy().astype(int)
+                current_tracked_ids = set(tracked_ids_array)
                 for r_id, cls_id, box_coord in zip(
-                    current_tracked_ids,
+                    tracked_ids_array,
                     results[0].boxes.cls.cpu().numpy(),
                     results[0].boxes.xyxy.cpu().numpy(),
                 ):
                     track_id = int(r_id)
                     x1, y1, x2, y2 = map(int, box_coord)
                     curr_x, curr_y = (x1 + x2) // 2, (y1 + y2) // 2
-                    nome_cls = model.names[int(cls_id)]
+                    nome_cls_raw = str(model.names[int(cls_id)])
+                    nome_cls = normalize_detected_bovine_class(nome_cls_raw)
 
                     if track_id not in track_ids_contados:
                         crossed = False
@@ -557,7 +624,7 @@ def contar_gado_em_video(
                         cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
                         cv2.putText(
                             annotated_frame,
-                            f"{nome_cls} ID:{track_id}",
+                            f"{nome_cls_raw} ID:{track_id}",
                             (x1, y1 - 10),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.6,

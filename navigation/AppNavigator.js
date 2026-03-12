@@ -11,6 +11,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import HomeScreen from '../screens/HomeScreen';
 import CountsScreen from '../screens/CountsScreen';
+import RecordingsScreen from '../screens/RecordingsScreen';
 import ResultsScreen from '../screens/ResultsScreen';
 import RecordVideoScreen from '../screens/RecordVideoScreen';
 import CameraTestScreen from '../screens/CameraTestScreen';
@@ -70,6 +71,14 @@ export default function AppNavigator({ isFirstLaunch, onOnboardingComplete }) {
               component={CountsScreen}
               options={({ navigation }) => ({
                 title: t('nav.countsTitle'),
+                headerLeft: () => renderHeaderBack(navigation),
+              })}
+            />
+            <Stack.Screen
+              name="Recordings"
+              component={RecordingsScreen}
+              options={({ navigation }) => ({
+                title: t('nav.recordingsTitle'),
                 headerLeft: () => renderHeaderBack(navigation),
               })}
             />
